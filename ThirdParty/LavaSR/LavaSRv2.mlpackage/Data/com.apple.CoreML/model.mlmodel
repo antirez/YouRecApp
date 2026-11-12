@@ -1,0 +1,4079 @@
+ø
+
+mel*
+
+P÷ €R
+real*
+÷ €R
+	imaginary*
+÷ €¢¬
+6LavaSR v2 spectral restoration, fixed 4-second context*Yatharth Sharma; YouRec Core ML conversion"
+Apache-2.0¢:
++com.github.apple.coremltools.source_dialectTorchScript¢[
+upstream_weights_sha256@d100db961b2c125d77a52a12215c689e44cd9926a72f117513395b7e25e6de12¢3
+#com.github.apple.coremltools.sourcetorch==2.7.0¢:
+,com.github.apple.coremltools.conversion_date
+2026-10-22¢+
+$com.github.apple.coremltools.version9.0²Î±à¯
+mainÖ¯
+ 
+mel
+
+
+P
+÷CoreML7§¯
+CoreML7š¯real	imaginary”
+const$
+backbone_embed_bias
+
+€*:
+val3
+
+€*"
+@model_path/weights/weight.bin@*)
+name!
+
+"
+backbone_embed_bias±
+const2
+backbone_embed_weight
+
+€
+P
+*G
+val@
+
+€
+P
+*#
+@model_path/weights/weight.bin€*+
+name#
+
+"
+backbone_embed_weight”
+const#
+backbone_norm_bias
+
+€*<
+val5
+
+€*$
+@model_path/weights/weight.binÀ‘F*(
+name 
+
+"
+backbone_norm_bias˜
+const%
+backbone_norm_weight
+
+€*<
+val5
+
+€*$
+@model_path/weights/weight.bin€¢F**
+name"
+
+"
+backbone_norm_weight¢
+const*
+backbone_convnext_0_gamma
+
+€*<
+val5
+
+€*$
+@model_path/weights/weight.binÀ²F*/
+name'
+
+"
+backbone_convnext_0_gamma®
+const0
+backbone_convnext_0_dwconv_bias
+
+€*<
+val5
+
+€*$
+@model_path/weights/weight.bin€ÃF*5
+name-
+%
+#"!
+backbone_convnext_0_dwconv_biasÊ
+const>
+!backbone_convnext_0_dwconv_weight
+
+€
+
+*H
+valA
+
+€
+
+*$
+@model_path/weights/weight.binÀÓF*7
+name/
+'
+%"#
+!backbone_convnext_0_dwconv_weightª
+const.
+backbone_convnext_0_norm_bias
+
+€*<
+val5
+
+€*$
+@model_path/weights/weight.bin€ÄG*3
+name+
+#
+!"
+backbone_convnext_0_norm_bias®
+const0
+backbone_convnext_0_norm_weight
+
+€*<
+val5
+
+€*$
+@model_path/weights/weight.binÀÔG*5
+name-
+%
+#"!
+backbone_convnext_0_norm_weight°
+const1
+ backbone_convnext_0_pwconv1_bias
+
+€*<
+val5
+
+€*$
+@model_path/weights/weight.bin€åG*6
+name.
+&
+$""
+ backbone_convnext_0_pwconv1_biasÂ
+const:
+"backbone_convnext_0_pwconv1_weight
+
+€
+€*C
+val<
+
+€
+€*$
+@model_path/weights/weight.binÀ•H*8
+name0
+(
+&"$
+"backbone_convnext_0_pwconv1_weight±
+const1
+ backbone_convnext_0_pwconv2_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.bin€–ˆ*6
+name.
+&
+$""
+ backbone_convnext_0_pwconv2_biasÃ
+const:
+"backbone_convnext_0_pwconv2_weight
+
+€
+€*D
+val=
+
+€
+€*%
+@model_path/weights/weight.binÀ¦ˆ*8
+name0
+(
+&"$
+"backbone_convnext_0_pwconv2_weight£
+const*
+backbone_convnext_1_gamma
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.bin€§È*/
+name'
+
+"
+backbone_convnext_1_gamma¯
+const0
+backbone_convnext_1_dwconv_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.binÀ·È*5
+name-
+%
+#"!
+backbone_convnext_1_dwconv_biasË
+const>
+!backbone_convnext_1_dwconv_weight
+
+€
+
+*I
+valB
+
+€
+
+*%
+@model_path/weights/weight.bin€ÈÈ*7
+name/
+'
+%"#
+!backbone_convnext_1_dwconv_weight«
+const.
+backbone_convnext_1_norm_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.binÀ¸É*3
+name+
+#
+!"
+backbone_convnext_1_norm_bias¯
+const0
+backbone_convnext_1_norm_weight
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.bin€ÉÉ*5
+name-
+%
+#"!
+backbone_convnext_1_norm_weight±
+const1
+ backbone_convnext_1_pwconv1_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.binÀÙÉ*6
+name.
+&
+$""
+ backbone_convnext_1_pwconv1_biasÃ
+const:
+"backbone_convnext_1_pwconv1_weight
+
+€
+€*D
+val=
+
+€
+€*%
+@model_path/weights/weight.bin€ŠÊ*8
+name0
+(
+&"$
+"backbone_convnext_1_pwconv1_weight±
+const1
+ backbone_convnext_1_pwconv2_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.binÀŠŠ*6
+name.
+&
+$""
+ backbone_convnext_1_pwconv2_biasÃ
+const:
+"backbone_convnext_1_pwconv2_weight
+
+€
+€*D
+val=
+
+€
+€*%
+@model_path/weights/weight.bin€›Š*8
+name0
+(
+&"$
+"backbone_convnext_1_pwconv2_weight£
+const*
+backbone_convnext_2_gamma
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.binÀ›Ê*/
+name'
+
+"
+backbone_convnext_2_gamma¯
+const0
+backbone_convnext_2_dwconv_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.bin€¬Ê*5
+name-
+%
+#"!
+backbone_convnext_2_dwconv_biasË
+const>
+!backbone_convnext_2_dwconv_weight
+
+€
+
+*I
+valB
+
+€
+
+*%
+@model_path/weights/weight.binÀ¼Ê*7
+name/
+'
+%"#
+!backbone_convnext_2_dwconv_weight«
+const.
+backbone_convnext_2_norm_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.bin€­Ë*3
+name+
+#
+!"
+backbone_convnext_2_norm_bias¯
+const0
+backbone_convnext_2_norm_weight
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.binÀ½Ë*5
+name-
+%
+#"!
+backbone_convnext_2_norm_weight±
+const1
+ backbone_convnext_2_pwconv1_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.bin€ÎË*6
+name.
+&
+$""
+ backbone_convnext_2_pwconv1_biasÃ
+const:
+"backbone_convnext_2_pwconv1_weight
+
+€
+€*D
+val=
+
+€
+€*%
+@model_path/weights/weight.binÀşË*8
+name0
+(
+&"$
+"backbone_convnext_2_pwconv1_weight±
+const1
+ backbone_convnext_2_pwconv2_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.bin€ÿ‹*6
+name.
+&
+$""
+ backbone_convnext_2_pwconv2_biasÃ
+const:
+"backbone_convnext_2_pwconv2_weight
+
+€
+€*D
+val=
+
+€
+€*%
+@model_path/weights/weight.binÀŒ*8
+name0
+(
+&"$
+"backbone_convnext_2_pwconv2_weight£
+const*
+backbone_convnext_3_gamma
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.bin€Ì	*/
+name'
+
+"
+backbone_convnext_3_gamma¯
+const0
+backbone_convnext_3_dwconv_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.binÀ Ì	*5
+name-
+%
+#"!
+backbone_convnext_3_dwconv_biasË
+const>
+!backbone_convnext_3_dwconv_weight
+
+€
+
+*I
+valB
+
+€
+
+*%
+@model_path/weights/weight.bin€±Ì	*7
+name/
+'
+%"#
+!backbone_convnext_3_dwconv_weight«
+const.
+backbone_convnext_3_norm_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.binÀ¡Í	*3
+name+
+#
+!"
+backbone_convnext_3_norm_bias¯
+const0
+backbone_convnext_3_norm_weight
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.bin€²Í	*5
+name-
+%
+#"!
+backbone_convnext_3_norm_weight±
+const1
+ backbone_convnext_3_pwconv1_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.binÀÂÍ	*6
+name.
+&
+$""
+ backbone_convnext_3_pwconv1_biasÃ
+const:
+"backbone_convnext_3_pwconv1_weight
+
+€
+€*D
+val=
+
+€
+€*%
+@model_path/weights/weight.bin€óÍ	*8
+name0
+(
+&"$
+"backbone_convnext_3_pwconv1_weight±
+const1
+ backbone_convnext_3_pwconv2_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.binÀó*6
+name.
+&
+$""
+ backbone_convnext_3_pwconv2_biasÃ
+const:
+"backbone_convnext_3_pwconv2_weight
+
+€
+€*D
+val=
+
+€
+€*%
+@model_path/weights/weight.bin€„*8
+name0
+(
+&"$
+"backbone_convnext_3_pwconv2_weight£
+const*
+backbone_convnext_4_gamma
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.binÀ„Î*/
+name'
+
+"
+backbone_convnext_4_gamma¯
+const0
+backbone_convnext_4_dwconv_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.bin€•Î*5
+name-
+%
+#"!
+backbone_convnext_4_dwconv_biasË
+const>
+!backbone_convnext_4_dwconv_weight
+
+€
+
+*I
+valB
+
+€
+
+*%
+@model_path/weights/weight.binÀ¥Î*7
+name/
+'
+%"#
+!backbone_convnext_4_dwconv_weight«
+const.
+backbone_convnext_4_norm_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.bin€–Ï*3
+name+
+#
+!"
+backbone_convnext_4_norm_bias¯
+const0
+backbone_convnext_4_norm_weight
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.binÀ¦Ï*5
+name-
+%
+#"!
+backbone_convnext_4_norm_weight±
+const1
+ backbone_convnext_4_pwconv1_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.bin€·Ï*6
+name.
+&
+$""
+ backbone_convnext_4_pwconv1_biasÃ
+const:
+"backbone_convnext_4_pwconv1_weight
+
+€
+€*D
+val=
+
+€
+€*%
+@model_path/weights/weight.binÀçÏ*8
+name0
+(
+&"$
+"backbone_convnext_4_pwconv1_weight±
+const1
+ backbone_convnext_4_pwconv2_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.bin€è*6
+name.
+&
+$""
+ backbone_convnext_4_pwconv2_biasÃ
+const:
+"backbone_convnext_4_pwconv2_weight
+
+€
+€*D
+val=
+
+€
+€*%
+@model_path/weights/weight.binÀø*8
+name0
+(
+&"$
+"backbone_convnext_4_pwconv2_weight£
+const*
+backbone_convnext_5_gamma
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.bin€ùÏ*/
+name'
+
+"
+backbone_convnext_5_gamma¯
+const0
+backbone_convnext_5_dwconv_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.binÀ‰Ğ*5
+name-
+%
+#"!
+backbone_convnext_5_dwconv_biasË
+const>
+!backbone_convnext_5_dwconv_weight
+
+€
+
+*I
+valB
+
+€
+
+*%
+@model_path/weights/weight.bin€šĞ*7
+name/
+'
+%"#
+!backbone_convnext_5_dwconv_weight«
+const.
+backbone_convnext_5_norm_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.binÀŠÑ*3
+name+
+#
+!"
+backbone_convnext_5_norm_bias¯
+const0
+backbone_convnext_5_norm_weight
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.bin€›Ñ*5
+name-
+%
+#"!
+backbone_convnext_5_norm_weight±
+const1
+ backbone_convnext_5_pwconv1_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.binÀ«Ñ*6
+name.
+&
+$""
+ backbone_convnext_5_pwconv1_biasÃ
+const:
+"backbone_convnext_5_pwconv1_weight
+
+€
+€*D
+val=
+
+€
+€*%
+@model_path/weights/weight.bin€ÜÑ*8
+name0
+(
+&"$
+"backbone_convnext_5_pwconv1_weight±
+const1
+ backbone_convnext_5_pwconv2_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.binÀÜ‘*6
+name.
+&
+$""
+ backbone_convnext_5_pwconv2_biasÃ
+const:
+"backbone_convnext_5_pwconv2_weight
+
+€
+€*D
+val=
+
+€
+€*%
+@model_path/weights/weight.bin€í‘*8
+name0
+(
+&"$
+"backbone_convnext_5_pwconv2_weight£
+const*
+backbone_convnext_6_gamma
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.binÀíÑ*/
+name'
+
+"
+backbone_convnext_6_gamma¯
+const0
+backbone_convnext_6_dwconv_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.bin€şÑ*5
+name-
+%
+#"!
+backbone_convnext_6_dwconv_biasË
+const>
+!backbone_convnext_6_dwconv_weight
+
+€
+
+*I
+valB
+
+€
+
+*%
+@model_path/weights/weight.binÀÒ*7
+name/
+'
+%"#
+!backbone_convnext_6_dwconv_weight«
+const.
+backbone_convnext_6_norm_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.bin€ÿÒ*3
+name+
+#
+!"
+backbone_convnext_6_norm_bias¯
+const0
+backbone_convnext_6_norm_weight
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.binÀÓ*5
+name-
+%
+#"!
+backbone_convnext_6_norm_weight±
+const1
+ backbone_convnext_6_pwconv1_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.bin€ Ó*6
+name.
+&
+$""
+ backbone_convnext_6_pwconv1_biasÃ
+const:
+"backbone_convnext_6_pwconv1_weight
+
+€
+€*D
+val=
+
+€
+€*%
+@model_path/weights/weight.binÀĞÓ*8
+name0
+(
+&"$
+"backbone_convnext_6_pwconv1_weight±
+const1
+ backbone_convnext_6_pwconv2_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.bin€Ñ“*6
+name.
+&
+$""
+ backbone_convnext_6_pwconv2_biasÃ
+const:
+"backbone_convnext_6_pwconv2_weight
+
+€
+€*D
+val=
+
+€
+€*%
+@model_path/weights/weight.binÀá“*8
+name0
+(
+&"$
+"backbone_convnext_6_pwconv2_weight£
+const*
+backbone_convnext_7_gamma
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.bin€âÓ*/
+name'
+
+"
+backbone_convnext_7_gamma¯
+const0
+backbone_convnext_7_dwconv_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.binÀòÓ*5
+name-
+%
+#"!
+backbone_convnext_7_dwconv_biasË
+const>
+!backbone_convnext_7_dwconv_weight
+
+€
+
+*I
+valB
+
+€
+
+*%
+@model_path/weights/weight.bin€ƒÔ*7
+name/
+'
+%"#
+!backbone_convnext_7_dwconv_weight«
+const.
+backbone_convnext_7_norm_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.binÀóÔ*3
+name+
+#
+!"
+backbone_convnext_7_norm_bias¯
+const0
+backbone_convnext_7_norm_weight
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.bin€„Õ*5
+name-
+%
+#"!
+backbone_convnext_7_norm_weight±
+const1
+ backbone_convnext_7_pwconv1_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.binÀ”Õ*6
+name.
+&
+$""
+ backbone_convnext_7_pwconv1_biasÃ
+const:
+"backbone_convnext_7_pwconv1_weight
+
+€
+€*D
+val=
+
+€
+€*%
+@model_path/weights/weight.bin€ÅÕ*8
+name0
+(
+&"$
+"backbone_convnext_7_pwconv1_weight±
+const1
+ backbone_convnext_7_pwconv2_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.binÀÅ•*6
+name.
+&
+$""
+ backbone_convnext_7_pwconv2_biasÃ
+const:
+"backbone_convnext_7_pwconv2_weight
+
+€
+€*D
+val=
+
+€
+€*%
+@model_path/weights/weight.bin€Ö•*8
+name0
+(
+&"$
+"backbone_convnext_7_pwconv2_weight­
+const/
+backbone_final_layer_norm_bias
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.binÀÖÕ*4
+name,
+$
+"" 
+backbone_final_layer_norm_bias±
+const1
+ backbone_final_layer_norm_weight
+
+€*=
+val6
+
+€*%
+@model_path/weights/weight.bin€çÕ*6
+name.
+&
+$""
+ backbone_final_layer_norm_weightƒ
+const
+	head_bias
+
+‚*=
+val6
+
+‚*%
+@model_path/weights/weight.binÀ÷Õ*
+name
+
+"
+	head_bias•
+const#
+head_weight
+
+‚
+€*D
+val=
+
+‚
+€*%
+@model_path/weights/weight.binÀ¸Ö*!
+name
+
+"
+head_weightM
+const
+var_6
+*
+val
+
+
+
+
+½7†5*
+name
+
+
+"
+op_6b
+const
+x_1_pad_type_0
+*
+val
+
+
+"
+custom*$
+name
+
+"
+x_1_pad_type_0d
+const
+	x_1_pad_0
+
+
+*
+val
+
+
+
+
+*
+name
+
+"
+	x_1_pad_0k
+const
+x_1_strides_0
+
+
+*
+val
+
+
+
+
+*#
+name
+
+"
+x_1_strides_0o
+const
+x_1_dilations_0
+
+
+*
+val
+
+
+
+
+*%
+name
+
+"
+x_1_dilations_0Y
+const
+x_1_groups_0
+*
+val
+
+
+*"
+name
+
+"
+x_1_groups_0ª
+conv
+bias
+
+backbone_embed_bias 
+	dilations
+
+x_1_dilations_0
+pad
+
+	x_1_pad_0
+strides
+
+x_1_strides_0
+x
+
+mel
+groups
+
+x_1_groups_0
+pad_type
+
+x_1_pad_type_0#
+weight
+
+backbone_embed_weight!
+x_1
+
+
+€
+÷*
+name
+	
+"
+x_1o
+const
+input_1_perm_0
+
+
+* 
+val
+
+
+	
+
+ *$
+name
+
+"
+input_1_perm_0n
+const
+
+x_3_axes_0
+
+
+*'
+val 
+
+
+
+
+
+ÿÿÿÿÿÿÿÿÿ* 
+name
+
+"
+
+x_3_axes_0€
+	transpose
+perm
+
+input_1_perm_0
+x
+
+x_1%
+input_1
+
+
+÷
+€*"
+name
+
+"
+transpose_25Í
+
+layer_norm
+beta
+
+backbone_norm_bias
+epsilon	
+
+var_6!
+gamma
+
+backbone_norm_weight
+axes
+
+
+x_3_axes_0
+x
+	
+input_1!
+x_3
+
+
+÷
+€*
+name
+	
+"
+x_3b
+const
+x_5_pad_type_0
+*
+val
+
+
+"
+custom*$
+name
+
+"
+x_5_pad_type_0d
+const
+	x_5_pad_0
+
+
+*
+val
+
+
+
+
+*
+name
+
+"
+	x_5_pad_0Z
+const
+x_5_groups_0
+*
+val
+
+
+€*"
+name
+
+"
+x_5_groups_0k
+const
+x_5_strides_0
+
+
+*
+val
+
+
+
+
+*#
+name
+
+"
+x_5_strides_0o
+const
+x_5_dilations_0
+
+
+*
+val
+
+
+
+
+*%
+name
+
+"
+x_5_dilations_0w
+const"
+transpose_7_perm_0
+
+
+* 
+val
+
+
+	
+
+ *(
+name 
+
+"
+transpose_7_perm_0ˆ
+	transpose
+perm
+
+transpose_7_perm_0
+x
+
+x_3)
+transpose_7
+
+
+€
+÷*"
+name
+
+"
+transpose_24Ê
+conv+
+bias#
+!
+backbone_convnext_0_dwconv_bias 
+	dilations
+
+x_5_dilations_0
+pad
+
+	x_5_pad_0
+strides
+
+x_5_strides_0
+x
+
+transpose_7
+groups
+
+x_5_groups_0
+pad_type
+
+x_5_pad_type_0/
+weight%
+#
+!backbone_convnext_0_dwconv_weight!
+x_5
+
+
+€
+÷*
+name
+	
+"
+x_5o
+const
+input_5_perm_0
+
+
+* 
+val
+
+
+	
+
+ *$
+name
+
+"
+input_5_perm_0v
+const
+input_7_axes_0
+
+
+*'
+val 
+
+
+
+
+
+ÿÿÿÿÿÿÿÿÿ*$
+name
+
+"
+input_7_axes_0€
+	transpose
+perm
+
+input_5_perm_0
+x
+
+x_5%
+input_5
+
+
+÷
+€*"
+name
+
+"
+transpose_23ï
+
+layer_norm)
+beta!
+
+backbone_convnext_0_norm_bias
+epsilon	
+
+var_6,
+gamma#
+!
+backbone_convnext_0_norm_weight
+axes
+
+input_7_axes_0
+x
+	
+input_5%
+input_7
+
+
+÷
+€*
+name
+
+"	
+input_7Á
+linear,
+bias$
+"
+ backbone_convnext_0_pwconv1_bias0
+weight&
+$
+"backbone_convnext_0_pwconv1_weight
+x
+	
+input_7%
+input_9
+
+
+÷
+€*
+name
+
+"
+
+linear_0c
+const
+input_11_mode_0
+*
+val
+
+	"
+EXACT*%
+name
+
+"
+input_11_mode_0}
+gelu
+mode
+
+input_11_mode_0
+x
+	
+input_9&
+input_11
+
+
+÷
+€*
+name
+
+"
+
+input_11¾
+linear,
+bias$
+"
+ backbone_convnext_0_pwconv2_bias0
+weight&
+$
+"backbone_convnext_0_pwconv2_weight
+x
+
+
+input_11!
+x_7
+
+
+÷
+€*
+name
+
+"
+
+linear_1u
+mul
+y
+
+x_7"
+x
+
+backbone_convnext_0_gamma!
+x_9
+
+
+÷
+€*
+name
+	
+"
+x_9i
+add
+y
+
+x_9
+x
+
+x_3&
+input_13
+
+
+÷
+€*
+name
+
+"
+
+input_13d
+const
+x_13_pad_type_0
+*
+val
+
+
+"
+custom*%
+name
+
+"
+x_13_pad_type_0f
+const
+
+x_13_pad_0
+
+
+*
+val
+
+
+
+
+* 
+name
+
+"
+
+x_13_pad_0\
+const
+x_13_groups_0
+*
+val
+
+
+€*#
+name
+
+"
+x_13_groups_0m
+const
+x_13_strides_0
+
+
+*
+val
+
+
+
+
+*$
+name
+
+"
+x_13_strides_0q
+const 
+x_13_dilations_0
+
+
+*
+val
+
+
+
+
+*&
+name
+
+"
+x_13_dilations_0w
+const"
+transpose_2_perm_0
+
+
+* 
+val
+
+
+	
+
+ *(
+name 
+
+"
+transpose_2_perm_0
+	transpose
+perm
+
+transpose_2_perm_0
+x
+
+
+input_13)
+transpose_2
+
+
+€
+÷*"
+name
+
+"
+transpose_22Ñ
+conv+
+bias#
+!
+backbone_convnext_1_dwconv_bias!
+	dilations
+
+x_13_dilations_0
+pad
+
+
+x_13_pad_0
+strides
+
+x_13_strides_0
+x
+
+transpose_2
+groups
+
+x_13_groups_0
+pad_type
+
+x_13_pad_type_0/
+weight%
+#
+!backbone_convnext_1_dwconv_weight"
+x_13
+
+
+€
+÷*
+name
+
+
+"
+x_13q
+const
+input_15_perm_0
+
+
+* 
+val
+
+
+	
+
+ *%
+name
+
+"
+input_15_perm_0x
+const
+input_17_axes_0
+
+
+*'
+val 
+
+
+
+
+
+ÿÿÿÿÿÿÿÿÿ*%
+name
+
+"
+input_17_axes_0ƒ
+	transpose
+perm
+
+input_15_perm_0
+x
+
+x_13&
+input_15
+
+
+÷
+€*"
+name
+
+"
+transpose_21ó
+
+layer_norm)
+beta!
+
+backbone_convnext_1_norm_bias
+epsilon	
+
+var_6,
+gamma#
+!
+backbone_convnext_1_norm_weight
+axes
+
+input_17_axes_0
+x
+
+
+input_15&
+input_17
+
+
+÷
+€*
+name
+
+"
+
+input_17Ã
+linear,
+bias$
+"
+ backbone_convnext_1_pwconv1_bias0
+weight&
+$
+"backbone_convnext_1_pwconv1_weight
+x
+
+
+input_17&
+input_19
+
+
+÷
+€*
+name
+
+"
+
+linear_2c
+const
+input_21_mode_0
+*
+val
+
+	"
+EXACT*%
+name
+
+"
+input_21_mode_0~
+gelu
+mode
+
+input_21_mode_0
+x
+
+
+input_19&
+input_21
+
+
+÷
+€*
+name
+
+"
+
+input_21¿
+linear,
+bias$
+"
+ backbone_convnext_1_pwconv2_bias0
+weight&
+$
+"backbone_convnext_1_pwconv2_weight
+x
+
+
+input_21"
+x_15
+
+
+÷
+€*
+name
+
+"
+
+linear_3x
+mul
+y
+
+x_15"
+x
+
+backbone_convnext_1_gamma"
+x_17
+
+
+÷
+€*
+name
+
+
+"
+x_17o
+add
+y
+
+x_17
+x
+
+
+input_13&
+input_23
+
+
+÷
+€*
+name
+
+"
+
+input_23d
+const
+x_21_pad_type_0
+*
+val
+
+
+"
+custom*%
+name
+
+"
+x_21_pad_type_0f
+const
+
+x_21_pad_0
+
+
+*
+val
+
+
+
+
+* 
+name
+
+"
+
+x_21_pad_0\
+const
+x_21_groups_0
+*
+val
+
+
+€*#
+name
+
+"
+x_21_groups_0m
+const
+x_21_strides_0
+
+
+*
+val
+
+
+
+
+*$
+name
+
+"
+x_21_strides_0q
+const 
+x_21_dilations_0
+
+
+*
+val
+
+
+
+
+*&
+name
+
+"
+x_21_dilations_0w
+const"
+transpose_3_perm_0
+
+
+* 
+val
+
+
+	
+
+ *(
+name 
+
+"
+transpose_3_perm_0
+	transpose
+perm
+
+transpose_3_perm_0
+x
+
+
+input_23)
+transpose_3
+
+
+€
+÷*"
+name
+
+"
+transpose_20Ñ
+conv+
+bias#
+!
+backbone_convnext_2_dwconv_bias!
+	dilations
+
+x_21_dilations_0
+pad
+
+
+x_21_pad_0
+strides
+
+x_21_strides_0
+x
+
+transpose_3
+groups
+
+x_21_groups_0
+pad_type
+
+x_21_pad_type_0/
+weight%
+#
+!backbone_convnext_2_dwconv_weight"
+x_21
+
+
+€
+÷*
+name
+
+
+"
+x_21q
+const
+input_25_perm_0
+
+
+* 
+val
+
+
+	
+
+ *%
+name
+
+"
+input_25_perm_0x
+const
+input_27_axes_0
+
+
+*'
+val 
+
+
+
+
+
+ÿÿÿÿÿÿÿÿÿ*%
+name
+
+"
+input_27_axes_0ƒ
+	transpose
+perm
+
+input_25_perm_0
+x
+
+x_21&
+input_25
+
+
+÷
+€*"
+name
+
+"
+transpose_19ó
+
+layer_norm)
+beta!
+
+backbone_convnext_2_norm_bias
+epsilon	
+
+var_6,
+gamma#
+!
+backbone_convnext_2_norm_weight
+axes
+
+input_27_axes_0
+x
+
+
+input_25&
+input_27
+
+
+÷
+€*
+name
+
+"
+
+input_27Ã
+linear,
+bias$
+"
+ backbone_convnext_2_pwconv1_bias0
+weight&
+$
+"backbone_convnext_2_pwconv1_weight
+x
+
+
+input_27&
+input_29
+
+
+÷
+€*
+name
+
+"
+
+linear_4c
+const
+input_31_mode_0
+*
+val
+
+	"
+EXACT*%
+name
+
+"
+input_31_mode_0~
+gelu
+mode
+
+input_31_mode_0
+x
+
+
+input_29&
+input_31
+
+
+÷
+€*
+name
+
+"
+
+input_31¿
+linear,
+bias$
+"
+ backbone_convnext_2_pwconv2_bias0
+weight&
+$
+"backbone_convnext_2_pwconv2_weight
+x
+
+
+input_31"
+x_23
+
+
+÷
+€*
+name
+
+"
+
+linear_5x
+mul
+y
+
+x_23"
+x
+
+backbone_convnext_2_gamma"
+x_25
+
+
+÷
+€*
+name
+
+
+"
+x_25o
+add
+y
+
+x_25
+x
+
+
+input_23&
+input_33
+
+
+÷
+€*
+name
+
+"
+
+input_33d
+const
+x_29_pad_type_0
+*
+val
+
+
+"
+custom*%
+name
+
+"
+x_29_pad_type_0f
+const
+
+x_29_pad_0
+
+
+*
+val
+
+
+
+
+* 
+name
+
+"
+
+x_29_pad_0\
+const
+x_29_groups_0
+*
+val
+
+
+€*#
+name
+
+"
+x_29_groups_0m
+const
+x_29_strides_0
+
+
+*
+val
+
+
+
+
+*$
+name
+
+"
+x_29_strides_0q
+const 
+x_29_dilations_0
+
+
+*
+val
+
+
+
+
+*&
+name
+
+"
+x_29_dilations_0w
+const"
+transpose_4_perm_0
+
+
+* 
+val
+
+
+	
+
+ *(
+name 
+
+"
+transpose_4_perm_0
+	transpose
+perm
+
+transpose_4_perm_0
+x
+
+
+input_33)
+transpose_4
+
+
+€
+÷*"
+name
+
+"
+transpose_18Ñ
+conv+
+bias#
+!
+backbone_convnext_3_dwconv_bias!
+	dilations
+
+x_29_dilations_0
+pad
+
+
+x_29_pad_0
+strides
+
+x_29_strides_0
+x
+
+transpose_4
+groups
+
+x_29_groups_0
+pad_type
+
+x_29_pad_type_0/
+weight%
+#
+!backbone_convnext_3_dwconv_weight"
+x_29
+
+
+€
+÷*
+name
+
+
+"
+x_29q
+const
+input_35_perm_0
+
+
+* 
+val
+
+
+	
+
+ *%
+name
+
+"
+input_35_perm_0x
+const
+input_37_axes_0
+
+
+*'
+val 
+
+
+
+
+
+ÿÿÿÿÿÿÿÿÿ*%
+name
+
+"
+input_37_axes_0ƒ
+	transpose
+perm
+
+input_35_perm_0
+x
+
+x_29&
+input_35
+
+
+÷
+€*"
+name
+
+"
+transpose_17ó
+
+layer_norm)
+beta!
+
+backbone_convnext_3_norm_bias
+epsilon	
+
+var_6,
+gamma#
+!
+backbone_convnext_3_norm_weight
+axes
+
+input_37_axes_0
+x
+
+
+input_35&
+input_37
+
+
+÷
+€*
+name
+
+"
+
+input_37Ã
+linear,
+bias$
+"
+ backbone_convnext_3_pwconv1_bias0
+weight&
+$
+"backbone_convnext_3_pwconv1_weight
+x
+
+
+input_37&
+input_39
+
+
+÷
+€*
+name
+
+"
+
+linear_6c
+const
+input_41_mode_0
+*
+val
+
+	"
+EXACT*%
+name
+
+"
+input_41_mode_0~
+gelu
+mode
+
+input_41_mode_0
+x
+
+
+input_39&
+input_41
+
+
+÷
+€*
+name
+
+"
+
+input_41¿
+linear,
+bias$
+"
+ backbone_convnext_3_pwconv2_bias0
+weight&
+$
+"backbone_convnext_3_pwconv2_weight
+x
+
+
+input_41"
+x_31
+
+
+÷
+€*
+name
+
+"
+
+linear_7x
+mul
+y
+
+x_31"
+x
+
+backbone_convnext_3_gamma"
+x_33
+
+
+÷
+€*
+name
+
+
+"
+x_33o
+add
+y
+
+x_33
+x
+
+
+input_33&
+input_43
+
+
+÷
+€*
+name
+
+"
+
+input_43d
+const
+x_37_pad_type_0
+*
+val
+
+
+"
+custom*%
+name
+
+"
+x_37_pad_type_0f
+const
+
+x_37_pad_0
+
+
+*
+val
+
+
+
+
+* 
+name
+
+"
+
+x_37_pad_0\
+const
+x_37_groups_0
+*
+val
+
+
+€*#
+name
+
+"
+x_37_groups_0m
+const
+x_37_strides_0
+
+
+*
+val
+
+
+
+
+*$
+name
+
+"
+x_37_strides_0q
+const 
+x_37_dilations_0
+
+
+*
+val
+
+
+
+
+*&
+name
+
+"
+x_37_dilations_0w
+const"
+transpose_5_perm_0
+
+
+* 
+val
+
+
+	
+
+ *(
+name 
+
+"
+transpose_5_perm_0
+	transpose
+perm
+
+transpose_5_perm_0
+x
+
+
+input_43)
+transpose_5
+
+
+€
+÷*"
+name
+
+"
+transpose_16Ñ
+conv+
+bias#
+!
+backbone_convnext_4_dwconv_bias!
+	dilations
+
+x_37_dilations_0
+pad
+
+
+x_37_pad_0
+strides
+
+x_37_strides_0
+x
+
+transpose_5
+groups
+
+x_37_groups_0
+pad_type
+
+x_37_pad_type_0/
+weight%
+#
+!backbone_convnext_4_dwconv_weight"
+x_37
+
+
+€
+÷*
+name
+
+
+"
+x_37q
+const
+input_45_perm_0
+
+
+* 
+val
+
+
+	
+
+ *%
+name
+
+"
+input_45_perm_0x
+const
+input_47_axes_0
+
+
+*'
+val 
+
+
+
+
+
+ÿÿÿÿÿÿÿÿÿ*%
+name
+
+"
+input_47_axes_0ƒ
+	transpose
+perm
+
+input_45_perm_0
+x
+
+x_37&
+input_45
+
+
+÷
+€*"
+name
+
+"
+transpose_15ó
+
+layer_norm)
+beta!
+
+backbone_convnext_4_norm_bias
+epsilon	
+
+var_6,
+gamma#
+!
+backbone_convnext_4_norm_weight
+axes
+
+input_47_axes_0
+x
+
+
+input_45&
+input_47
+
+
+÷
+€*
+name
+
+"
+
+input_47Ã
+linear,
+bias$
+"
+ backbone_convnext_4_pwconv1_bias0
+weight&
+$
+"backbone_convnext_4_pwconv1_weight
+x
+
+
+input_47&
+input_49
+
+
+÷
+€*
+name
+
+"
+
+linear_8c
+const
+input_51_mode_0
+*
+val
+
+	"
+EXACT*%
+name
+
+"
+input_51_mode_0~
+gelu
+mode
+
+input_51_mode_0
+x
+
+
+input_49&
+input_51
+
+
+÷
+€*
+name
+
+"
+
+input_51¿
+linear,
+bias$
+"
+ backbone_convnext_4_pwconv2_bias0
+weight&
+$
+"backbone_convnext_4_pwconv2_weight
+x
+
+
+input_51"
+x_39
+
+
+÷
+€*
+name
+
+"
+
+linear_9x
+mul
+y
+
+x_39"
+x
+
+backbone_convnext_4_gamma"
+x_41
+
+
+÷
+€*
+name
+
+
+"
+x_41o
+add
+y
+
+x_41
+x
+
+
+input_43&
+input_53
+
+
+÷
+€*
+name
+
+"
+
+input_53d
+const
+x_45_pad_type_0
+*
+val
+
+
+"
+custom*%
+name
+
+"
+x_45_pad_type_0f
+const
+
+x_45_pad_0
+
+
+*
+val
+
+
+
+
+* 
+name
+
+"
+
+x_45_pad_0\
+const
+x_45_groups_0
+*
+val
+
+
+€*#
+name
+
+"
+x_45_groups_0m
+const
+x_45_strides_0
+
+
+*
+val
+
+
+
+
+*$
+name
+
+"
+x_45_strides_0q
+const 
+x_45_dilations_0
+
+
+*
+val
+
+
+
+
+*&
+name
+
+"
+x_45_dilations_0w
+const"
+transpose_6_perm_0
+
+
+* 
+val
+
+
+	
+
+ *(
+name 
+
+"
+transpose_6_perm_0
+	transpose
+perm
+
+transpose_6_perm_0
+x
+
+
+input_53)
+transpose_6
+
+
+€
+÷*"
+name
+
+"
+transpose_14Ñ
+conv+
+bias#
+!
+backbone_convnext_5_dwconv_bias!
+	dilations
+
+x_45_dilations_0
+pad
+
+
+x_45_pad_0
+strides
+
+x_45_strides_0
+x
+
+transpose_6
+groups
+
+x_45_groups_0
+pad_type
+
+x_45_pad_type_0/
+weight%
+#
+!backbone_convnext_5_dwconv_weight"
+x_45
+
+
+€
+÷*
+name
+
+
+"
+x_45q
+const
+input_55_perm_0
+
+
+* 
+val
+
+
+	
+
+ *%
+name
+
+"
+input_55_perm_0x
+const
+input_57_axes_0
+
+
+*'
+val 
+
+
+
+
+
+ÿÿÿÿÿÿÿÿÿ*%
+name
+
+"
+input_57_axes_0ƒ
+	transpose
+perm
+
+input_55_perm_0
+x
+
+x_45&
+input_55
+
+
+÷
+€*"
+name
+
+"
+transpose_13ó
+
+layer_norm)
+beta!
+
+backbone_convnext_5_norm_bias
+epsilon	
+
+var_6,
+gamma#
+!
+backbone_convnext_5_norm_weight
+axes
+
+input_57_axes_0
+x
+
+
+input_55&
+input_57
+
+
+÷
+€*
+name
+
+"
+
+input_57Ä
+linear,
+bias$
+"
+ backbone_convnext_5_pwconv1_bias0
+weight&
+$
+"backbone_convnext_5_pwconv1_weight
+x
+
+
+input_57&
+input_59
+
+
+÷
+€*
+name
+
+"
+	linear_10c
+const
+input_61_mode_0
+*
+val
+
+	"
+EXACT*%
+name
+
+"
+input_61_mode_0~
+gelu
+mode
+
+input_61_mode_0
+x
+
+
+input_59&
+input_61
+
+
+÷
+€*
+name
+
+"
+
+input_61À
+linear,
+bias$
+"
+ backbone_convnext_5_pwconv2_bias0
+weight&
+$
+"backbone_convnext_5_pwconv2_weight
+x
+
+
+input_61"
+x_47
+
+
+÷
+€*
+name
+
+"
+	linear_11x
+mul
+y
+
+x_47"
+x
+
+backbone_convnext_5_gamma"
+x_49
+
+
+÷
+€*
+name
+
+
+"
+x_49o
+add
+y
+
+x_49
+x
+
+
+input_53&
+input_63
+
+
+÷
+€*
+name
+
+"
+
+input_63d
+const
+x_53_pad_type_0
+*
+val
+
+
+"
+custom*%
+name
+
+"
+x_53_pad_type_0f
+const
+
+x_53_pad_0
+
+
+*
+val
+
+
+
+
+* 
+name
+
+"
+
+x_53_pad_0\
+const
+x_53_groups_0
+*
+val
+
+
+€*#
+name
+
+"
+x_53_groups_0m
+const
+x_53_strides_0
+
+
+*
+val
+
+
+
+
+*$
+name
+
+"
+x_53_strides_0q
+const 
+x_53_dilations_0
+
+
+*
+val
+
+
+
+
+*&
+name
+
+"
+x_53_dilations_0w
+const"
+transpose_0_perm_0
+
+
+* 
+val
+
+
+	
+
+ *(
+name 
+
+"
+transpose_0_perm_0
+	transpose
+perm
+
+transpose_0_perm_0
+x
+
+
+input_63)
+transpose_0
+
+
+€
+÷*"
+name
+
+"
+transpose_12Ñ
+conv+
+bias#
+!
+backbone_convnext_6_dwconv_bias!
+	dilations
+
+x_53_dilations_0
+pad
+
+
+x_53_pad_0
+strides
+
+x_53_strides_0
+x
+
+transpose_0
+groups
+
+x_53_groups_0
+pad_type
+
+x_53_pad_type_0/
+weight%
+#
+!backbone_convnext_6_dwconv_weight"
+x_53
+
+
+€
+÷*
+name
+
+
+"
+x_53q
+const
+input_65_perm_0
+
+
+* 
+val
+
+
+	
+
+ *%
+name
+
+"
+input_65_perm_0x
+const
+input_67_axes_0
+
+
+*'
+val 
+
+
+
+
+
+ÿÿÿÿÿÿÿÿÿ*%
+name
+
+"
+input_67_axes_0ƒ
+	transpose
+perm
+
+input_65_perm_0
+x
+
+x_53&
+input_65
+
+
+÷
+€*"
+name
+
+"
+transpose_11ó
+
+layer_norm)
+beta!
+
+backbone_convnext_6_norm_bias
+epsilon	
+
+var_6,
+gamma#
+!
+backbone_convnext_6_norm_weight
+axes
+
+input_67_axes_0
+x
+
+
+input_65&
+input_67
+
+
+÷
+€*
+name
+
+"
+
+input_67Ä
+linear,
+bias$
+"
+ backbone_convnext_6_pwconv1_bias0
+weight&
+$
+"backbone_convnext_6_pwconv1_weight
+x
+
+
+input_67&
+input_69
+
+
+÷
+€*
+name
+
+"
+	linear_12c
+const
+input_71_mode_0
+*
+val
+
+	"
+EXACT*%
+name
+
+"
+input_71_mode_0~
+gelu
+mode
+
+input_71_mode_0
+x
+
+
+input_69&
+input_71
+
+
+÷
+€*
+name
+
+"
+
+input_71À
+linear,
+bias$
+"
+ backbone_convnext_6_pwconv2_bias0
+weight&
+$
+"backbone_convnext_6_pwconv2_weight
+x
+
+
+input_71"
+x_55
+
+
+÷
+€*
+name
+
+"
+	linear_13x
+mul
+y
+
+x_55"
+x
+
+backbone_convnext_6_gamma"
+x_57
+
+
+÷
+€*
+name
+
+
+"
+x_57o
+add
+y
+
+x_57
+x
+
+
+input_63&
+input_73
+
+
+÷
+€*
+name
+
+"
+
+input_73d
+const
+x_61_pad_type_0
+*
+val
+
+
+"
+custom*%
+name
+
+"
+x_61_pad_type_0f
+const
+
+x_61_pad_0
+
+
+*
+val
+
+
+
+
+* 
+name
+
+"
+
+x_61_pad_0\
+const
+x_61_groups_0
+*
+val
+
+
+€*#
+name
+
+"
+x_61_groups_0m
+const
+x_61_strides_0
+
+
+*
+val
+
+
+
+
+*$
+name
+
+"
+x_61_strides_0q
+const 
+x_61_dilations_0
+
+
+*
+val
+
+
+
+
+*&
+name
+
+"
+x_61_dilations_0w
+const"
+transpose_1_perm_0
+
+
+* 
+val
+
+
+	
+
+ *(
+name 
+
+"
+transpose_1_perm_0
+	transpose
+perm
+
+transpose_1_perm_0
+x
+
+
+input_73)
+transpose_1
+
+
+€
+÷*"
+name
+
+"
+transpose_10Ñ
+conv+
+bias#
+!
+backbone_convnext_7_dwconv_bias!
+	dilations
+
+x_61_dilations_0
+pad
+
+
+x_61_pad_0
+strides
+
+x_61_strides_0
+x
+
+transpose_1
+groups
+
+x_61_groups_0
+pad_type
+
+x_61_pad_type_0/
+weight%
+#
+!backbone_convnext_7_dwconv_weight"
+x_61
+
+
+€
+÷*
+name
+
+
+"
+x_61q
+const
+input_75_perm_0
+
+
+* 
+val
+
+
+	
+
+ *%
+name
+
+"
+input_75_perm_0x
+const
+input_77_axes_0
+
+
+*'
+val 
+
+
+
+
+
+ÿÿÿÿÿÿÿÿÿ*%
+name
+
+"
+input_77_axes_0‚
+	transpose
+perm
+
+input_75_perm_0
+x
+
+x_61&
+input_75
+
+
+÷
+€*!
+name
+
+"
+transpose_9ó
+
+layer_norm)
+beta!
+
+backbone_convnext_7_norm_bias
+epsilon	
+
+var_6,
+gamma#
+!
+backbone_convnext_7_norm_weight
+axes
+
+input_77_axes_0
+x
+
+
+input_75&
+input_77
+
+
+÷
+€*
+name
+
+"
+
+input_77Ä
+linear,
+bias$
+"
+ backbone_convnext_7_pwconv1_bias0
+weight&
+$
+"backbone_convnext_7_pwconv1_weight
+x
+
+
+input_77&
+input_79
+
+
+÷
+€*
+name
+
+"
+	linear_14c
+const
+input_81_mode_0
+*
+val
+
+	"
+EXACT*%
+name
+
+"
+input_81_mode_0~
+gelu
+mode
+
+input_81_mode_0
+x
+
+
+input_79&
+input_81
+
+
+÷
+€*
+name
+
+"
+
+input_81À
+linear,
+bias$
+"
+ backbone_convnext_7_pwconv2_bias0
+weight&
+$
+"backbone_convnext_7_pwconv2_weight
+x
+
+
+input_81"
+x_63
+
+
+÷
+€*
+name
+
+"
+	linear_15x
+mul
+y
+
+x_63"
+x
+
+backbone_convnext_7_gamma"
+x_65
+
+
+÷
+€*
+name
+
+
+"
+x_65a
+add
+y
+
+x_65
+x
+
+
+input_73
+x
+
+
+÷
+€*
+name
+
+"
+xr
+const
+input_axes_0
+
+
+*'
+val 
+
+
+
+
+
+ÿÿÿÿÿÿÿÿÿ*"
+name
+
+"
+input_axes_0å
+
+layer_norm*
+beta"
+ 
+backbone_final_layer_norm_bias
+epsilon	
+
+var_6-
+gamma$
+"
+ backbone_final_layer_norm_weight
+axes
+
+input_axes_0
+
+x
+
+x#
+input
+
+
+÷
+€*
+name
+
+	"
+input’
+linear
+bias
+
+	head_bias
+weight
+
+head_weight
+x	
+
+input%
+var_268
+
+
+÷
+‚*
+name
+
+"
+	linear_16q
+const
+spectrum_perm_0
+
+
+* 
+val
+
+
+	
+
+ *%
+name
+
+"
+spectrum_perm_0}
+const%
+var_272_split_sizes_0
+
+
+*!
+val
+
+
+
+
+
+**
+name"
+
+"
+op_272_split_sizes_0\
+const
+var_272_axis_0
+*
+val
+
+
+*#
+name
+
+"
+op_272_axis_0…
+	transpose
+perm
+
+spectrum_perm_0
+x
+	
+var_268&
+spectrum
+
+
+‚
+÷*!
+name
+
+"
+transpose_8Ğ
+split
+axis
+
+var_272_axis_0(
+split_sizes
+
+var_272_split_sizes_0
+x
+
+
+spectrum'
+	var_272_0
+
+
+
+÷'
+	var_272_1
+
+
+
+÷*
+name
+
+
+"
+op_272^
+exp
+x
+
+	var_272_0%
+var_274
+
+
+
+÷*
+name
+
+
+"
+op_274R
+const
+const_0
+*
+val
+
+
+
+
+ÿÿÿ*
+name
+
+"	
+const_0c
+const
+var_276_promoted
+*
+val
+
+
+
+
+  zD*%
+name
+
+"
+op_276_promoted
+clip
+beta
+
+var_276_promoted
+alpha
+	
+const_0
+x
+	
+var_274$
+clip_0
+
+
+
+÷*
+name
+
+
+"
+clip_0^
+cos
+x
+
+	var_272_1%
+var_278
+
+
+
+÷*
+name
+
+
+"
+op_278j
+mul
+y
+	
+var_278
+x
+
+
+clip_0"
+real
+
+
+
+÷*
+name
+
+
+"
+op_279^
+sin
+x
+
+	var_272_1%
+var_280
+
+
+
+÷*
+name
+
+
+"
+op_280o
+mul
+y
+	
+var_280
+x
+
+
+clip_0'
+	imaginary
+
+
+
+÷*
+name
+
+
+"
+op_281"å
+	buildInfo×"
+
+
+Ä"Á
+6
+!
+
+"
+coremltools-version
+	
+"
+9.0
+@
+)
+!
+"
+coremltools-component-torch
+
+	"
+2.7.0
+E
+(
+ 
+"
+coremltools-source-dialect
+
+"
+TorchScript

@@ -1,0 +1,1071 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		D17300000000000000000002 /* CameraCrop.metal in Sources */ = {isa = PBXBuildFile; fileRef = D17300000000000000000102; };
+		D17300000000000000000003 /* CameraCrop.metal in Test Sources */ = {isa = PBXBuildFile; fileRef = D17300000000000000000102; };
+		D17300000000000000000001 /* ZoomTransition.swift in Test Sources */ = {isa = PBXBuildFile; fileRef = B09000000000000000000002 /* ZoomTransition.swift */; };
+		D16400000000000000000001 /* CaptureZoomHistory.swift in Test Sources */ = {isa = PBXBuildFile; fileRef = 28CE75843BA81F26EF37A322; };
+		D16300000000000000000001 /* SingleCameraFollowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D16300000000000000000101; };
+		D16300000000000000000002 /* DualFaceDetector.swift in Test Sources */ = {isa = PBXBuildFile; fileRef = D31100000000000000000101; };
+		D16300000000000000000003 /* DualCameraLayout.swift in Test Sources */ = {isa = PBXBuildFile; fileRef = D31000000000000000000101; };
+		F18500000000000000000002 /* HorizonLevel.swift in Test Sources */ = {isa = PBXBuildFile; fileRef = F18500000000000000000001; };
+		D16300000000000000000004 /* astronaut.png in Test Resources */ = {isa = PBXBuildFile; fileRef = D16300000000000000000102; };
+		A15400000000000000000004 /* AudioToolsEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A15400000000000000000003; };
+		A19300000000000000000002 /* VoiceRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19300000000000000000001; };
+		B21A90000000000000000002 /* EditorialTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = B21A90000000000000000001; };
+		A15400000000000000000002 /* AudioCensor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A15400000000000000000001; };
+		D11100000000000000000005 /* LogColor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D11100000000000000000006; };
+		D11100000000000000000003 /* ColorGradeControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = D11100000000000000000004; };
+		D11100000000000000000001 /* ColorGrading.swift in Sources */ = {isa = PBXBuildFile; fileRef = D11100000000000000000002; };
+		D31100000000000000000002 /* DualCameraMasks.swift in Sources */ = {isa = PBXBuildFile; fileRef = D31100000000000000000102; };
+		D31100000000000000000001 /* DualFaceDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = D31100000000000000000101; };
+		A31000000000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A31000000000000000000002 /* Assets.xcassets */; };
+		D31000000000000000000002 /* MultiCameraCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = D31000000000000000000102; };
+		D31000000000000000000001 /* DualCameraLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = D31000000000000000000101; };
+		F18500000000000000000003 /* HorizonLevel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F18500000000000000000001; };
+		B29100000000000000000001 /* TimelineNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = B29100000000000000000002 /* TimelineNavigation.swift */; };
+		71C51C900CC943EFBA737B17 /* NightFix.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E9C136D4661426AAA9C531D /* NightFix.swift */; };
+		B26000000000000000000005 /* TrackEditors.swift in Sources */ = {isa = PBXBuildFile; fileRef = B26000000000000000000006 /* TrackEditors.swift */; };
+		B26000000000000000000003 /* TrackRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B26000000000000000000004 /* TrackRenderer.swift */; };
+		B26000000000000000000001 /* TrackTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = B26000000000000000000002 /* TrackTimeline.swift */; };
+		E25100000000000000000002 /* VideoEffectDepth.swift in Sources */ = {isa = PBXBuildFile; fileRef = E25100000000000000000001 /* VideoEffectDepth.swift */; };
+		B30000000000000000000002 /* TransitionEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30000000000000000000102 /* TransitionEditor.swift */; };
+		B30000000000000000000001 /* TransitionRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30000000000000000000101 /* TransitionRenderer.swift */; };
+		B30000000000000000000000 /* Transitions.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30000000000000000000100 /* Transitions.swift */; };
+		B20000000000000000000002 /* EditorTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000102 /* EditorTools.swift */; };
+		C19300000000000000000001 /* CoverPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = C19300000000000000000101 /* CoverPicker.swift */; };
+		CE9510000000000000000001 /* MovieExportPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE9510000000000000000101 /* MovieExportPanel.swift */; };
+		C19300000000000000100001 /* CoverFramePool.swift in Sources */ = {isa = PBXBuildFile; fileRef = C19300000000000000100101 /* CoverFramePool.swift */; };
+		F19400000000000000100001 /* ImportedFonts.swift in Sources */ = {isa = PBXBuildFile; fileRef = F19400000000000000100101 /* ImportedFonts.swift */; };
+		F19400000000000000200001 /* FontLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F19400000000000000200101 /* FontLibraryView.swift */; };
+		E80000000000000000000001 /* EditorDurationPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = E80000000000000000000101 /* EditorDurationPicker.swift */; };
+		B21000000000000000000002 /* CropEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B21000000000000000000102 /* CropEditor.swift */; };
+		B20000000000000000000001 /* VideoToolCompositor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000101 /* VideoToolCompositor.swift */; };
+		B20000000000000000000000 /* VideoTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000100 /* VideoTools.swift */; };
+		B10000000000000000000003 /* StabilizationMotion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000103 /* StabilizationMotion.cpp */; settings = {COMPILER_FLAGS = "-O3"; }; };
+		B10000000000000000000002 /* StabilizationEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000102 /* StabilizationEditor.swift */; };
+		B10000000000000000000001 /* VideoStabilizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000101 /* VideoStabilizer.swift */; };
+		B10000000000000000000000 /* StabilizationPath.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000100 /* StabilizationPath.swift */; };
+		B09000000000000000000001 /* ZoomTransition.swift in Sources */ = {isa = PBXBuildFile; fileRef = B09000000000000000000002 /* ZoomTransition.swift */; };
+		B08000000000000000000001 /* AudioChainControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = B08000000000000000000002 /* AudioChainControls.swift */; };
+		0829CD7B08D25F5CA68709EB /* Entry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FC561199B2393B20CF750D5 /* Entry.swift */; };
+		0C1755ED070B06191B3BF39B /* Data+CompressionDeprecated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DE680CD8D341E39C3CC8E3D /* Data+CompressionDeprecated.swift */; };
+		0E17ED21CCEB1FA6A5FF2A1D /* ProjectArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = E185544F4FBC9E483B0E6539 /* ProjectArchive.swift */; };
+		133D5D31509DC15E737B4CD8 /* DeepFilterNetEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3300B282AFCAA034DEF2B60 /* DeepFilterNetEngine.swift */; };
+		259677566AA3CB73A0A45E43 /* Archive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E244DCF7FFD7196CEE340F2 /* Archive.swift */; };
+		43E870D0B2281D720D161AEB /* Archive+MemoryFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = D92B6F86F46D9A7AB4236B9E /* Archive+MemoryFile.swift */; };
+		511AD246A3F630D1B9D11807 /* Archive+Progress.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9BE378AC604381F81C94919 /* Archive+Progress.swift */; };
+		585AD5DF09BED2118F3458B5 /* Archive+Helpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B4F07F92C497A0C56E4C67E /* Archive+Helpers.swift */; };
+		63501D4C8336712D4E7998CF /* Date+ZIP.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20950A9E73AB8E93C7E94DE /* Date+ZIP.swift */; };
+		701DB4D2BF003C19C99F154A /* Entry+Serialization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B65188AD7A5572F9CAE6CDA /* Entry+Serialization.swift */; };
+		770B62B956EFBA37C5E0A9B6 /* FileManager+ZIPDeprecated.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5B47AB726FBBA430AF9A94E /* FileManager+ZIPDeprecated.swift */; };
+		77199C04E08D4A3C7F1BCD3B /* Entry+ZIP64.swift in Sources */ = {isa = PBXBuildFile; fileRef = F07915B7E469FD31F1B6F56C /* Entry+ZIP64.swift */; };
+		798F12F48ADF034C26B7ABA8 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6D5EA9CE287FBD127198A276 /* Foundation.framework */; };
+		7E883E4337E5A3704F4B4862 /* EditorUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2D919D4B085F809C4FC7B97 /* EditorUITests.swift */; };
+		84D0C6A1F4F526DB1F8F1197 /* DeepFilterNet3-Streaming.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = F3706A47D55DE01B8E77C7A9 /* DeepFilterNet3-Streaming.mlpackage */; };
+		8664084C642425FFA44FCB02 /* URL+ZIP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92AC8773CD609F84DF3B9B84 /* URL+ZIP.swift */; };
+		86E2993B22AF60AFA84DD7C4 /* Archive+ZIP64.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18A6981ACE16EC66EFE8A31B /* Archive+ZIP64.swift */; };
+		87A59763CFA52F92F676DD0C /* Archive+Reading.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1408DDE237BC59DE93126CAA /* Archive+Reading.swift */; };
+		9773D33EF4C106A10A837C4A /* Data+Compression.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98F81D4AD6D02B9D54B4E448 /* Data+Compression.swift */; };
+		9CB5F191539C58D90CE7C3DD /* DeepFilterVoiceProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22812826FF7EE1E3E6C3E2C7 /* DeepFilterVoiceProcessor.swift */; };
+		9DDBE9845DDA5ECBA544767A /* Archive+WritingDeprecated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 502CB6A3044AC83D90BDD975 /* Archive+WritingDeprecated.swift */; };
+		9F42A126B00CFDED597FF1DE /* Archive+BackingConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BE8EC1CF7509027F684F2C2 /* Archive+BackingConfiguration.swift */; };
+		A00000000000000000000001 /* YouRecApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000011 /* YouRecApp.swift */; };
+		A00000000000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000012 /* ContentView.swift */; };
+		CCED17010000000000000001 /* CreditsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCED17010000000000000002 /* CreditsView.swift */; };
+		ACFA11000000000000000001 /* TitleDesign.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACFA12000000000000000001 /* TitleDesign.swift */; };
+		ACFA11000000000000000002 /* StyledTextRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACFA12000000000000000002 /* StyledTextRenderer.swift */; };
+		ACFA11000000000000000004 /* ProjectRecovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACFA12000000000000000004 /* ProjectRecovery.swift */; };
+		ACFA11000000000000000006 /* RecordingSalvage.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACFA12000000000000000006 /* RecordingSalvage.swift */; };
+		ACFA11000000000000000005 /* OriginalRecordingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACFA12000000000000000005 /* OriginalRecordingsView.swift */; };
+		ACFA11000000000000000003 /* TitleInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACFA12000000000000000003 /* TitleInspector.swift */; };
+		A25E428F6EF8E7390E0A71E0 /* Archive+ReadingDeprecated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A91C27FCCA2B2F07FA5764F /* Archive+ReadingDeprecated.swift */; };
+		AAA2D86A8BD4BB4A6A553432 /* Archive+Deprecated.swift in Sources */ = {isa = PBXBuildFile; fileRef = A193BF152C77CAC6B00E67C1 /* Archive+Deprecated.swift */; };
+		B00000000000000000000100 /* Project.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000200 /* Project.swift */; };
+		B00000000000000000000101 /* ProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000201 /* ProjectStore.swift */; };
+		B00000000000000000000102 /* CaptureController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000202 /* CaptureController.swift */; };
+		B00000000000000000000103 /* AudioDSP.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000203 /* AudioDSP.swift */; };
+		161000000000000000000001 /* ExportCheckpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 161000000000000000000002 /* ExportCheckpoint.swift */; };
+		EFC700000000000000000001 /* EffectApplication.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFC700000000000000000002 /* EffectApplication.swift */; };
+		B00000000000000000000104 /* MediaRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000204 /* MediaRenderer.swift */; };
+		B00000000000000000000105 /* EditorController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000205 /* EditorController.swift */; };
+		B00000000000000000000106 /* RecorderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000206 /* RecorderView.swift */; };
+		B0000000000000000000F168 /* RecorderFrontLight.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000E168 /* RecorderFrontLight.swift */; };
+		B0000000000000000000F171 /* RecorderZoomViewport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000E171 /* RecorderZoomViewport.swift */; };
+		B34D51FEABFA498FF0F34FCA /* Data+Serialization.swift in Sources */ = {isa = PBXBuildFile; fileRef = B334A120318EAE8FC18755E2 /* Data+Serialization.swift */; };
+		BE464E73616BD7FA1F528995 /* FileManager+ZIP.swift in Sources */ = {isa = PBXBuildFile; fileRef = D03A4DB522E4E76E34A370F6 /* FileManager+ZIP.swift */; };
+		D00000000000000000000000 /* OfflineAudioPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000000 /* OfflineAudioPipeline.swift */; };
+		D00000000000000000000001 /* denoise.c in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000001 /* denoise.c */; settings = {COMPILER_FLAGS = "-O3"; }; };
+		D00000000000000000000002 /* rnn.c in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000002 /* rnn.c */; settings = {COMPILER_FLAGS = "-O3"; }; };
+		D00000000000000000000003 /* rnn_data.c in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000003 /* rnn_data.c */; settings = {COMPILER_FLAGS = "-O3"; }; };
+		D00000000000000000000004 /* pitch.c in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000004 /* pitch.c */; settings = {COMPILER_FLAGS = "-O3"; }; };
+		D00000000000000000000005 /* kiss_fft.c in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000005 /* kiss_fft.c */; settings = {COMPILER_FLAGS = "-O3"; }; };
+		D00000000000000000000006 /* celt_lpc.c in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000006 /* celt_lpc.c */; settings = {COMPILER_FLAGS = "-O3"; }; };
+		D00000000000000000000007 /* YouRecDenoiser.c in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000007 /* YouRecDenoiser.c */; settings = {COMPILER_FLAGS = "-O3"; }; };
+		D00000000000000000000008 /* AudioDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000008 /* AudioDiagnostics.swift */; };
+		D16000000000000000000001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = C16000000000000000000001 /* PrivacyInfo.xcprivacy */; };
+		D16000000000000000000002 /* PRIVACY.md in Resources */ = {isa = PBXBuildFile; fileRef = C16000000000000000000002 /* PRIVACY.md */; };
+		D26000000000000000000003 /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = C26000000000000000000003 /* LICENSE */; };
+		D00000000000000000000009 /* ThirdPartyNotices.txt in Resources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000009 /* ThirdPartyNotices.txt */; };
+		ACFA13000000000000000001 /* TitleFonts in Resources */ = {isa = PBXBuildFile; fileRef = ACFA14000000000000000001 /* TitleFonts */; };
+		D00000000000000000000010 /* StudioVoiceProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000010 /* StudioVoiceProcessor.swift */; };
+		D00000000000000000000011 /* LavaDSP.cpp in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000011 /* LavaDSP.cpp */; settings = {COMPILER_FLAGS = "-O3 -std=c++17"; }; };
+		D00000000000000000000012 /* LavaSRv2.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000012 /* LavaSRv2.mlpackage */; };
+		D00000000000000000000013 /* CaptureSegmentWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000013 /* CaptureSegmentWriter.swift */; };
+		D00000000000000000000014 /* LiveMicrophone.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000014 /* LiveMicrophone.swift */; };
+		D00000000000000000000015 /* CaptureAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000015 /* CaptureAudio.swift */; };
+		D00000000000000000000016 /* TimelineEditing.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000016 /* TimelineEditing.swift */; };
+		D00000000000000000000A91 /* TimelinePaste.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000A91 /* TimelinePaste.swift */; };
+		D00000000000000000000A92 /* TimelineClipboardChecks.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000A92 /* TimelineClipboardChecks.swift */; };
+		D00000000000000000000A93 /* MoveBoundaryChecks.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000A93 /* MoveBoundaryChecks.swift */; };
+		D00000000000000000000017 /* SourceMediaCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000017 /* SourceMediaCache.swift */; };
+		D00000000000000000000018 /* EditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000018 /* EditorView.swift */; };
+		D00000000000000000000019 /* EditorTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000019 /* EditorTimeline.swift */; };
+		DB26E0BC917F9F7227231DE5 /* CutAudioEnvelope.swift in Sources */ = {isa = PBXBuildFile; fileRef = 354B6AACE2218846DEE169E6 /* CutAudioEnvelope.swift */; };
+		EA83D6E937E38CB4C210A06D /* DeepFilterNet3-DSP.json in Resources */ = {isa = PBXBuildFile; fileRef = C0BFDAD8ED0FD38C01EC3D23 /* DeepFilterNet3-DSP.json */; };
+		F44D6E031FCED83B231A25B2 /* Archive+Writing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45355711B50031FC61AD3EBD /* Archive+Writing.swift */; };
+		AB90ABC55B8F7BAF491EACED /* MetalVideoEffects.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3131F76DA54AC86C7AE8A515 /* MetalVideoEffects.swift */; };
+		DAA6C0788433685976F6C645 /* PopPalettes.json in Resources */ = {isa = PBXBuildFile; fileRef = 1CCA1FDB5C86DE258751F5B8 /* PopPalettes.json */; };
+		6E15A20CAD9C453FB21C3837 /* VideoEffectAssets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C4AF123940F01C28C1CC3F3 /* VideoEffectAssets.swift */; };
+		DDCED3764C3B328B09BC6B83 /* VideoEffectCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0095071CE994B7B5C86D64 /* VideoEffectCatalog.swift */; };
+		03D5FE9EFFDDC27AC2987B83 /* VideoEffectDefinitions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F6A88B20904A7513D6CA8EC /* VideoEffectDefinitions.swift */; };
+		6857FE4EC5C02EFF180F2AAA /* VideoEffectMath.swift in Sources */ = {isa = PBXBuildFile; fileRef = 075B486D6A0BF45897B0B734 /* VideoEffectMath.swift */; };
+		A8D3FB289E2306CBDFB4E7B6 /* VideoEffectModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C72D1568F430887A48B378E5 /* VideoEffectModel.swift */; };
+		454F9735DD0E576A44CD0A38 /* VideoEffects.metal in Sources */ = {isa = PBXBuildFile; fileRef = F0FC0EC464C3C58BC31351C7 /* VideoEffects.metal */; };
+		F38A57D99A6718360E088AD0 /* VideoEffectsEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2C76F8AEFDCE836DC578012 /* VideoEffectsEditor.swift */; };
+		4249EB1DF69B12988E67217B /* VideoEffectTiming.swift in Sources */ = {isa = PBXBuildFile; fileRef = B26C19563321C738D2CB1AFD /* VideoEffectTiming.swift */; };
+		038751E82062D0E80155FE56 /* VideoEffectSampling.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8D8D3D1E938E62DCA5F8ABA /* VideoEffectSampling.swift */; };
+		E43B5A8094EB1AD252968B13 /* VideoEffectCaptureAnalysis.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F885D32F7506D4624E906EB /* VideoEffectCaptureAnalysis.swift */; };
+		29962086A864E8D382EB3616 /* LiveVideoEffects.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D80F020BB1A6CF93C612AC5 /* LiveVideoEffects.swift */; };
+		8D8280113A501C47B4E185D4 /* LiveEffectsPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20AB305D1D37908F776D6ADD /* LiveEffectsPanel.swift */; };
+		A17800000000000000000001 /* KaleidoscopeGuide.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17800000000000000000002 /* KaleidoscopeGuide.swift */; };
+		A18000000000000000000001 /* RGBOffsetPads.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18000000000000000000002 /* RGBOffsetPads.swift */; };
+		A18100000000000000000001 /* VideoBatchImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18100000000000000000002 /* VideoBatchImport.swift */; };
+		B91C0A000000000000000001 /* PhotoClip.swift in Sources */ = {isa = PBXBuildFile; fileRef = B91C0A000000000000000002 /* PhotoClip.swift */; };
+		BC7A8B000000000000000001 /* EffectAnimationControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC7A8B000000000000000002 /* EffectAnimationControls.swift */; };
+		BD42AA000000000000000001 /* EffectAnimationChecks.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD42AA000000000000000002 /* EffectAnimationChecks.swift */; };
+		BC7A8A000000000000000001 /* EffectAnimation.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC7A8A000000000000000002 /* EffectAnimation.swift */; };
+		B18100000000000000000001 /* AddVideoPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B18100000000000000000002 /* AddVideoPanel.swift */; };
+		577389C466705A7FD4DAF571 /* VideoEffectsDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB7DEFE5F07CE060B892E12E /* VideoEffectsDiagnostics.swift */; };
+		DABA125A0F2252DEFC6A33A0 /* VideoEffectBackgroundAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1CED9DA2EEED01E7835672 /* VideoEffectBackgroundAudio.swift */; };
+		D091AA3E2AB7991E6E931839 /* VideoEffectSubjectTracking.swift in Sources */ = {isa = PBXBuildFile; fileRef = 754B621F9A69EE5D93EFD626 /* VideoEffectSubjectTracking.swift */; };
+		11A13087DE031DBB31D21B80 /* CaptureZoomHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28CE75843BA81F26EF37A322 /* CaptureZoomHistory.swift */; };
+		83CF90E9A2311622EDEF2483 /* VideoEffectCleanPlate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C81B4D76DF494C0CFAB560F8 /* VideoEffectCleanPlate.swift */; };
+		E08653B177CA286BD7ACE757 /* AudioGain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 622B8917937119EC6F533B63; };
+		88B1B9A795C8511166E9909C /* QuickVolumeControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E0CF7A718D00BC41F2448AA; };
+		A0A84A99A07905AACC3BFBBE /* WaveformDetail.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DF348A68EA6DB2B802B93CE; };
+		A51100000000000000000001 /* YouRecQwen in Frameworks */ = {isa = PBXBuildFile; productRef = A51100000000000000000002; };
+		A51100000000000000000100 /* Subtitles.swift in Sources */ = {isa = PBXBuildFile; fileRef = A51100000000000000000200; };
+		A51100000000000000000101 /* SubtitleRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A51100000000000000000201; };
+		A51100000000000000000102 /* SubtitleSpeech.swift in Sources */ = {isa = PBXBuildFile; fileRef = A51100000000000000000202; };
+		A51100000000000000000103 /* SubtitleTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = A51100000000000000000203; };
+		A51100000000000000000104 /* SubtitleModelPack.swift in Sources */ = {isa = PBXBuildFile; fileRef = A51100000000000000000204; };
+		A51100000000000000000105 /* SubtitleEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A51100000000000000000205; };
+		A51100000000000000000106 /* SubtitleDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = A51100000000000000000206; };
+		59F7D2ABA33B57AE46CBA85A /* StudioRestorationProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BBA5F8B59D397CA631B8CBF /* StudioRestorationProcessor.swift */; };
+		00BDBA7CD1E8265C6E364BF4 /* VoiceFixerDSP.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A68C7A867F4C95072260B74A /* VoiceFixerDSP.cpp */; settings = {COMPILER_FLAGS = "-O3 -std=c++17"; }; };
+		CB875DD0400A36D14FBA4CBD /* VoiceFixer.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 7B50EE385230E2DC7E2EACCE /* VoiceFixer.mlpackage */; };
+		7CAB957943259A4AA50A07EA /* VoiceFixer-Mel.bin in Resources */ = {isa = PBXBuildFile; fileRef = 8107CE866AC1CD8BBD29A6C7 /* VoiceFixer-Mel.bin */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		E63C5DDBC52CF03EA1443074 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A00000000000000000000050 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A00000000000000000000040;
+			remoteInfo = YouRec;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		D17300000000000000000102 /* CameraCrop.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = CameraCrop.metal; sourceTree = "<group>"; };
+		D16300000000000000000101 /* SingleCameraFollowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SingleCameraFollowTests.swift; sourceTree = "<group>"; };
+		D16300000000000000000102 /* astronaut.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Fixtures/astronaut.png; sourceTree = "<group>"; };
+		A15400000000000000000003 /* AudioToolsEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioToolsEditor.swift; sourceTree = "<group>"; };
+		A19300000000000000000001 /* VoiceRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceRecorder.swift; sourceTree = "<group>"; };
+		B21A90000000000000000001 /* EditorialTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorialTimeline.swift; sourceTree = "<group>"; };
+		A15400000000000000000001 /* AudioCensor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCensor.swift; sourceTree = "<group>"; };
+		D11100000000000000000006 /* LogColor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/LogColor.swift; sourceTree = "<group>"; };
+		D11100000000000000000004 /* ColorGradeControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/ColorGradeControls.swift; sourceTree = "<group>"; };
+		D11100000000000000000002 /* ColorGrading.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/ColorGrading.swift; sourceTree = "<group>"; };
+		D31100000000000000000102 /* DualCameraMasks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DualCameraMasks.swift; sourceTree = "<group>"; };
+		D31100000000000000000101 /* DualFaceDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DualFaceDetector.swift; sourceTree = "<group>"; };
+		A31000000000000000000002 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		D31000000000000000000102 /* MultiCameraCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiCameraCapture.swift; sourceTree = "<group>"; };
+		D31000000000000000000101 /* DualCameraLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DualCameraLayout.swift; sourceTree = "<group>"; };
+		F18500000000000000000001 /* HorizonLevel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HorizonLevel.swift; sourceTree = "<group>"; };
+		B29100000000000000000002 /* TimelineNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineNavigation.swift; sourceTree = "<group>"; };
+		5E9C136D4661426AAA9C531D /* NightFix.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/VideoEffects/NightFix.swift; sourceTree = SOURCE_ROOT; };
+		B26000000000000000000006 /* TrackEditors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackEditors.swift; sourceTree = "<group>"; };
+		B26000000000000000000004 /* TrackRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackRenderer.swift; sourceTree = "<group>"; };
+		B26000000000000000000002 /* TrackTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackTimeline.swift; sourceTree = "<group>"; };
+		E25100000000000000000001 /* VideoEffectDepth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/VideoEffects/VideoEffectDepth.swift; sourceTree = SOURCE_ROOT; };
+		B30000000000000000000102 /* TransitionEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/TransitionEditor.swift; sourceTree = SOURCE_ROOT; };
+		B30000000000000000000101 /* TransitionRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/TransitionRenderer.swift; sourceTree = SOURCE_ROOT; };
+		B30000000000000000000100 /* Transitions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/Transitions.swift; sourceTree = SOURCE_ROOT; };
+		B20000000000000000000102 /* EditorTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/EditorTools.swift; sourceTree = SOURCE_ROOT; };
+		C19300000000000000000101 /* CoverPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/CoverPicker.swift; sourceTree = SOURCE_ROOT; };
+		CE9510000000000000000101 /* MovieExportPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/MovieExportPanel.swift; sourceTree = SOURCE_ROOT; };
+		C19300000000000000100101 /* CoverFramePool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/CoverFramePool.swift; sourceTree = SOURCE_ROOT; };
+		F19400000000000000100101 /* ImportedFonts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/ImportedFonts.swift; sourceTree = SOURCE_ROOT; };
+		F19400000000000000200101 /* FontLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/FontLibraryView.swift; sourceTree = SOURCE_ROOT; };
+		E80000000000000000000101 /* EditorDurationPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/EditorDurationPicker.swift; sourceTree = SOURCE_ROOT; };
+		B21000000000000000000102 /* CropEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/CropEditor.swift; sourceTree = SOURCE_ROOT; };
+		B20000000000000000000101 /* VideoToolCompositor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/VideoToolCompositor.swift; sourceTree = SOURCE_ROOT; };
+		B20000000000000000000100 /* VideoTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/VideoTools.swift; sourceTree = SOURCE_ROOT; };
+		B10000000000000000000103 /* StabilizationMotion.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = StabilizationMotion.cpp; sourceTree = "<group>"; };
+		B10000000000000000000102 /* StabilizationEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StabilizationEditor.swift; sourceTree = "<group>"; };
+		B10000000000000000000101 /* VideoStabilizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoStabilizer.swift; sourceTree = "<group>"; };
+		B10000000000000000000100 /* StabilizationPath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StabilizationPath.swift; sourceTree = "<group>"; };
+		B09000000000000000000002 /* ZoomTransition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZoomTransition.swift; sourceTree = "<group>"; };
+		B08000000000000000000002 /* AudioChainControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioChainControls.swift; sourceTree = "<group>"; };
+		1408DDE237BC59DE93126CAA /* Archive+Reading.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "Archive+Reading.swift"; sourceTree = "<group>"; };
+		18A6981ACE16EC66EFE8A31B /* Archive+ZIP64.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "Archive+ZIP64.swift"; sourceTree = "<group>"; };
+		22812826FF7EE1E3E6C3E2C7 /* DeepFilterVoiceProcessor.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DeepFilterVoiceProcessor.swift; path = YouRec/DeepFilterVoiceProcessor.swift; sourceTree = SOURCE_ROOT; };
+		354B6AACE2218846DEE169E6 /* CutAudioEnvelope.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CutAudioEnvelope.swift; sourceTree = "<group>"; };
+		39106F629A869E2538DF36AE /* YouRecUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = YouRecUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		45355711B50031FC61AD3EBD /* Archive+Writing.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "Archive+Writing.swift"; sourceTree = "<group>"; };
+		502CB6A3044AC83D90BDD975 /* Archive+WritingDeprecated.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "Archive+WritingDeprecated.swift"; sourceTree = "<group>"; };
+		6D5EA9CE287FBD127198A276 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		7E244DCF7FFD7196CEE340F2 /* Archive.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Archive.swift; sourceTree = "<group>"; };
+		8A91C27FCCA2B2F07FA5764F /* Archive+ReadingDeprecated.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "Archive+ReadingDeprecated.swift"; sourceTree = "<group>"; };
+		8B4F07F92C497A0C56E4C67E /* Archive+Helpers.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "Archive+Helpers.swift"; sourceTree = "<group>"; };
+		8B65188AD7A5572F9CAE6CDA /* Entry+Serialization.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "Entry+Serialization.swift"; sourceTree = "<group>"; };
+		8BE8EC1CF7509027F684F2C2 /* Archive+BackingConfiguration.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "Archive+BackingConfiguration.swift"; sourceTree = "<group>"; };
+		8FC561199B2393B20CF750D5 /* Entry.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Entry.swift; sourceTree = "<group>"; };
+		92AC8773CD609F84DF3B9B84 /* URL+ZIP.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "URL+ZIP.swift"; sourceTree = "<group>"; };
+		98F81D4AD6D02B9D54B4E448 /* Data+Compression.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "Data+Compression.swift"; sourceTree = "<group>"; };
+		9DE680CD8D341E39C3CC8E3D /* Data+CompressionDeprecated.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "Data+CompressionDeprecated.swift"; sourceTree = "<group>"; };
+		A00000000000000000000011 /* YouRecApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRecApp.swift; sourceTree = "<group>"; };
+		A00000000000000000000012 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		CCED17010000000000000002 /* CreditsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreditsView.swift; sourceTree = "<group>"; };
+		ACFA12000000000000000001 /* TitleDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TitleDesign.swift; sourceTree = "<group>"; };
+		ACFA12000000000000000002 /* StyledTextRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StyledTextRenderer.swift; sourceTree = "<group>"; };
+		ACFA12000000000000000004 /* ProjectRecovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectRecovery.swift; sourceTree = "<group>"; };
+		ACFA12000000000000000006 /* RecordingSalvage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingSalvage.swift; sourceTree = "<group>"; };
+		ACFA12000000000000000005 /* OriginalRecordingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OriginalRecordingsView.swift; sourceTree = "<group>"; };
+		ACFA12000000000000000003 /* TitleInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TitleInspector.swift; sourceTree = "<group>"; };
+		A00000000000000000000013 /* YouRec.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = YouRec.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A193BF152C77CAC6B00E67C1 /* Archive+Deprecated.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "Archive+Deprecated.swift"; sourceTree = "<group>"; };
+		B00000000000000000000200 /* Project.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Project.swift; sourceTree = "<group>"; };
+		B00000000000000000000201 /* ProjectStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStore.swift; sourceTree = "<group>"; };
+		B00000000000000000000202 /* CaptureController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureController.swift; sourceTree = "<group>"; };
+		B00000000000000000000203 /* AudioDSP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioDSP.swift; sourceTree = "<group>"; };
+		161000000000000000000002 /* ExportCheckpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportCheckpoint.swift; sourceTree = "<group>"; };
+		EFC700000000000000000002 /* EffectApplication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EffectApplication.swift; sourceTree = "<group>"; };
+		B00000000000000000000204 /* MediaRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaRenderer.swift; sourceTree = "<group>"; };
+		B00000000000000000000205 /* EditorController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorController.swift; sourceTree = "<group>"; };
+		B00000000000000000000206 /* RecorderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecorderView.swift; sourceTree = "<group>"; };
+		B0000000000000000000E168 /* RecorderFrontLight.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecorderFrontLight.swift; sourceTree = "<group>"; };
+		B0000000000000000000E171 /* RecorderZoomViewport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecorderZoomViewport.swift; sourceTree = "<group>"; };
+		B334A120318EAE8FC18755E2 /* Data+Serialization.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "Data+Serialization.swift"; sourceTree = "<group>"; };
+		B9BE378AC604381F81C94919 /* Archive+Progress.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "Archive+Progress.swift"; sourceTree = "<group>"; };
+		C00000000000000000000000 /* OfflineAudioPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/OfflineAudioPipeline.swift; sourceTree = SOURCE_ROOT; };
+		C00000000000000000000001 /* denoise.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = ThirdParty/RNNoise/src/denoise.c; sourceTree = SOURCE_ROOT; };
+		C00000000000000000000002 /* rnn.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = ThirdParty/RNNoise/src/rnn.c; sourceTree = SOURCE_ROOT; };
+		C00000000000000000000003 /* rnn_data.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = ThirdParty/RNNoise/src/rnn_data.c; sourceTree = SOURCE_ROOT; };
+		C00000000000000000000004 /* pitch.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = ThirdParty/RNNoise/src/pitch.c; sourceTree = SOURCE_ROOT; };
+		C00000000000000000000005 /* kiss_fft.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = ThirdParty/RNNoise/src/kiss_fft.c; sourceTree = SOURCE_ROOT; };
+		C00000000000000000000006 /* celt_lpc.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = ThirdParty/RNNoise/src/celt_lpc.c; sourceTree = SOURCE_ROOT; };
+		C00000000000000000000007 /* YouRecDenoiser.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = ThirdParty/RNNoise/YouRecDenoiser.c; sourceTree = SOURCE_ROOT; };
+		C00000000000000000000008 /* AudioDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/AudioDiagnostics.swift; sourceTree = SOURCE_ROOT; };
+		C16000000000000000000001 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text; path = YouRec/PrivacyInfo.xcprivacy; sourceTree = SOURCE_ROOT; };
+		C16000000000000000000002 /* PRIVACY.md */ = {isa = PBXFileReference; lastKnownFileType = text; path = PRIVACY.md; sourceTree = SOURCE_ROOT; };
+		C26000000000000000000003 /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE; sourceTree = SOURCE_ROOT; };
+		C00000000000000000000009 /* ThirdPartyNotices.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = YouRec/ThirdPartyNotices.txt; sourceTree = SOURCE_ROOT; };
+		ACFA14000000000000000001 /* TitleFonts */ = {isa = PBXFileReference; lastKnownFileType = folder; path = ThirdParty/TitleFonts; sourceTree = SOURCE_ROOT; };
+		C00000000000000000000010 /* StudioVoiceProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/StudioVoiceProcessor.swift; sourceTree = SOURCE_ROOT; };
+		C00000000000000000000011 /* LavaDSP.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ThirdParty/LavaSR/LavaDSP.cpp; sourceTree = SOURCE_ROOT; };
+		C00000000000000000000012 /* LavaSRv2.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = ThirdParty/LavaSR/LavaSRv2.mlpackage; sourceTree = SOURCE_ROOT; };
+		C00000000000000000000013 /* CaptureSegmentWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/CaptureSegmentWriter.swift; sourceTree = SOURCE_ROOT; };
+		C00000000000000000000014 /* LiveMicrophone.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/LiveMicrophone.swift; sourceTree = SOURCE_ROOT; };
+		C00000000000000000000015 /* CaptureAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/CaptureAudio.swift; sourceTree = SOURCE_ROOT; };
+		C00000000000000000000016 /* TimelineEditing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/TimelineEditing.swift; sourceTree = SOURCE_ROOT; };
+		C00000000000000000000A91 /* TimelinePaste.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/TimelinePaste.swift; sourceTree = SOURCE_ROOT; };
+		C00000000000000000000A92 /* TimelineClipboardChecks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/TimelineClipboardChecks.swift; sourceTree = SOURCE_ROOT; };
+		C00000000000000000000A93 /* MoveBoundaryChecks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/MoveBoundaryChecks.swift; sourceTree = SOURCE_ROOT; };
+		C00000000000000000000017 /* SourceMediaCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/SourceMediaCache.swift; sourceTree = SOURCE_ROOT; };
+		C00000000000000000000018 /* EditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/EditorView.swift; sourceTree = SOURCE_ROOT; };
+		C00000000000000000000019 /* EditorTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/EditorTimeline.swift; sourceTree = SOURCE_ROOT; };
+		C0BFDAD8ED0FD38C01EC3D23 /* DeepFilterNet3-DSP.json */ = {isa = PBXFileReference; includeInIndex = 1; name = "DeepFilterNet3-DSP.json"; path = "ThirdParty/DeepFilterNet3/DeepFilterNet3-DSP.json"; sourceTree = SOURCE_ROOT; };
+		C2D919D4B085F809C4FC7B97 /* EditorUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EditorUITests.swift; sourceTree = "<group>"; };
+		D03A4DB522E4E76E34A370F6 /* FileManager+ZIP.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "FileManager+ZIP.swift"; sourceTree = "<group>"; };
+		D5B47AB726FBBA430AF9A94E /* FileManager+ZIPDeprecated.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "FileManager+ZIPDeprecated.swift"; sourceTree = "<group>"; };
+		D92B6F86F46D9A7AB4236B9E /* Archive+MemoryFile.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "Archive+MemoryFile.swift"; sourceTree = "<group>"; };
+		E185544F4FBC9E483B0E6539 /* ProjectArchive.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ProjectArchive.swift; sourceTree = "<group>"; };
+		E20950A9E73AB8E93C7E94DE /* Date+ZIP.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "Date+ZIP.swift"; sourceTree = "<group>"; };
+		F07915B7E469FD31F1B6F56C /* Entry+ZIP64.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "Entry+ZIP64.swift"; sourceTree = "<group>"; };
+		F3300B282AFCAA034DEF2B60 /* DeepFilterNetEngine.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DeepFilterNetEngine.swift; path = ThirdParty/DeepFilterNet3/DeepFilterNetEngine.swift; sourceTree = SOURCE_ROOT; };
+		F3706A47D55DE01B8E77C7A9 /* DeepFilterNet3-Streaming.mlpackage */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.mlpackage; name = "DeepFilterNet3-Streaming.mlpackage"; path = "ThirdParty/DeepFilterNet3/DeepFilterNet3-Streaming.mlpackage"; sourceTree = SOURCE_ROOT; };
+		3131F76DA54AC86C7AE8A515 /* MetalVideoEffects.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/VideoEffects/MetalVideoEffects.swift; sourceTree = SOURCE_ROOT; };
+		1CCA1FDB5C86DE258751F5B8 /* PopPalettes.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = YouRec/VideoEffects/PopPalettes.json; sourceTree = SOURCE_ROOT; };
+		3C4AF123940F01C28C1CC3F3 /* VideoEffectAssets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/VideoEffects/VideoEffectAssets.swift; sourceTree = SOURCE_ROOT; };
+		AB0095071CE994B7B5C86D64 /* VideoEffectCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/VideoEffects/VideoEffectCatalog.swift; sourceTree = SOURCE_ROOT; };
+		9F6A88B20904A7513D6CA8EC /* VideoEffectDefinitions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/VideoEffects/VideoEffectDefinitions.swift; sourceTree = SOURCE_ROOT; };
+		075B486D6A0BF45897B0B734 /* VideoEffectMath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/VideoEffects/VideoEffectMath.swift; sourceTree = SOURCE_ROOT; };
+		C72D1568F430887A48B378E5 /* VideoEffectModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/VideoEffects/VideoEffectModel.swift; sourceTree = SOURCE_ROOT; };
+		F0FC0EC464C3C58BC31351C7 /* VideoEffects.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = YouRec/VideoEffects/VideoEffects.metal; sourceTree = SOURCE_ROOT; };
+		E2C76F8AEFDCE836DC578012 /* VideoEffectsEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/VideoEffects/VideoEffectsEditor.swift; sourceTree = SOURCE_ROOT; };
+		B26C19563321C738D2CB1AFD /* VideoEffectTiming.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/VideoEffects/VideoEffectTiming.swift; sourceTree = SOURCE_ROOT; };
+		B8D8D3D1E938E62DCA5F8ABA /* VideoEffectSampling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/VideoEffects/VideoEffectSampling.swift; sourceTree = SOURCE_ROOT; };
+		7F885D32F7506D4624E906EB /* VideoEffectCaptureAnalysis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/VideoEffects/VideoEffectCaptureAnalysis.swift; sourceTree = SOURCE_ROOT; };
+		9D80F020BB1A6CF93C612AC5 /* LiveVideoEffects.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/VideoEffects/LiveVideoEffects.swift; sourceTree = SOURCE_ROOT; };
+		20AB305D1D37908F776D6ADD /* LiveEffectsPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/VideoEffects/LiveEffectsPanel.swift; sourceTree = SOURCE_ROOT; };
+		A17800000000000000000002 /* KaleidoscopeGuide.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/VideoEffects/KaleidoscopeGuide.swift; sourceTree = SOURCE_ROOT; };
+		A18000000000000000000002 /* RGBOffsetPads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/VideoEffects/RGBOffsetPads.swift; sourceTree = SOURCE_ROOT; };
+		A18100000000000000000002 /* VideoBatchImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/VideoBatchImport.swift; sourceTree = SOURCE_ROOT; };
+		B91C0A000000000000000002 /* PhotoClip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/PhotoClip.swift; sourceTree = SOURCE_ROOT; };
+		BC7A8B000000000000000002 /* EffectAnimationControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/EffectAnimationControls.swift; sourceTree = SOURCE_ROOT; };
+		BD42AA000000000000000002 /* EffectAnimationChecks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/EffectAnimationChecks.swift; sourceTree = SOURCE_ROOT; };
+		BC7A8A000000000000000002 /* EffectAnimation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/EffectAnimation.swift; sourceTree = SOURCE_ROOT; };
+		B18100000000000000000002 /* AddVideoPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/AddVideoPanel.swift; sourceTree = SOURCE_ROOT; };
+		FB7DEFE5F07CE060B892E12E /* VideoEffectsDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/VideoEffects/VideoEffectsDiagnostics.swift; sourceTree = SOURCE_ROOT; };
+		2A1CED9DA2EEED01E7835672 /* VideoEffectBackgroundAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/VideoEffects/VideoEffectBackgroundAudio.swift; sourceTree = SOURCE_ROOT; };
+		754B621F9A69EE5D93EFD626 /* VideoEffectSubjectTracking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/VideoEffects/VideoEffectSubjectTracking.swift; sourceTree = SOURCE_ROOT; };
+		28CE75843BA81F26EF37A322 /* CaptureZoomHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/VideoEffects/CaptureZoomHistory.swift; sourceTree = SOURCE_ROOT; };
+		C81B4D76DF494C0CFAB560F8 /* VideoEffectCleanPlate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/VideoEffects/VideoEffectCleanPlate.swift; sourceTree = SOURCE_ROOT; };
+		622B8917937119EC6F533B63 /* AudioGain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioGain.swift; sourceTree = "<group>"; };
+		5E0CF7A718D00BC41F2448AA /* QuickVolumeControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickVolumeControl.swift; sourceTree = "<group>"; };
+		4DF348A68EA6DB2B802B93CE /* WaveformDetail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformDetail.swift; sourceTree = "<group>"; };
+		A51100000000000000000200 /* Subtitles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/Subtitles.swift; sourceTree = SOURCE_ROOT; };
+		A51100000000000000000201 /* SubtitleRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/SubtitleRenderer.swift; sourceTree = SOURCE_ROOT; };
+		A51100000000000000000202 /* SubtitleSpeech.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/SubtitleSpeech.swift; sourceTree = SOURCE_ROOT; };
+		A51100000000000000000203 /* SubtitleTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/SubtitleTranscriber.swift; sourceTree = SOURCE_ROOT; };
+		A51100000000000000000204 /* SubtitleModelPack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/SubtitleModelPack.swift; sourceTree = SOURCE_ROOT; };
+		A51100000000000000000205 /* SubtitleEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/SubtitleEditor.swift; sourceTree = SOURCE_ROOT; };
+		A51100000000000000000206 /* SubtitleDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/SubtitleDiagnostics.swift; sourceTree = SOURCE_ROOT; };
+		5BBA5F8B59D397CA631B8CBF /* StudioRestorationProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "YouRec/StudioRestorationProcessor.swift"; sourceTree = SOURCE_ROOT; };
+		A68C7A867F4C95072260B74A /* VoiceFixerDSP.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "ThirdParty/VoiceFixer/VoiceFixerDSP.cpp"; sourceTree = SOURCE_ROOT; };
+		7B50EE385230E2DC7E2EACCE /* VoiceFixer.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = "ThirdParty/VoiceFixer/VoiceFixer.mlpackage"; sourceTree = SOURCE_ROOT; };
+		8107CE866AC1CD8BBD29A6C7 /* VoiceFixer-Mel.bin */ = {isa = PBXFileReference; lastKnownFileType = file; path = "ThirdParty/VoiceFixer/VoiceFixer-Mel.bin"; sourceTree = SOURCE_ROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		32799EB3A80F1D62F8DF0848 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				798F12F48ADF034C26B7ABA8 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A00000000000000000000031 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A51100000000000000000001 /* YouRecQwen in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		67ED21CACD59EDFE6062166D /* ZIPFoundation */ = {
+			isa = PBXGroup;
+			children = (
+				C81B4D76DF494C0CFAB560F8 /* VideoEffectCleanPlate.swift */,
+				28CE75843BA81F26EF37A322 /* CaptureZoomHistory.swift */,
+				754B621F9A69EE5D93EFD626 /* VideoEffectSubjectTracking.swift */,
+				2A1CED9DA2EEED01E7835672 /* VideoEffectBackgroundAudio.swift */,
+				FB7DEFE5F07CE060B892E12E /* VideoEffectsDiagnostics.swift */,
+				20AB305D1D37908F776D6ADD /* LiveEffectsPanel.swift */,
+				A17800000000000000000002 /* KaleidoscopeGuide.swift */,
+				A18000000000000000000002 /* RGBOffsetPads.swift */,
+				A18100000000000000000002 /* VideoBatchImport.swift */,
+				B91C0A000000000000000002 /* PhotoClip.swift */,
+				BC7A8B000000000000000002 /* EffectAnimationControls.swift */,
+				BD42AA000000000000000002 /* EffectAnimationChecks.swift */,
+				BC7A8A000000000000000002 /* EffectAnimation.swift */,
+				B18100000000000000000002 /* AddVideoPanel.swift */,
+				9D80F020BB1A6CF93C612AC5 /* LiveVideoEffects.swift */,
+				7F885D32F7506D4624E906EB /* VideoEffectCaptureAnalysis.swift */,
+				5E9C136D4661426AAA9C531D /* NightFix.swift */,
+				B8D8D3D1E938E62DCA5F8ABA /* VideoEffectSampling.swift */,
+				B26C19563321C738D2CB1AFD /* VideoEffectTiming.swift */,
+				E2C76F8AEFDCE836DC578012 /* VideoEffectsEditor.swift */,
+				F0FC0EC464C3C58BC31351C7 /* VideoEffects.metal */,
+				C72D1568F430887A48B378E5 /* VideoEffectModel.swift */,
+				075B486D6A0BF45897B0B734 /* VideoEffectMath.swift */,
+				9F6A88B20904A7513D6CA8EC /* VideoEffectDefinitions.swift */,
+				AB0095071CE994B7B5C86D64 /* VideoEffectCatalog.swift */,
+				E25100000000000000000001 /* VideoEffectDepth.swift */,
+				3C4AF123940F01C28C1CC3F3 /* VideoEffectAssets.swift */,
+				1CCA1FDB5C86DE258751F5B8 /* PopPalettes.json */,
+				3131F76DA54AC86C7AE8A515 /* MetalVideoEffects.swift */,
+				8BE8EC1CF7509027F684F2C2 /* Archive+BackingConfiguration.swift */,
+				A193BF152C77CAC6B00E67C1 /* Archive+Deprecated.swift */,
+				8B4F07F92C497A0C56E4C67E /* Archive+Helpers.swift */,
+				D92B6F86F46D9A7AB4236B9E /* Archive+MemoryFile.swift */,
+				B9BE378AC604381F81C94919 /* Archive+Progress.swift */,
+				1408DDE237BC59DE93126CAA /* Archive+Reading.swift */,
+				8A91C27FCCA2B2F07FA5764F /* Archive+ReadingDeprecated.swift */,
+				45355711B50031FC61AD3EBD /* Archive+Writing.swift */,
+				502CB6A3044AC83D90BDD975 /* Archive+WritingDeprecated.swift */,
+				18A6981ACE16EC66EFE8A31B /* Archive+ZIP64.swift */,
+				7E244DCF7FFD7196CEE340F2 /* Archive.swift */,
+				98F81D4AD6D02B9D54B4E448 /* Data+Compression.swift */,
+				9DE680CD8D341E39C3CC8E3D /* Data+CompressionDeprecated.swift */,
+				B334A120318EAE8FC18755E2 /* Data+Serialization.swift */,
+				E20950A9E73AB8E93C7E94DE /* Date+ZIP.swift */,
+				8B65188AD7A5572F9CAE6CDA /* Entry+Serialization.swift */,
+				F07915B7E469FD31F1B6F56C /* Entry+ZIP64.swift */,
+				8FC561199B2393B20CF750D5 /* Entry.swift */,
+				D03A4DB522E4E76E34A370F6 /* FileManager+ZIP.swift */,
+				D5B47AB726FBBA430AF9A94E /* FileManager+ZIPDeprecated.swift */,
+				92AC8773CD609F84DF3B9B84 /* URL+ZIP.swift */,
+			);
+			name = ZIPFoundation;
+			path = ThirdParty/ZIPFoundation;
+			sourceTree = "<group>";
+		};
+		7BC54722CFA73A20E5E3C6F9 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				C720E817E24B0A0B9165175D /* iOS */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000020 = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000021 /* YouRec */,
+				C00000000000000000000019 /* EditorTimeline.swift */,
+				B20000000000000000000102 /* EditorTools.swift */,
+				C19300000000000000000101 /* CoverPicker.swift */,
+				CE9510000000000000000101 /* MovieExportPanel.swift */,
+				C19300000000000000100101 /* CoverFramePool.swift */,
+				F19400000000000000100101 /* ImportedFonts.swift */,
+				F19400000000000000200101 /* FontLibraryView.swift */,
+				E80000000000000000000101 /* EditorDurationPicker.swift */,
+				B21000000000000000000102 /* CropEditor.swift */,
+				B20000000000000000000101 /* VideoToolCompositor.swift */,
+				B30000000000000000000100 /* Transitions.swift */,
+				B30000000000000000000101 /* TransitionRenderer.swift */,
+				B30000000000000000000102 /* TransitionEditor.swift */,
+				D11100000000000000000002 /* ColorGrading.swift */,
+				D11100000000000000000004 /* ColorGradeControls.swift */,
+				D11100000000000000000006 /* LogColor.swift */,
+				B20000000000000000000100 /* VideoTools.swift */,
+				C00000000000000000000018 /* EditorView.swift */,
+				C00000000000000000000017 /* SourceMediaCache.swift */,
+				C00000000000000000000016 /* TimelineEditing.swift */,
+				C00000000000000000000A91 /* TimelinePaste.swift */,
+				C00000000000000000000A92 /* TimelineClipboardChecks.swift */,
+				C00000000000000000000A93 /* MoveBoundaryChecks.swift */,
+				C00000000000000000000015 /* CaptureAudio.swift */,
+				C00000000000000000000014 /* LiveMicrophone.swift */,
+				C00000000000000000000013 /* CaptureSegmentWriter.swift */,
+				C00000000000000000000012 /* LavaSRv2.mlpackage */,
+				C00000000000000000000011 /* LavaDSP.cpp */,
+				C00000000000000000000010 /* StudioVoiceProcessor.swift */,
+				8107CE866AC1CD8BBD29A6C7 /* VoiceFixer-Mel.bin */,
+				7B50EE385230E2DC7E2EACCE /* VoiceFixer.mlpackage */,
+				A68C7A867F4C95072260B74A /* VoiceFixerDSP.cpp */,
+				5BBA5F8B59D397CA631B8CBF /* StudioRestorationProcessor.swift */,
+				C16000000000000000000001 /* PrivacyInfo.xcprivacy */,
+				C16000000000000000000002 /* PRIVACY.md */,
+				C26000000000000000000003 /* LICENSE */,
+				C00000000000000000000009 /* ThirdPartyNotices.txt */,
+				ACFA14000000000000000001 /* TitleFonts */,
+				C00000000000000000000008 /* AudioDiagnostics.swift */,
+				C00000000000000000000007 /* YouRecDenoiser.c */,
+				C00000000000000000000006 /* celt_lpc.c */,
+				C00000000000000000000005 /* kiss_fft.c */,
+				C00000000000000000000004 /* pitch.c */,
+				C00000000000000000000003 /* rnn_data.c */,
+				C00000000000000000000002 /* rnn.c */,
+				C00000000000000000000001 /* denoise.c */,
+				C00000000000000000000000 /* OfflineAudioPipeline.swift */,
+				A00000000000000000000022 /* Products */,
+				7BC54722CFA73A20E5E3C6F9 /* Frameworks */,
+				B467BB746E80E1E41332555D /* Tests */,
+				67ED21CACD59EDFE6062166D /* ZIPFoundation */,
+				22812826FF7EE1E3E6C3E2C7 /* DeepFilterVoiceProcessor.swift */,
+				F3300B282AFCAA034DEF2B60 /* DeepFilterNetEngine.swift */,
+				F3706A47D55DE01B8E77C7A9 /* DeepFilterNet3-Streaming.mlpackage */,
+				C0BFDAD8ED0FD38C01EC3D23 /* DeepFilterNet3-DSP.json */,
+			);
+			sourceTree = "<group>";
+		};
+		A00000000000000000000021 /* YouRec */ = {
+			isa = PBXGroup;
+			children = (
+				D31100000000000000000101 /* DualFaceDetector.swift */,
+				D31100000000000000000102 /* DualCameraMasks.swift */,
+				A31000000000000000000002 /* Assets.xcassets */,
+				A00000000000000000000011 /* YouRecApp.swift */,
+				A00000000000000000000012 /* ContentView.swift */,
+				CCED17010000000000000002 /* CreditsView.swift */,
+				ACFA12000000000000000001 /* TitleDesign.swift */,
+				ACFA12000000000000000002 /* StyledTextRenderer.swift */,
+				ACFA12000000000000000004 /* ProjectRecovery.swift */,
+				ACFA12000000000000000006 /* RecordingSalvage.swift */,
+				ACFA12000000000000000005 /* OriginalRecordingsView.swift */,
+				ACFA12000000000000000003 /* TitleInspector.swift */,
+				B08000000000000000000002 /* AudioChainControls.swift */,
+				B00000000000000000000200 /* Project.swift */,
+				A51100000000000000000206 /* SubtitleDiagnostics.swift */,
+				A51100000000000000000205 /* SubtitleEditor.swift */,
+				A51100000000000000000204 /* SubtitleModelPack.swift */,
+				A51100000000000000000203 /* SubtitleTranscriber.swift */,
+				A51100000000000000000202 /* SubtitleSpeech.swift */,
+				A51100000000000000000201 /* SubtitleRenderer.swift */,
+				A51100000000000000000200 /* Subtitles.swift */,
+				B26000000000000000000002 /* TrackTimeline.swift */,
+				B29100000000000000000002 /* TimelineNavigation.swift */,
+				B26000000000000000000004 /* TrackRenderer.swift */,
+				B26000000000000000000006 /* TrackEditors.swift */,
+				B00000000000000000000201 /* ProjectStore.swift */,
+				B00000000000000000000202 /* CaptureController.swift */,
+				D31000000000000000000102 /* MultiCameraCapture.swift */,
+				D31000000000000000000101 /* DualCameraLayout.swift */,
+				F18500000000000000000001 /* HorizonLevel.swift */,
+				B00000000000000000000203 /* AudioDSP.swift */,
+				161000000000000000000002 /* ExportCheckpoint.swift */,
+				EFC700000000000000000002 /* EffectApplication.swift */,
+				B00000000000000000000204 /* MediaRenderer.swift */,
+				B00000000000000000000205 /* EditorController.swift */,
+				B00000000000000000000206 /* RecorderView.swift */,
+				B0000000000000000000E168 /* RecorderFrontLight.swift */,
+				B0000000000000000000E171 /* RecorderZoomViewport.swift */,
+				D17300000000000000000102 /* CameraCrop.metal */,
+				B09000000000000000000002 /* ZoomTransition.swift */,
+				B10000000000000000000103 /* StabilizationMotion.cpp */,
+				B10000000000000000000102 /* StabilizationEditor.swift */,
+				B10000000000000000000101 /* VideoStabilizer.swift */,
+				B10000000000000000000100 /* StabilizationPath.swift */,
+				A15400000000000000000001 /* AudioCensor.swift */,
+				A15400000000000000000003 /* AudioToolsEditor.swift */,
+				A19300000000000000000001 /* VoiceRecorder.swift */,
+				B21A90000000000000000001 /* EditorialTimeline.swift */,
+				354B6AACE2218846DEE169E6 /* CutAudioEnvelope.swift */,
+				4DF348A68EA6DB2B802B93CE /* WaveformDetail.swift */,
+				5E0CF7A718D00BC41F2448AA /* QuickVolumeControl.swift */,
+				622B8917937119EC6F533B63 /* AudioGain.swift */,
+				E185544F4FBC9E483B0E6539 /* ProjectArchive.swift */,
+			);
+			path = YouRec;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000022 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000013 /* YouRec.app */,
+				39106F629A869E2538DF36AE /* YouRecUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		B467BB746E80E1E41332555D /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				C2D919D4B085F809C4FC7B97 /* EditorUITests.swift */,
+				D16300000000000000000101 /* SingleCameraFollowTests.swift */,
+				D16300000000000000000102 /* astronaut.png */,
+			);
+			name = Tests;
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		C720E817E24B0A0B9165175D /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				6D5EA9CE287FBD127198A276 /* Foundation.framework */,
+			);
+			name = iOS;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		81893CC770D479C462D0BF98 /* YouRecUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E7F6C0F3D2FE43F20AB86714 /* Build configuration list for PBXNativeTarget "YouRecUITests" */;
+			buildPhases = (
+				9D858B8473B0AC3E9365077D /* Sources */,
+				32799EB3A80F1D62F8DF0848 /* Frameworks */,
+				DF8F9297825B6870A3DF4172 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				41440215AE12F326728A4FA1 /* PBXTargetDependency */,
+			);
+			name = YouRecUITests;
+			productName = YouRecUITests;
+			productReference = 39106F629A869E2538DF36AE /* YouRecUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		A00000000000000000000040 /* YouRec */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A00000000000000000000061 /* Build configuration list for PBXNativeTarget "YouRec" */;
+			buildPhases = (
+				A00000000000000000000030 /* Sources */,
+				A00000000000000000000031 /* Frameworks */,
+				A00000000000000000000032 /* Resources */,
+				DBFE2490C8F1E266D6A83C98 /* Development-only UI fixture */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = YouRec;
+			packageProductDependencies = (A51100000000000000000002);
+			productName = YouRec;
+			productReference = A00000000000000000000013 /* YouRec.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A00000000000000000000050 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2600;
+				TargetAttributes = {
+					A00000000000000000000040 = {
+						CreatedOnToolsVersion = 26.0;
+					};
+				};
+			};
+			buildConfigurationList = A00000000000000000000060 /* Build configuration list for PBXProject "YouRec" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A00000000000000000000020;
+			productRefGroup = A00000000000000000000022 /* Products */;
+			packageReferences = (A51100000000000000000003);
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A00000000000000000000040 /* YouRec */,
+				81893CC770D479C462D0BF98 /* YouRecUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A00000000000000000000032 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A31000000000000000000001 /* Assets.xcassets in Resources */,
+				DAA6C0788433685976F6C645 /* PopPalettes.json in Resources */,
+				D16000000000000000000001 /* PrivacyInfo.xcprivacy in Resources */,
+				D16000000000000000000002 /* PRIVACY.md in Resources */,
+				D26000000000000000000003 /* LICENSE in Resources */,
+				D00000000000000000000009 /* ThirdPartyNotices.txt in Resources */,
+				ACFA13000000000000000001 /* TitleFonts in Resources */,
+				EA83D6E937E38CB4C210A06D /* DeepFilterNet3-DSP.json in Resources */,
+				7CAB957943259A4AA50A07EA /* VoiceFixer-Mel.bin in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DF8F9297825B6870A3DF4172 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D16300000000000000000004 /* astronaut.png in Test Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		DBFE2490C8F1E266D6A83C98 /* Development-only UI fixture */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/Tests/Fixtures/editor-fixture.mp4",
+			);
+			name = "Development-only UI fixture";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/editor-fixture.mp4",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"$CONFIGURATION\" = \"Debug\" ]; then\n  cp \"$SRCROOT/Tests/Fixtures/editor-fixture.mp4\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/editor-fixture.mp4\"\nelse\n  rm -f \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/editor-fixture.mp4\"\nfi";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		9D858B8473B0AC3E9365077D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7E883E4337E5A3704F4B4862 /* EditorUITests.swift in Sources */,
+				D16300000000000000000001 /* SingleCameraFollowTests.swift in Sources */,
+				D16300000000000000000002 /* DualFaceDetector.swift in Test Sources */,
+				D17300000000000000000003 /* CameraCrop.metal in Test Sources */,
+				D17300000000000000000001 /* ZoomTransition.swift in Test Sources */,
+				D16400000000000000000001 /* CaptureZoomHistory.swift in Test Sources */,
+				D16300000000000000000003 /* DualCameraLayout.swift in Test Sources */,
+				F18500000000000000000002 /* HorizonLevel.swift in Test Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A00000000000000000000030 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				83CF90E9A2311622EDEF2483 /* VideoEffectCleanPlate.swift in Sources */,
+				11A13087DE031DBB31D21B80 /* CaptureZoomHistory.swift in Sources */,
+				D091AA3E2AB7991E6E931839 /* VideoEffectSubjectTracking.swift in Sources */,
+				DABA125A0F2252DEFC6A33A0 /* VideoEffectBackgroundAudio.swift in Sources */,
+				577389C466705A7FD4DAF571 /* VideoEffectsDiagnostics.swift in Sources */,
+				8D8280113A501C47B4E185D4 /* LiveEffectsPanel.swift in Sources */,
+				A17800000000000000000001 /* KaleidoscopeGuide.swift in Sources */,
+				A18000000000000000000001 /* RGBOffsetPads.swift in Sources */,
+				A18100000000000000000001 /* VideoBatchImport.swift in Sources */,
+				B91C0A000000000000000001 /* PhotoClip.swift in Sources */,
+				BC7A8B000000000000000001 /* EffectAnimationControls.swift in Sources */,
+				BD42AA000000000000000001 /* EffectAnimationChecks.swift in Sources */,
+				BC7A8A000000000000000001 /* EffectAnimation.swift in Sources */,
+				B18100000000000000000001 /* AddVideoPanel.swift in Sources */,
+				29962086A864E8D382EB3616 /* LiveVideoEffects.swift in Sources */,
+				E43B5A8094EB1AD252968B13 /* VideoEffectCaptureAnalysis.swift in Sources */,
+				71C51C900CC943EFBA737B17 /* NightFix.swift in Sources */,
+				038751E82062D0E80155FE56 /* VideoEffectSampling.swift in Sources */,
+				4249EB1DF69B12988E67217B /* VideoEffectTiming.swift in Sources */,
+				F38A57D99A6718360E088AD0 /* VideoEffectsEditor.swift in Sources */,
+				454F9735DD0E576A44CD0A38 /* VideoEffects.metal in Sources */,
+				A8D3FB289E2306CBDFB4E7B6 /* VideoEffectModel.swift in Sources */,
+				6857FE4EC5C02EFF180F2AAA /* VideoEffectMath.swift in Sources */,
+				03D5FE9EFFDDC27AC2987B83 /* VideoEffectDefinitions.swift in Sources */,
+				DDCED3764C3B328B09BC6B83 /* VideoEffectCatalog.swift in Sources */,
+				E25100000000000000000002 /* VideoEffectDepth.swift in Sources */,
+				6E15A20CAD9C453FB21C3837 /* VideoEffectAssets.swift in Sources */,
+				AB90ABC55B8F7BAF491EACED /* MetalVideoEffects.swift in Sources */,
+				A00000000000000000000001 /* YouRecApp.swift in Sources */,
+				D00000000000000000000019 /* EditorTimeline.swift in Sources */,
+				B20000000000000000000002 /* EditorTools.swift in Sources */,
+				C19300000000000000000001 /* CoverPicker.swift in Sources */,
+				CE9510000000000000000001 /* MovieExportPanel.swift in Sources */,
+				C19300000000000000100001 /* CoverFramePool.swift in Sources */,
+				F19400000000000000100001 /* ImportedFonts.swift in Sources */,
+				F19400000000000000200001 /* FontLibraryView.swift in Sources */,
+				E80000000000000000000001 /* EditorDurationPicker.swift in Sources */,
+				B21000000000000000000002 /* CropEditor.swift in Sources */,
+				B20000000000000000000001 /* VideoToolCompositor.swift in Sources */,
+				B30000000000000000000000 /* Transitions.swift in Sources */,
+				B30000000000000000000001 /* TransitionRenderer.swift in Sources */,
+				B30000000000000000000002 /* TransitionEditor.swift in Sources */,
+				D11100000000000000000001 /* ColorGrading.swift in Sources */,
+				D11100000000000000000003 /* ColorGradeControls.swift in Sources */,
+				D11100000000000000000005 /* LogColor.swift in Sources */,
+				B20000000000000000000000 /* VideoTools.swift in Sources */,
+				D00000000000000000000018 /* EditorView.swift in Sources */,
+				D00000000000000000000017 /* SourceMediaCache.swift in Sources */,
+				D00000000000000000000016 /* TimelineEditing.swift in Sources */,
+				D00000000000000000000A91 /* TimelinePaste.swift in Sources */,
+				D00000000000000000000A92 /* TimelineClipboardChecks.swift in Sources */,
+				D00000000000000000000A93 /* MoveBoundaryChecks.swift in Sources */,
+				D00000000000000000000015 /* CaptureAudio.swift in Sources */,
+				D00000000000000000000014 /* LiveMicrophone.swift in Sources */,
+				D00000000000000000000013 /* CaptureSegmentWriter.swift in Sources */,
+				D00000000000000000000012 /* LavaSRv2.mlpackage in Sources */,
+				D00000000000000000000011 /* LavaDSP.cpp in Sources */,
+				D00000000000000000000010 /* StudioVoiceProcessor.swift in Sources */,
+				CB875DD0400A36D14FBA4CBD /* VoiceFixer.mlpackage in Sources */,
+				00BDBA7CD1E8265C6E364BF4 /* VoiceFixerDSP.cpp in Sources */,
+				59F7D2ABA33B57AE46CBA85A /* StudioRestorationProcessor.swift in Sources */,
+				D00000000000000000000008 /* AudioDiagnostics.swift in Sources */,
+				D00000000000000000000007 /* YouRecDenoiser.c in Sources */,
+				D00000000000000000000006 /* celt_lpc.c in Sources */,
+				D00000000000000000000005 /* kiss_fft.c in Sources */,
+				D00000000000000000000004 /* pitch.c in Sources */,
+				D00000000000000000000003 /* rnn_data.c in Sources */,
+				D00000000000000000000002 /* rnn.c in Sources */,
+				D00000000000000000000001 /* denoise.c in Sources */,
+				D00000000000000000000000 /* OfflineAudioPipeline.swift in Sources */,
+				A00000000000000000000002 /* ContentView.swift in Sources */,
+				CCED17010000000000000001 /* CreditsView.swift in Sources */,
+				ACFA11000000000000000001 /* TitleDesign.swift in Sources */,
+				ACFA11000000000000000002 /* StyledTextRenderer.swift in Sources */,
+				ACFA11000000000000000004 /* ProjectRecovery.swift in Sources */,
+				ACFA11000000000000000006 /* RecordingSalvage.swift in Sources */,
+				ACFA11000000000000000005 /* OriginalRecordingsView.swift in Sources */,
+				ACFA11000000000000000003 /* TitleInspector.swift in Sources */,
+				B08000000000000000000001 /* AudioChainControls.swift in Sources */,
+				B00000000000000000000100 /* Project.swift in Sources */,
+				A51100000000000000000106 /* SubtitleDiagnostics.swift in Sources */,
+				A51100000000000000000105 /* SubtitleEditor.swift in Sources */,
+				A51100000000000000000104 /* SubtitleModelPack.swift in Sources */,
+				A51100000000000000000103 /* SubtitleTranscriber.swift in Sources */,
+				A51100000000000000000102 /* SubtitleSpeech.swift in Sources */,
+				A51100000000000000000101 /* SubtitleRenderer.swift in Sources */,
+				A51100000000000000000100 /* Subtitles.swift in Sources */,
+				B26000000000000000000001 /* TrackTimeline.swift in Sources */,
+				B29100000000000000000001 /* TimelineNavigation.swift in Sources */,
+				B26000000000000000000003 /* TrackRenderer.swift in Sources */,
+				B26000000000000000000005 /* TrackEditors.swift in Sources */,
+				B00000000000000000000101 /* ProjectStore.swift in Sources */,
+				B00000000000000000000102 /* CaptureController.swift in Sources */,
+				D31000000000000000000002 /* MultiCameraCapture.swift in Sources */,
+				D31000000000000000000001 /* DualCameraLayout.swift in Sources */,
+				F18500000000000000000003 /* HorizonLevel.swift in Sources */,
+				D31100000000000000000001 /* DualFaceDetector.swift in Sources */,
+				D31100000000000000000002 /* DualCameraMasks.swift in Sources */,
+				B00000000000000000000103 /* AudioDSP.swift in Sources */,
+				161000000000000000000001 /* ExportCheckpoint.swift in Sources */,
+				EFC700000000000000000001 /* EffectApplication.swift in Sources */,
+				B00000000000000000000104 /* MediaRenderer.swift in Sources */,
+				B00000000000000000000105 /* EditorController.swift in Sources */,
+				B00000000000000000000106 /* RecorderView.swift in Sources */,
+				B0000000000000000000F168 /* RecorderFrontLight.swift in Sources */,
+				B0000000000000000000F171 /* RecorderZoomViewport.swift in Sources */,
+				D17300000000000000000002 /* CameraCrop.metal in Sources */,
+				B09000000000000000000001 /* ZoomTransition.swift in Sources */,
+				B10000000000000000000003 /* StabilizationMotion.cpp in Sources */,
+				B10000000000000000000002 /* StabilizationEditor.swift in Sources */,
+				B10000000000000000000001 /* VideoStabilizer.swift in Sources */,
+				B10000000000000000000000 /* StabilizationPath.swift in Sources */,
+				A15400000000000000000002 /* AudioCensor.swift in Sources */,
+				A15400000000000000000004 /* AudioToolsEditor.swift in Sources */,
+				A19300000000000000000002 /* VoiceRecorder.swift in Sources */,
+				B21A90000000000000000002 /* EditorialTimeline.swift in Sources */,
+				DB26E0BC917F9F7227231DE5 /* CutAudioEnvelope.swift in Sources */,
+				A0A84A99A07905AACC3BFBBE /* WaveformDetail.swift in Sources */,
+				88B1B9A795C8511166E9909C /* QuickVolumeControl.swift in Sources */,
+				E08653B177CA286BD7ACE757 /* AudioGain.swift in Sources */,
+				9F42A126B00CFDED597FF1DE /* Archive+BackingConfiguration.swift in Sources */,
+				AAA2D86A8BD4BB4A6A553432 /* Archive+Deprecated.swift in Sources */,
+				585AD5DF09BED2118F3458B5 /* Archive+Helpers.swift in Sources */,
+				43E870D0B2281D720D161AEB /* Archive+MemoryFile.swift in Sources */,
+				511AD246A3F630D1B9D11807 /* Archive+Progress.swift in Sources */,
+				87A59763CFA52F92F676DD0C /* Archive+Reading.swift in Sources */,
+				A25E428F6EF8E7390E0A71E0 /* Archive+ReadingDeprecated.swift in Sources */,
+				F44D6E031FCED83B231A25B2 /* Archive+Writing.swift in Sources */,
+				9DDBE9845DDA5ECBA544767A /* Archive+WritingDeprecated.swift in Sources */,
+				86E2993B22AF60AFA84DD7C4 /* Archive+ZIP64.swift in Sources */,
+				259677566AA3CB73A0A45E43 /* Archive.swift in Sources */,
+				9773D33EF4C106A10A837C4A /* Data+Compression.swift in Sources */,
+				0C1755ED070B06191B3BF39B /* Data+CompressionDeprecated.swift in Sources */,
+				B34D51FEABFA498FF0F34FCA /* Data+Serialization.swift in Sources */,
+				63501D4C8336712D4E7998CF /* Date+ZIP.swift in Sources */,
+				701DB4D2BF003C19C99F154A /* Entry+Serialization.swift in Sources */,
+				77199C04E08D4A3C7F1BCD3B /* Entry+ZIP64.swift in Sources */,
+				0829CD7B08D25F5CA68709EB /* Entry.swift in Sources */,
+				BE464E73616BD7FA1F528995 /* FileManager+ZIP.swift in Sources */,
+				770B62B956EFBA37C5E0A9B6 /* FileManager+ZIPDeprecated.swift in Sources */,
+				8664084C642425FFA44FCB02 /* URL+ZIP.swift in Sources */,
+				0E17ED21CCEB1FA6A5FF2A1D /* ProjectArchive.swift in Sources */,
+				9CB5F191539C58D90CE7C3DD /* DeepFilterVoiceProcessor.swift in Sources */,
+				133D5D31509DC15E737B4CD8 /* DeepFilterNetEngine.swift in Sources */,
+				84D0C6A1F4F526DB1F8F1197 /* DeepFilterNet3-Streaming.mlpackage in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		41440215AE12F326728A4FA1 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = YouRec;
+			target = A00000000000000000000040 /* YouRec */;
+			targetProxy = E63C5DDBC52CF03EA1443074 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+/* End XCRemoteSwiftPackageReference section */
+/* Begin XCLocalSwiftPackageReference section */
+        A51100000000000000000003 = {isa = XCLocalSwiftPackageReference; relativePath = ThirdParty/QwenASR; };
+/* End XCLocalSwiftPackageReference section */
+/* Begin XCSwiftPackageProductDependency section */
+        A51100000000000000000002 = {isa = XCSwiftPackageProductDependency; productName = YouRecQwen; };
+/* End XCSwiftPackageProductDependency section */
+
+/* Begin XCBuildConfiguration section */
+		107312FCCDF5047F447F2ECB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.antirez.yourec.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = YouRec;
+			};
+			name = Debug;
+		};
+		611C8D1DD99EFFE1C04D3A8A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.antirez.yourec.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = YouRec;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		A00000000000000000000070 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		A00000000000000000000071 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+			};
+			name = Release;
+		};
+		A00000000000000000000072 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 194;
+				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/ThirdParty/RNNoise/include";
+				INFOPLIST_KEY_CFBundleDisplayName = YouRec;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.video";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "YouRec uses the camera to record your videos.";
+				INFOPLIST_KEY_NSMotionUsageDescription = "YouRec uses device tilt to level the horizon in your recordings.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "YouRec uses the microphone to record video sound and add voice recordings to your edits.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "YouRec saves an exported copy of your video to Photos when you choose Save to Photos.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIFileSharingEnabled = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.antirez.yourec;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_OBJC_BRIDGING_HEADER = "YouRec/YouRec-Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		A00000000000000000000073 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 194;
+				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/ThirdParty/RNNoise/include";
+				INFOPLIST_KEY_CFBundleDisplayName = YouRec;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.video";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "YouRec uses the camera to record your videos.";
+				INFOPLIST_KEY_NSMotionUsageDescription = "YouRec uses device tilt to level the horizon in your recordings.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "YouRec uses the microphone to record video sound and add voice recordings to your edits.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "YouRec saves an exported copy of your video to Photos when you choose Save to Photos.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIFileSharingEnabled = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.antirez.yourec;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_OBJC_BRIDGING_HEADER = "YouRec/YouRec-Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A00000000000000000000060 /* Build configuration list for PBXProject "YouRec" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000070 /* Debug */,
+				A00000000000000000000071 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A00000000000000000000061 /* Build configuration list for PBXNativeTarget "YouRec" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000072 /* Debug */,
+				A00000000000000000000073 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E7F6C0F3D2FE43F20AB86714 /* Build configuration list for PBXNativeTarget "YouRecUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				611C8D1DD99EFFE1C04D3A8A /* Release */,
+				107312FCCDF5047F447F2ECB /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A00000000000000000000050 /* Project object */;
+}

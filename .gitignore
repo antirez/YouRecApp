@@ -1,0 +1,37 @@
+.DS_Store
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+.benchmarks/
+build-simulator/
+build-*/
+*.profraw
+
+# Reproducible studio-restoration weights; see ThirdParty/VoiceFixer/PROVENANCE.md.
+ThirdParty/VoiceFixer/VoiceFixer.mlpackage/
+
+# Local release credentials and configuration
+*.mobileprovision
+*.provisionprofile
+*.p8
+*.p12
+*.pfx
+*.keychain-db
+.env
+.env.*
+*.private.xcconfig
+
+# Private development notes, screenshots, and tester reports
+/TODO.private.md
+/TODO.md
+/docs/reviews/
+/docs/AUDIO-EXPERIMENTS.md
+/docs/DUAL-SHAPES-QA-20261101.md
+/docs/IMPLEMENTATION-LOOPS.md
+/docs/UI-UX-STUDY.md
+/docs/assets/YouRec-icon.svg
+*.xcarchive/
+*.ipa
+*.pem
+*.key

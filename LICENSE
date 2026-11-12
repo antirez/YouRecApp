@@ -1,0 +1,90 @@
+MIT License
+
+Copyright (c) 2026 Salvatore Sanfilippo
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+Third-party acknowledgments
+===========================
+
+The MIT License above covers YouRec’s original source code and documentation.
+Salvatore Sanfilippo reserves rights to the YouRec name and icon as branding.
+The following works retain their own licenses and copyright notices. Full texts,
+upstream revisions, file locations, and conversion records are indexed in
+THIRD_PARTY_NOTICES.md and included with the app under Credits.
+
+Audio restoration
+-----------------
+* RNNoise v0.1 and its pretrained network, by Jean-Marc Valin, Mozilla and the
+  Xiph.Org contributors: BSD 3-Clause. Its CELT/Opus, libogg, KISS FFT (Mark
+  Borgerding) and network component notices include BSD 2-Clause terms. See
+  ThirdParty/RNNoise/COPYING, the original source headers and the bundled notices.
+* DeepFilterNet3 model and DSP data, by Hendrik Schröter and contributors: MIT.
+  Kyle Howells’ DeepFilterNet-mlx streaming implementation and conversion:
+  MIT or Apache License 2.0. See ThirdParty/DeepFilterNet3.
+* LavaSR v2 by Yatharth Sharma: Apache License 2.0. Its Vocos architecture
+  by Hubert Siuzdak and Charactr Inc. is MIT-licensed. The model was converted
+  to Core ML. See ThirdParty/LavaSR and https://github.com/gemelo-ai/vocos.
+* VoiceFixer architecture and code by Haohe Liu and contributors: MIT.
+  Haohe Liu’s VoiceFixer Model CheckPoint v3 and the adapted weights are
+  Creative Commons Attribution 4.0 International (CC BY 4.0). YouRec converts
+  the model to Core ML and implements fixed-window inference and overlap
+  blending. Checkpoints: https://doi.org/10.5281/zenodo.5600188
+  License: https://creativecommons.org/licenses/by/4.0/
+  Sources and conversion notes: ThirdParty/VoiceFixer/PROVENANCE.md.
+
+Subtitles and libraries
+-----------------------
+* Qwen3-ASR-0.6B by the Qwen team and aufklarer’s MLX 4-bit conversion and
+  tokenizer: Apache License 2.0. These assets download on demand. YouRec uses
+  a modified subset of Soniqo’s speech-swift (Apache License 2.0).
+  See ThirdParty/QwenASR/PROVENANCE.md.
+* Apple’s MLX, MLX C and MLX Swift: MIT. Apple metal-cpp: Apache License 2.0.
+  fmt by Victor Zverovich and contributors: MIT. JSON for Modern C++ by Niels
+  Lohmann and contributors: MIT, with embedded notices including an Apache 2.0
+  contribution. PocketFFT by Martin Reinecke and Peter Bell: BSD 3-Clause.
+  Norbert Juffa’s Metal exponential routine: BSD 2-Clause. Swift Numerics by
+  Apple and contributors: Apache License 2.0 with Runtime Library Exception.
+  See ThirdParty/QwenASR/DEPENDENCY-LICENSES.txt and YouRec/ThirdPartyNotices.txt.
+* ZIPFoundation by Thomas Zoechling and contributors: MIT.
+  See ThirdParty/ZIPFoundation/LICENSE.
+
+Fonts, images and platform
+--------------------------
+* Archivo Black, Atkinson Hyperlegible Next, Barlow Condensed, Caveat, Fraunces,
+  IBM Plex Mono and Source Serif 4, distributed through Google Fonts: SIL Open
+  Font License 1.1. Each family's original copyright and license are preserved in
+  ThirdParty/TitleFonts/<family>/OFL.txt.
+* The test portrait of Eileen Collins is a public-domain NASA photograph obtained
+  from the scikit-image sample dataset. See Tests/Fixtures/README.md.
+* Apple system frameworks, the Apple SDK and SF Symbols are used under Apple's
+  applicable platform and SF Symbols terms: https://developer.apple.com/support/terms/
+  and https://developer.apple.com/sf-symbols/.
+
+Development tools (run separately from the iPhone app)
+-----------------------------------------------------
+Model conversion uses PyTorch, coremltools, NumPy and SciPy (BSD 3-Clause),
+torchaudio (BSD 2-Clause), torchlibrosa and PyYAML (MIT), librosa (ISC),
+Python SoundFile (BSD 3-Clause), Matplotlib (Matplotlib license) and progressbar
+(BSD or LGPL 2.1 or later). Test and research tools include OpenCV 4 (Apache 2.0),
+PyAV (BSD 3-Clause), Pillow (MIT-CMU), FFmpeg (LGPL 2.1 or later, or GPL
+depending on build configuration), and the FastDVDnet research baseline by
+Matias Tassano and collaborators (MIT). Release automation uses Xcode (Apple
+SDK terms) and the App Store Connect CLI by Rudrank Riyam and contributors
+(MIT, https://github.com/rudrankriyam/App-Store-Connect-CLI).
