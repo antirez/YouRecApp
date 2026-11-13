@@ -105,6 +105,9 @@ struct ContentView: View {
         .onDisappear { RecordingAppDelegate.keepAwake("camera-screen", active: false) }
         .task {
             #if DEBUG
+            if CommandLine.arguments.contains("--aperture-effect-fixture"), CommandLine.arguments.contains("--recorder-controls-test") {
+                camera.setVideoEffects([VideoEffectSettings(.silentTint)])
+            }
             if CommandLine.arguments.contains("--retire-archived-camera-test") { await AudioDiagnostics.retireArchivedCameraTest(); return }
             if CommandLine.arguments.contains("--retention-ui-fixture") { screen = 1; return }
             if CommandLine.arguments.contains("--night-fix-cleanup") {NightFixDiagnostics.cleanup();return}

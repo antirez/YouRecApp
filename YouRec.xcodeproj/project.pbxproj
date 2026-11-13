@@ -53,6 +53,7 @@
 		B10000000000000000000001 /* VideoStabilizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000101 /* VideoStabilizer.swift */; };
 		B10000000000000000000000 /* StabilizationPath.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000100 /* StabilizationPath.swift */; };
 		B09000000000000000000001 /* ZoomTransition.swift in Sources */ = {isa = PBXBuildFile; fileRef = B09000000000000000000002 /* ZoomTransition.swift */; };
+		A91800000000000000000001 /* CameraAperture.swift in Sources */ = {isa = PBXBuildFile; fileRef = A91800000000000000000002 /* CameraAperture.swift */; };
 		B08000000000000000000001 /* AudioChainControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = B08000000000000000000002 /* AudioChainControls.swift */; };
 		0829CD7B08D25F5CA68709EB /* Entry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FC561199B2393B20CF750D5 /* Entry.swift */; };
 		0C1755ED070B06191B3BF39B /* Data+CompressionDeprecated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DE680CD8D341E39C3CC8E3D /* Data+CompressionDeprecated.swift */; };
@@ -225,6 +226,7 @@
 		B10000000000000000000101 /* VideoStabilizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoStabilizer.swift; sourceTree = "<group>"; };
 		B10000000000000000000100 /* StabilizationPath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StabilizationPath.swift; sourceTree = "<group>"; };
 		B09000000000000000000002 /* ZoomTransition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZoomTransition.swift; sourceTree = "<group>"; };
+		A91800000000000000000002 /* CameraAperture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraAperture.swift; sourceTree = "<group>"; };
 		B08000000000000000000002 /* AudioChainControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioChainControls.swift; sourceTree = "<group>"; };
 		1408DDE237BC59DE93126CAA /* Archive+Reading.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "Archive+Reading.swift"; sourceTree = "<group>"; };
 		18A6981ACE16EC66EFE8A31B /* Archive+ZIP64.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "Archive+ZIP64.swift"; sourceTree = "<group>"; };
@@ -538,6 +540,7 @@
 				B0000000000000000000E171 /* RecorderZoomViewport.swift */,
 				D17300000000000000000102 /* CameraCrop.metal */,
 				B09000000000000000000002 /* ZoomTransition.swift */,
+				A91800000000000000000002 /* CameraAperture.swift */,
 				B10000000000000000000103 /* StabilizationMotion.cpp */,
 				B10000000000000000000102 /* StabilizationEditor.swift */,
 				B10000000000000000000101 /* VideoStabilizer.swift */,
@@ -835,6 +838,7 @@
 				B0000000000000000000F171 /* RecorderZoomViewport.swift in Sources */,
 				D17300000000000000000002 /* CameraCrop.metal in Sources */,
 				B09000000000000000000001 /* ZoomTransition.swift in Sources */,
+				A91800000000000000000001 /* CameraAperture.swift in Sources */,
 				B10000000000000000000003 /* StabilizationMotion.cpp in Sources */,
 				B10000000000000000000002 /* StabilizationEditor.swift in Sources */,
 				B10000000000000000000001 /* VideoStabilizer.swift in Sources */,
