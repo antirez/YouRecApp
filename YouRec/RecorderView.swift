@@ -59,6 +59,7 @@ struct RecorderView: View {
     @State private var settingsOpen = false
     @State private var adjustingHorizon = false
     @State private var zoomOpen = false
+    @State private var apertureOpen = false
     @State private var effectsOpen = false
     @State private var effectsExpanded = false
     @State private var bookmarkAcknowledged = false
@@ -228,6 +229,7 @@ struct RecorderView: View {
                             projectChip
                             if camera.crashAvailable || camera.dollyAvailable { cameraEffectControls }
                             if zoomOpen && !camera.dualActive { zoomPresets.padding(.bottom, 8) }
+                            if apertureOpen && camera.apertureAvailable { aperturePresets.padding(.bottom, 8) }
                             cameraStrip
                         }.padding(.top, toolbarTop).padding(.bottom, 12)
                         if !controlsOnLeft { captureRail }
@@ -241,6 +243,7 @@ struct RecorderView: View {
                         projectChip.padding(.bottom, 6)
                         if camera.crashAvailable || camera.dollyAvailable { cameraEffectControls.padding(.bottom,6) }
                         if zoomOpen && !camera.dualActive { zoomPresets.padding(.bottom, 10) }
+                        if apertureOpen && camera.apertureAvailable { aperturePresets.padding(.bottom, 10) }
                         cameraStrip.padding(.bottom, 22)
                         HStack {
                             projectOrMarkButton.frame(maxWidth: .infinity)
@@ -333,8 +336,12 @@ struct RecorderView: View {
         .statusBarHidden()
         .persistentSystemOverlays(.hidden)
         .onChange(of: camera.dualActive) { _, active in
-            if active { zoomOpen = false } else { dualLayoutEditing = false }
+            if active { zoomOpen = false; apertureOpen = false } else { dualLayoutEditing = false }
         }
+        .onChange(of: zoomOpen) { _, open in if open { apertureOpen = false } }
+        .onChange(of: apertureOpen) { _, open in if open { zoomOpen = false } }
+        .onChange(of: camera.cameraID) { _, _ in apertureOpen = false }
+        .onChange(of: camera.apertureAvailable) { _, available in if !available { apertureOpen = false } }
         .onChange(of:camera.positioningEffectID) { _,id in if id != nil {effectsExpanded=false} }
         .onChange(of:camera.effectColorPick) { _,id in if id != nil { effectsExpanded=false } }
         .onChange(of:camera.cleanPlateProgress) { _,progress in if progress != nil { effectsExpanded=false } }
@@ -558,6 +565,10 @@ struct RecorderView: View {
                             .offset(y: -34).allowsHitTesting(false).accessibilityIdentifier("recorder.focusFeedback")
                     }
                 }
+            if camera.apertureAvailable {
+                Rectangle().fill(.white.opacity(0.2)).frame(width: 1, height: 16)
+                RecorderApertureButton(camera: camera, readings: camera.readings, open: $apertureOpen)
+            }
             }
         }
         .padding(.horizontal, 5)
@@ -576,6 +587,7 @@ struct RecorderView: View {
         }.disabled(!choice.available)
     }
     private var zoomPresets: some View { RecorderZoomPresets(camera: camera, readings: camera.readings) }
+    private var aperturePresets: some View { RecorderAperturePresets(camera: camera) }
     private var recordButton: some View {
         Button {
             if recording { camera.stop() } else { start() }
@@ -943,6 +955,73 @@ private struct RecorderZoomButton: View {
                 .foregroundStyle(open ? .yellow : .white).frame(width: 58, height: 44)
         }.disabled(!camera.ready || camera.busy).accessibilityLabel("Zoom, \((readings.zoom * camera.displayZoomMultiplier).formatted()) times")
             .accessibilityIdentifier("recorder.zoom").accessibilityValue(String(format: "%.1f", readings.zoom * camera.displayZoomMultiplier))
+    }
+}
+
+private struct RecorderApertureButton: View {
+    @ObservedObject var camera: CaptureController
+    @ObservedObject var readings: CaptureReadings
+    @Binding var open: Bool
+
+    private var value: String {
+        let selection = camera.selectedAperture.map(CameraAperture.label) ?? "Auto"
+        #if DEBUG
+        if CommandLine.arguments.contains("--probe-aperture-controls") {
+            return selection + "; " + readings.apertureProbe
+        }
+        #endif
+        return selection
+    }
+
+    var body: some View {
+        Button { withAnimation(.easeOut(duration: 0.16)) { open.toggle() } } label: {
+            Group {
+                if let aperture = camera.selectedAperture {
+                    Text(CameraAperture.label(aperture)).font(.system(size: 12, weight: .semibold))
+                } else { Image(systemName: "camera.aperture").font(.system(size: 18, weight: .medium)) }
+            }
+            .foregroundStyle(open || camera.selectedAperture != nil ? .yellow : .white)
+            .frame(width: 52, height: 44)
+        }
+        .disabled(!camera.ready || camera.busy || camera.switchingCamera)
+        .accessibilityIdentifier("recorder.aperture").accessibilityLabel("Aperture")
+        .accessibilityValue(value)
+        .accessibilityHint("Show or hide automatic aperture and the available f-stops.")
+    }
+}
+
+private struct RecorderAperturePresets: View {
+    @ObservedObject var camera: CaptureController
+
+    var body: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 2) {
+                option(nil)
+                ForEach(camera.apertureStops, id: \.self) { option($0) }
+            }
+        }
+        .scrollIndicators(.hidden).scrollBounceBehavior(.basedOnSize)
+        .frame(maxWidth: CGFloat((camera.apertureStops.count + 1) * 58))
+        .frame(height: 48).padding(.horizontal, 6)
+        .background(.ultraThinMaterial, in: Capsule())
+        .disabled(!camera.ready || camera.busy || camera.switchingCamera)
+        .accessibilityIdentifier("recorder.aperture.presets")
+    }
+
+    private func option(_ value: Float?) -> some View {
+        let selected = camera.selectedAperture == value
+        let title = value.map(CameraAperture.label) ?? "Auto"
+        return Button {
+            camera.setAperture(value)
+            UISelectionFeedbackGenerator().selectionChanged()
+        } label: {
+            Text(title).font(.system(size: 13, weight: .semibold)).monospacedDigit()
+                .foregroundStyle(selected ? .yellow : .white)
+                .frame(minWidth: 54, minHeight: 44)
+                .background(selected ? .white.opacity(0.12) : .clear, in: Capsule())
+        }
+        .accessibilityIdentifier("recorder.aperture." + (value.map(CameraAperture.label) ?? "auto"))
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 

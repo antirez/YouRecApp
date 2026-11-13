@@ -2,6 +2,297 @@ import XCTest
 import ObjectiveC
 
 final class EditorUITests: XCTestCase {
+    private func apertureScreenshot(_ name: String) {
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = name; shot.lifetime = .keepAlways; add(shot)
+    }
+
+    private func dismissCameraNotification() {
+        #if !targetEnvironment(simulator)
+        let banner = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+            .descendants(matching: .any).matching(identifier: "NotificationShortLookView").firstMatch
+        for _ in 0..<3 {
+            guard banner.exists else { return }
+            banner.swipeUp()
+        }
+        #endif
+    }
+
+    private func expectAperture(_ app: XCUIApplication, _ title: String, physical: Bool = false) {
+        let button = app.buttons["recorder.aperture"]
+        let predicate = NSPredicate { _, _ in
+            guard let value = button.value as? String, value.hasPrefix(title) else { return false }
+            guard physical else { return value == title }
+            guard value.contains("apertureAuto=\(title == "Auto")"), value.contains("shutterAuto=true"),
+                  value.contains("isoAuto=true"),
+                  let field = value.split(separator: " ").first(where: { $0.hasPrefix("actual=") }),
+                  let actual = Double(field.dropFirst(7)), actual > 0 else { return false }
+            return title == "Auto" || abs(actual - (Double(title.dropFirst(2)) ?? -1)) < 0.08
+        }
+        expectation(for: predicate, evaluatedWith: button); waitForExpectations(timeout: 15)
+        print("APERTURE_READBACK", button.value ?? "")
+    }
+
+    func testApertureBarForSelectedLens() throws { try checkApertureBar(largeText: false) }
+    func testApertureBarLargeText() throws { try checkApertureBar(largeText: true) }
+
+    private func checkApertureBar(largeText: Bool) throws {
+        #if !targetEnvironment(simulator)
+        throw XCTSkip("Uses the simulated variable-aperture camera")
+        #else
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        defer { XCUIDevice.shared.orientation = .portrait }
+        let app = XCUIApplication()
+        let arguments = ["--recorder-controls-test", "--aperture-fixture"]
+            + (largeText ? ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] : [])
+        app.launchArguments = arguments + ["--reset-aperture-fixture"]; app.launch()
+        let aperture = app.buttons["recorder.aperture"], auto = app.buttons["recorder.aperture.auto"]
+        XCTAssertTrue(aperture.waitForExistence(timeout: 15)); expectAperture(app, "Auto")
+        XCTAssertFalse(auto.exists)
+        apertureScreenshot("Aperture Auto icon, bar closed")
+        aperture.tap(); XCTAssertTrue(auto.waitForExistence(timeout: 5)); XCTAssertTrue(auto.isSelected)
+        for title in ["ƒ/1.48", "ƒ/1.8", "ƒ/2.8", "ƒ/4"] {
+            let choice = app.buttons["recorder.aperture." + title]
+            XCTAssertTrue(choice.isHittable); choice.tap(); expectAperture(app, title)
+            XCTAssertTrue(choice.isSelected); XCTAssertFalse(auto.isSelected)
+        }
+        aperture.tap(); XCTAssertFalse(auto.exists); expectAperture(app, "ƒ/4")
+        apertureScreenshot("Manual aperture value, bar closed")
+        app.buttons["recorder.zoom"].tap()
+        XCTAssertTrue(app.buttons["recorder.zoom.preset.10"].waitForExistence(timeout: 5))
+        aperture.tap(); XCTAssertTrue(auto.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["recorder.zoom.preset.10"].exists)
+        app.buttons["recorder.aperture.ƒ/2.8"].tap(); expectAperture(app, "ƒ/2.8")
+        XCUIDevice.shared.orientation = .landscapeRight
+        expectation(for: NSPredicate { _, _ in app.frame.width > app.frame.height }, evaluatedWith: app)
+        waitForExpectations(timeout: 10)
+        XCTAssertTrue(aperture.isHittable); XCTAssertTrue(auto.isHittable)
+        XCTAssertTrue(app.buttons["recorder.aperture.ƒ/4"].isHittable)
+        apertureScreenshot("Aperture steps in landscape")
+        XCUIDevice.shared.orientation = .portrait
+        expectation(for: NSPredicate { _, _ in app.frame.width < app.frame.height }, evaluatedWith: app)
+        waitForExpectations(timeout: 10)
+        let lens = app.buttons["recorder.camera"]
+        lens.tap(); app.buttons["Front"].tap()
+        XCTAssertFalse(aperture.exists); XCTAssertFalse(auto.exists)
+        lens.tap(); app.buttons["Rear wide"].tap()
+        XCTAssertTrue(aperture.waitForExistence(timeout: 5)); expectAperture(app, "ƒ/2.8")
+        XCTAssertFalse(auto.exists, "Changing camera closes the secondary bar")
+        app.buttons["recorder.settings"].tap()
+        let dual = app.switches["recorder.dualEnabled"]
+        dual.tap()
+        expectation(for: NSPredicate(format: "value == '1' AND enabled == true"), evaluatedWith: dual); waitForExpectations(timeout: 15)
+        app.buttons["recorder.settingsDone"].tap()
+        XCTAssertFalse(aperture.exists)
+        app.buttons["recorder.settings"].tap(); dual.tap()
+        expectation(for: NSPredicate(format: "value == '0' AND enabled == true"), evaluatedWith: dual); waitForExpectations(timeout: 15)
+        app.buttons["recorder.settingsDone"].tap()
+        expectAperture(app, "ƒ/2.8")
+        app.terminate(); app.launchArguments = arguments; app.launch()
+        XCTAssertTrue(aperture.waitForExistence(timeout: 15)); expectAperture(app, "ƒ/2.8")
+        aperture.tap(); XCTAssertTrue(app.buttons["recorder.aperture.ƒ/2.8"].isSelected)
+        auto.tap(); expectAperture(app, "Auto"); aperture.tap()
+        XCTAssertFalse(auto.exists)
+        apertureScreenshot("Restored Auto aperture icon")
+        #endif
+    }
+
+    func testApertureControlPhysical() throws {
+        #if targetEnvironment(simulator)
+        throw XCTSkip("Requires physical aperture readback")
+        #else
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchArguments = ["--recorder-controls-test", "--probe-lens-controls", "--probe-aperture-controls", "--recording-safety-clock"]
+        app.launch()
+        let lens = app.buttons["recorder.camera"], aperture = app.buttons["recorder.aperture"]
+        let auto = app.buttons["recorder.aperture.auto"], record = app.buttons["recorder.record"]
+        XCTAssertTrue(lens.waitForExistence(timeout: 25))
+        expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: lens); waitForExpectations(timeout: 20)
+        lens.tap(); app.buttons["Rear main"].firstMatch.tap()
+        XCTAssertTrue(aperture.waitForExistence(timeout: 15))
+        func choose(_ title: String) {
+            if !auto.exists { aperture.tap() }
+            app.buttons["recorder.aperture." + (title == "Auto" ? "auto" : title)].tap()
+            expectAperture(app, title, physical: true)
+        }
+        func waitForRecord(_ label: String) {
+            expectation(for: NSPredicate(format: "label == %@ AND enabled == true", label), evaluatedWith: record)
+            waitForExpectations(timeout: 25)
+        }
+        choose("Auto")
+        let stops = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'recorder.aperture.ƒ/'"))
+            .allElementsBoundByIndex.map(\.label)
+        XCTAssertGreaterThan(stops.count, 1)
+        print("PHYSICAL_APERTURE_STOPS", stops)
+        for title in stops { choose(title); apertureScreenshot("Physical idle " + title) }
+        choose("Auto"); aperture.tap()
+        apertureScreenshot("Physical main camera Auto icon")
+        for group in [Array(stops.prefix(2)), Array(stops.suffix(2))] {
+            record.tap(); waitForRecord("Stop recording")
+            for title in group {
+                choose(title); aperture.tap()
+                print("APERTURE_GEOMETRY", app.otherElements["recorder.preview"].value ?? "")
+                apertureScreenshot("Physical recording " + title)
+            }
+            choose("Auto"); aperture.tap()
+            record.tap(); waitForRecord("Record into this project")
+        }
+        choose(stops.last!)
+        aperture.tap(); app.terminate(); app.launch()
+        XCTAssertTrue(aperture.waitForExistence(timeout: 25))
+        expectAperture(app, stops.last!, physical: true)
+        for name in ["Rear ultrawide", "Rear tele", "Front main", "Rear main"] {
+            lens.tap(); app.buttons[name].firstMatch.tap()
+            expectation(for: NSPredicate(format: "value == %@ AND enabled == true", name), evaluatedWith: lens)
+            waitForExpectations(timeout: 20)
+            if name == "Rear main" { expectAperture(app, stops.last!, physical: true) }
+            else { XCTAssertFalse(aperture.exists, "Aperture belongs to the selected physical camera") }
+        }
+        choose(stops.first!); aperture.tap()
+        record.tap(); waitForRecord("Stop recording")
+        app.buttons["Pause recording"].tap(); waitForRecord("Resume recording")
+        choose(stops.last!); aperture.tap()
+        record.tap(); waitForRecord("Stop recording")
+        expectAperture(app, stops.last!, physical: true)
+        apertureScreenshot("Physical aperture after pause and resume")
+        record.tap(); waitForRecord("Record into this project")
+        choose("Auto"); aperture.tap()
+        XCTAssertFalse(auto.exists)
+        apertureScreenshot("Physical final Auto icon")
+        #endif
+    }
+
+    func testApertureCaptureFormatsPhysical() throws {
+        #if targetEnvironment(simulator)
+        throw XCTSkip("Requires physical camera formats")
+        #else
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchArguments = ["--recorder-controls-test", "--probe-lens-controls", "--probe-aperture-controls", "--recording-safety-clock"]
+        app.launch()
+        let lens = app.buttons["recorder.camera"], aperture = app.buttons["recorder.aperture"]
+        let record = app.buttons["recorder.record"], settings = app.buttons["recorder.settings"]
+        XCTAssertTrue(lens.waitForExistence(timeout: 25))
+        expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: lens); waitForExpectations(timeout: 20)
+        lens.tap(); app.buttons["Rear main"].firstMatch.tap()
+        expectation(for: NSPredicate(format: "value == 'Rear main' AND enabled == true"), evaluatedWith: lens)
+        waitForExpectations(timeout: 20)
+        for quality in ["1080p · 30 fps", "4K · 30 fps"] {
+            openMoreCameraSettings(in: app)
+            let picker = app.buttons["recorder.quality"]
+            for _ in 0..<6 { if picker.exists && picker.isHittable { break }; app.swipeUp() }
+            XCTAssertTrue(picker.isHittable); picker.tap(); app.buttons[quality].firstMatch.tap()
+            app.buttons["recorder.settingsDone"].tap()
+            for mode in ["sdr", "hdr", "log"] {
+                dismissCameraNotification()
+                settings.tap()
+                let color = app.buttons["recorder.color." + mode]
+                XCTAssertTrue(color.isEnabled); color.tap()
+                expectation(for: NSPredicate(format: "selected == true"), evaluatedWith: color); waitForExpectations(timeout: 20)
+                app.buttons["recorder.settingsDone"].tap()
+                XCTAssertTrue(aperture.waitForExistence(timeout: 15)); aperture.tap()
+                let stops = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'recorder.aperture.ƒ/'"))
+                let stop = stops.allElementsBoundByIndex.last!
+                let title = stop.label
+                stop.tap(); expectAperture(app, title, physical: true); aperture.tap()
+                record.tap()
+                expectation(for: NSPredicate(format: "label == 'Stop recording'"), evaluatedWith: record); waitForExpectations(timeout: 20)
+                expectAperture(app, title, physical: true)
+                print("APERTURE_FORMAT", quality, mode, app.otherElements["recorder.preview"].value ?? "")
+                apertureScreenshot("Physical aperture " + quality + " " + mode)
+                Thread.sleep(forTimeInterval: 1)
+                record.tap()
+                expectation(for: NSPredicate(format: "label == 'Record into this project' AND enabled == true"), evaluatedWith: record)
+                waitForExpectations(timeout: 25)
+            }
+        }
+        aperture.tap(); app.buttons["recorder.aperture.auto"].tap(); expectAperture(app, "Auto", physical: true); aperture.tap()
+        #endif
+    }
+
+    func testApertureDualAndEffectPhysical() throws {
+        #if targetEnvironment(simulator)
+        throw XCTSkip("Requires physical exposure and dual-camera readback")
+        #else
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchArguments = ["--recorder-controls-test", "--probe-lens-controls", "--probe-aperture-controls", "--recording-safety-clock"]
+        app.launch()
+        let lens = app.buttons["recorder.camera"], aperture = app.buttons["recorder.aperture"]
+        let settings = app.buttons["recorder.settings"], record = app.buttons["recorder.record"]
+        XCTAssertTrue(lens.waitForExistence(timeout: 25))
+        expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: lens); waitForExpectations(timeout: 20)
+        lens.tap(); app.buttons["Rear main"].firstMatch.tap()
+        expectation(for: NSPredicate(format: "value == 'Rear main' AND enabled == true"), evaluatedWith: lens)
+        waitForExpectations(timeout: 20)
+        aperture.tap(); app.buttons["recorder.aperture.ƒ/4"].tap()
+        expectAperture(app, "ƒ/4", physical: true); aperture.tap()
+        dismissCameraNotification(); settings.tap()
+        let dual = app.switches["recorder.dualEnabled"]
+        dual.tap()
+        expectation(for: NSPredicate(format: "value == '1' AND enabled == true"), evaluatedWith: dual); waitForExpectations(timeout: 20)
+        let first = app.buttons["recorder.dualFirst"]
+        if first.value as? String != "Rear main" {
+            first.tap(); app.buttons["Rear main"].firstMatch.tap()
+            expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: dual); waitForExpectations(timeout: 20)
+        }
+        // Exercise both modes in the same public settings sheet.
+        dual.tap()
+        expectation(for: NSPredicate(format: "value == '0' AND enabled == true"), evaluatedWith: dual); waitForExpectations(timeout: 20)
+        app.buttons["recorder.settingsDone"].tap()
+        expectAperture(app, "ƒ/4", physical: true)
+        app.terminate()
+        app.launchArguments += ["--aperture-effect-fixture", "-captureQuality", "ultraHD4K", "-captureColorMode", "log"]
+        app.launch()
+        XCTAssertTrue(aperture.waitForExistence(timeout: 25)); expectAperture(app, "ƒ/4", physical: true)
+        record.tap()
+        expectation(for: NSPredicate(format: "label == 'Stop recording'"), evaluatedWith: record); waitForExpectations(timeout: 20)
+        aperture.tap(); app.buttons["recorder.aperture.ƒ/1.48"].tap()
+        expectAperture(app, "ƒ/1.48", physical: true); aperture.tap()
+        apertureScreenshot("Aperture during live-effect recording")
+        record.tap()
+        expectation(for: NSPredicate(format: "label == 'Record into this project' AND enabled == true"), evaluatedWith: record)
+        waitForExpectations(timeout: 25)
+        aperture.tap(); app.buttons["recorder.aperture.auto"].tap(); expectAperture(app, "Auto", physical: true); aperture.tap()
+        #endif
+    }
+
+    func testApertureCameraBaselinePhysical() throws {
+        #if targetEnvironment(simulator)
+        throw XCTSkip("Requires the physical main camera")
+        #else
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchArguments = ["--recorder-controls-test", "--probe-lens-controls", "--recording-safety-clock"]
+        app.launch()
+        let lens = app.buttons["recorder.camera"], record = app.buttons["recorder.record"]
+        XCTAssertTrue(lens.waitForExistence(timeout: 25))
+        expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: lens); waitForExpectations(timeout: 20)
+        lens.tap(); app.buttons["Rear main"].firstMatch.tap()
+        expectation(for: NSPredicate(format: "value == 'Rear main' AND enabled == true"), evaluatedWith: lens)
+        waitForExpectations(timeout: 20)
+        let preview = app.otherElements["recorder.preview"]
+        print("APERTURE_BASELINE", preview.value ?? "")
+        let before = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        before.name = "Main camera before aperture implementation"; before.lifetime = .keepAlways; add(before)
+        record.tap()
+        expectation(for: NSPredicate(format: "label == 'Stop recording'"), evaluatedWith: record); waitForExpectations(timeout: 20)
+        Thread.sleep(forTimeInterval: 2)
+        let during = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        during.name = "Main camera baseline recording"; during.lifetime = .keepAlways; add(during)
+        record.tap()
+        expectation(for: NSPredicate(format: "label == 'Record into this project' AND enabled == true"), evaluatedWith: record)
+        waitForExpectations(timeout: 25)
+        XCTAssertFalse(app.alerts.firstMatch.exists)
+        #endif
+    }
+
     func testRecorderCreditsAndBundledLicenses() {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
@@ -139,6 +430,7 @@ final class EditorUITests: XCTestCase {
 
     private func openMoreCameraSettings(in app: XCUIApplication) {
         let settings = app.buttons["recorder.settings"], more = app.buttons["recorder.moreSettings"]
+        dismissCameraNotification()
         XCTAssertTrue(settings.waitForExistence(timeout: 20)); settings.tap()
         XCTAssertTrue(more.waitForExistence(timeout: 5)); more.tap()
     }
