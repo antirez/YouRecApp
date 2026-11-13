@@ -35,7 +35,10 @@ enum SubtitleModelPack {
         var resource = root; var values = URLResourceValues(); values.isExcludedFromBackup = true; try resource.setResourceValues(values)
         let free = ((try? manager.attributesOfFileSystem(forPath: root.path)[.systemFreeSize]) as? NSNumber)?.int64Value ?? 0
         guard free > byteCount + 150_000_000 else { throw SubtitleError.message("Free at least 900 MB to download the speech model.") }
-        let configuration = URLSessionConfiguration.default
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.httpShouldSetCookies = false
+        configuration.httpCookieStorage = nil
+        configuration.urlCredentialStorage = nil
         configuration.waitsForConnectivity = true
         configuration.timeoutIntervalForRequest = 60
         let session = URLSession(configuration: configuration); defer { session.invalidateAndCancel() }

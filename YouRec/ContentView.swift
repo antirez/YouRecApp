@@ -765,6 +765,7 @@ struct PrivacyPolicyView: View {
                 ForEach(Self.paragraphs, id: \.self) { paragraph in
                     Text((try? AttributedString(markdown: paragraph)) ?? AttributedString(paragraph))
                 }
+                Link("View privacy policy online", destination: URL(string: "https://antirez.com/yourec/privacy")!)
             }.padding().frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
         }.navigationTitle("Privacy policy").navigationBarTitleDisplayMode(.inline)
     }

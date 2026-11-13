@@ -1,6 +1,6 @@
 # YouRec privacy policy
 
-Effective November 12, 2026.
+Effective November 13, 2026.
 
 **Recordings and projects**
 
@@ -8,7 +8,7 @@ YouRec uses the camera and microphone to record when you choose to record. Video
 
 **Optional speech model download**
 
-If you choose automatic subtitles, YouRec downloads the speech model from Hugging Face. That download connects directly to Hugging Face and its file delivery providers. They receive the connection information needed to serve the files, including your IP address and requested file names. After installation, transcription works offline. You can remove the model in Subtitles. [Hugging Face privacy policy](https://huggingface.co/privacy)
+If you choose automatic subtitles, YouRec downloads the speech model from Hugging Face and its file delivery providers. The request includes your IP address, the requested model files and standard connection information. The provider may log the request, including its time, approximate location and technical details, to deliver and secure the files, diagnose problems and measure downloads. YouRec sends no account identifier, recording or transcript with the request. After installation, transcription works offline. You can remove the model in Subtitles. [Hugging Face privacy policy](https://huggingface.co/privacy)
 
 **Photos, Files and sharing**
 
