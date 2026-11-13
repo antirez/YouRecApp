@@ -13,6 +13,19 @@ Feel free to open issues or send pull requests, though I can only take on a hand
 
 To learn more, see the [project specification](SPEC.md).
 
+## Editing a video in YouRec
+
+The timeline shows three clips from *The Sicilian Coast* with their audio waveforms underneath. Move the playhead and tap **Split** to make a cut. Tap the title or transition below the timeline to edit it again.
+
+[![Landscape editor showing three coastal shots, their audio waveforms, and the title and transition controls below the timeline.](docs/screenshots/timeline.webp)](docs/screenshots/timeline.webp)
+
+Use **Text** to place a title on the picture and choose how long it stays on screen. In **Color LUTs**, choose a look, adjust its strength, and tap **Before** or **After** to compare the grade on the same frame.
+
+<p align="center">
+  <a href="docs/screenshots/text-overlay.webp"><img src="docs/screenshots/text-overlay.webp" width="330" alt="Text editor placing “The Sicilian Coast” over the water for 3.5 seconds, with font, fill, and outline controls."></a>
+  <a href="docs/screenshots/color-luts.webp"><img src="docs/screenshots/color-luts.webp" width="330" alt="Color LUTs editor showing the same coast frame, Before and After buttons, strength and highlights sliders, and look thumbnails."></a>
+</p>
+
 ## Current build
 
 The recorder uses a full-screen camera preview with minimal overlaid controls.
