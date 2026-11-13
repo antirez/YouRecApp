@@ -1,7 +1,17 @@
 # YouRec
 
-YouRec is a native iPhone camera and multitrack video editor for iOS 17 and later.
-It records, edits and exports on device. See the [project specification](SPEC.md).
+YouRec is a native iPhone camera and multitrack video editor for iOS 17 and later. After two years of running a [YouTube channel](https://youtube.com/antirez) and editing my videos in DaVinci Resolve™, I had two frustrations.
+
+1. The iPhone Camera app doesn’t give me the controls I want. I want to switch between the front and rear cameras while recording, track my face, have more control over dual-camera layouts, and append new footage to an existing video.
+2. DaVinci Resolve is powerful, but it’s often more than I need. I record for 20 minutes a day, often while driving. My YouTube channel is a side project, and I can’t give it more than 5% of my day. Often I just want to make a few quick, creative edits, and I could do many of them right on my iPhone. I started to picture the app I wanted.
+
+YouRec is the app I wished I had. It’s powerful and free. I wanted tasteful effects with some character, so I chose each one carefully. I also wanted editing tools that make sense the first time you use them.
+
+The rest of this README is AI-generated, so think of it as a reference manual. YouRec is available on the App Store for iPhone, so you only need to build it yourself if you want to make changes.
+
+Feel free to open issues or send pull requests, though I can only take on a handful from time to time. If you can, resist the temptation to spam the App Store with copies of this app. You’re welcome to use the code. The YouRec name is reserved.
+
+To learn more, see the [project specification](SPEC.md).
 
 ## Current build
 
