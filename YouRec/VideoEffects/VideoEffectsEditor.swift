@@ -22,7 +22,8 @@ struct InspectorHelpSheet: View {
                 }.frame(maxWidth: 560, alignment: .leading).padding(24).frame(maxWidth: .infinity, alignment: .leading)
             }.navigationTitle(topic.title).navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.frame(minHeight: 44).accessibilityIdentifier("inspectorHelp.done") } }
-        }.preferredColorScheme(.dark).presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
+        }.preferredColorScheme(.dark).tint(YouRecStyle.accent)
+            .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
     }
 }
 struct EffectHelpButton: View {
@@ -31,11 +32,12 @@ struct EffectHelpButton: View {
     var body: some View {
         Button { open(InspectorHelp(effect: effect)) } label: {
             Image(systemName: "questionmark.circle").font(.body).foregroundStyle(.secondary).frame(width: 44, height: 44).contentShape(Rectangle())
+                .recorderGlass(in: Circle(), interactive: true, fallback: Color.clear)
         }.buttonStyle(.plain).accessibilityLabel("About " + effect.descriptor.displayName).accessibilityIdentifier("effectHelp." + effect.rawValue)
     }
 }
 
-enum VideoEffectPage:Equatable {
+enum VideoEffectPage:Hashable {
     case applied,library,section(VideoEffectLibrarySection),inspector
     var identity:String {switch self {case .applied:return "applied";case .library:return "library";case .section(let section):return section.id;case .inspector:return "inspector"}}
 }
@@ -72,9 +74,10 @@ struct VideoEffectNavigationBar:View {
             Spacer(minLength:0)
             if page == .applied || page == .inspector {
                 Button(action:add) {Label("Add",systemImage:"plus").font(.subheadline.weight(.semibold)).frame(minWidth:54,minHeight:44)}
+                    .tint(Color.primary)
                     .accessibilityLabel("Add effect").accessibilityIdentifier(prefix+".browse")
             }
-        }.padding(.horizontal,12).padding(.vertical,2)
+        }.recorderButtonStyle().tint(YouRecStyle.accent).padding(.horizontal,12).padding(.vertical,6)
     }
 }
 
@@ -86,29 +89,32 @@ struct VideoEffectLibrary:View {
     let add:(VideoEffectID)->Void
     private var prefix:String {live ? "liveEffects" : "videoEffects"}
     var body:some View {
-        VStack(alignment:.leading,spacing:12) {
-            if let section {
-                Text(section.summary).font(.subheadline).foregroundStyle(.secondary)
-                ForEach(section.effects(live:live),id:\.id) {effect in
-                    Button {add(effect.id)} label: {
-                        HStack(spacing:12) {
-                            Image(systemName:section.symbol).font(.title3).foregroundStyle(section.tint).frame(width:28)
-                            VStack(alignment:.leading,spacing:4) {
-                                Text(effect.displayName).font(.headline)
-                                Text(effect.id.summary).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
-                            }
-                            Spacer(minLength:0);Image(systemName:"plus.circle").foregroundStyle(section.tint)
-                        }.padding(12).frame(maxWidth:.infinity,minHeight:68,alignment:.leading)
-                            .background(.white.opacity(0.045),in:RoundedRectangle(cornerRadius:12))
-                    }.buttonStyle(.plain).accessibilityIdentifier(prefix+".add."+effect.id.rawValue)
-                }
-                if live && section == .time {Text("Freeze Frame and Step Printing are available in the editor.").font(.caption).foregroundStyle(.secondary)}
-            } else {
-                if typeSize.isAccessibilitySize {categoryRows}
-                else {
-                    ViewThatFits(in:.horizontal) {
-                        categoryGrid.frame(minWidth:340)
-                        categoryRows
+        RecorderGlassContainer {
+            VStack(alignment:.leading,spacing:12) {
+                if let section {
+                    Text(section.summary).font(.subheadline).foregroundStyle(.secondary)
+                    ForEach(section.effects(live:live),id:\.id) {effect in
+                        Button {add(effect.id)} label: {
+                            HStack(spacing:12) {
+                                Image(systemName:section.symbol).font(.title3).foregroundStyle(section.tint).frame(width:28)
+                                VStack(alignment:.leading,spacing:4) {
+                                    Text(effect.displayName).font(.headline)
+                                    Text(effect.id.summary).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
+                                }
+                                Spacer(minLength:0);Image(systemName:"plus.circle").foregroundStyle(.secondary)
+                            }.padding(12).frame(maxWidth:.infinity,minHeight:68,alignment:.leading)
+                                .contentShape(Rectangle())
+                                .recorderGlass(in: RoundedRectangle(cornerRadius: 18), interactive: true, fallback: Color.white.opacity(0.045))
+                        }.buttonStyle(.plain).accessibilityIdentifier(prefix+".add."+effect.id.rawValue)
+                    }
+                    if live && section == .time {Text("Freeze Frame and Step Printing are available in the editor.").font(.caption).foregroundStyle(.secondary)}
+                } else {
+                    if typeSize.isAccessibilitySize {categoryRows}
+                    else {
+                        ViewThatFits(in:.horizontal) {
+                            categoryGrid.frame(minWidth:340)
+                            categoryRows
+                        }
                     }
                 }
             }
@@ -126,7 +132,8 @@ struct VideoEffectLibrary:View {
                         Text(group.title).font(.subheadline.weight(.semibold)).fixedSize(horizontal:false,vertical:true)
                         Text(countLabel(group)).font(.caption).foregroundStyle(.secondary)
                     }.padding(12).frame(maxWidth:.infinity,minHeight:92,alignment:.topLeading)
-                        .background(group.tint.opacity(0.08),in:RoundedRectangle(cornerRadius:12))
+                        .contentShape(Rectangle())
+                        .recorderGlass(in: RoundedRectangle(cornerRadius: 18), interactive: true, fallback: group.tint.opacity(0.08))
                 }.buttonStyle(.plain).accessibilityIdentifier(prefix+".section."+group.id)
             }
         }
@@ -143,7 +150,8 @@ struct VideoEffectLibrary:View {
                         }
                         Spacer(minLength:0);Image(systemName:"chevron.right").font(.caption).foregroundStyle(.secondary)
                     }.padding(.horizontal,12).padding(.vertical,8).frame(maxWidth:.infinity,minHeight:56,alignment:.leading)
-                        .background(group.tint.opacity(0.08),in:RoundedRectangle(cornerRadius:12))
+                        .contentShape(Rectangle())
+                        .recorderGlass(in: RoundedRectangle(cornerRadius: 18), interactive: true, fallback: group.tint.opacity(0.08))
                 }.buttonStyle(.plain).accessibilityIdentifier(prefix+".section."+group.id)
             }
         }
@@ -165,7 +173,7 @@ struct ChromaScreenControl:View {
                 Button("Green") {choose(EffectRGB(0,1,0))}.frame(minWidth:60,minHeight:44)
                 Button("Blue") {choose(EffectRGB(0,0,1))}.frame(minWidth:60,minHeight:44)
                 Button(action:pick) {Label("Sample",systemImage:"eyedropper").frame(minHeight:44)}.accessibilityLabel("Sample green or blue screen").accessibilityIdentifier("effects.sampleScreen")
-            }.buttonStyle(.bordered)
+            }.recorderButtonStyle()
             if !ChromaScreen.accepts(color) {Text("This saved color is not a green or blue screen. Choose Green, Blue, or sample your screen.").font(.caption).foregroundStyle(.orange)}
         }
     }
@@ -225,7 +233,9 @@ struct VideoEffectNumberChoices:View {
                 Button {choose(value)} label: {
                     Text(value.formatted(.number.precision(.fractionLength(0...1))))
                         .frame(maxWidth:.infinity,minHeight:44)
-                        .background(selected == value ? .white.opacity(0.2) : .white.opacity(0.05),in:RoundedRectangle(cornerRadius:9))
+                        .foregroundStyle(selected == value ? YouRecStyle.accent : .primary)
+                        .recorderGlass(in: Capsule(), tint: selected == value ? YouRecStyle.accent.opacity(0.2) : nil,
+                                       interactive: true, fallback: Color.white.opacity(selected == value ? 0.2 : 0.05))
                 }.accessibilityLabel("\(title) \(value.formatted())").accessibilityAddTraits(selected == value ? .isSelected : [])
             }
         }

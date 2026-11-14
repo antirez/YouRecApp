@@ -2,7 +2,7 @@ import SwiftUI
 import AVKit
 import UniformTypeIdentifiers
 
-private let accent = Color(red: 1, green: 0.25, blue: 0.29)
+private let accent = YouRecStyle.accent
 private let surface = Color(red: 0.09, green: 0.10, blue: 0.13)
 
 struct ContentView: View {
@@ -339,6 +339,11 @@ struct ContentView: View {
             }
             #endif
             if store.projects.isEmpty { _ = store.create() }
+            #if DEBUG && targetEnvironment(simulator)
+            if CommandLine.arguments.contains("--liquid-glass-showcase"), let id = store.selectedID {
+                store.update(id) { $0.title = "Neon Coast" }
+            }
+            #endif
             camera.onSegment = { url, completion in
                 // A take belongs to the project folder the writer opened, even
                 // if the user has since chosen another recording destination.

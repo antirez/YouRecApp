@@ -4,7 +4,7 @@ import AVFoundation
 private struct RecordingColorControls: View {
     @ObservedObject var camera: CaptureController
 
-    private var note: String {
+    static func note(for camera: CaptureController) -> String {
         if camera.hasActiveTake {
             return camera.dualActive ? "Two cameras record in SDR. Pause to change the pair or stabilization." :
                 "Pause to change recording color, stabilization or the two-camera setup."
@@ -18,27 +18,23 @@ private struct RecordingColorControls: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Recording color").font(.subheadline.weight(.semibold)).accessibilityAddTraits(.isHeader)
-            HStack(spacing: 3) {
-                ForEach(CaptureColorMode.allCases) { mode in
-                    let selected = mode == camera.activeColorMode
-                    let supported = mode == .sdr || (mode == .hdr ? camera.hdrSupported : camera.logSupported)
-                    let enabled = camera.ready && !camera.dualActive && !camera.hasActiveTake && !camera.switchingCamera && supported
-                    Button { if !selected { camera.setColorMode(mode) } } label: {
-                        Text(mode.title).font(.subheadline.weight(.semibold))
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                            .foregroundStyle(selected ? .black : enabled ? Color.primary : .secondary)
-                            .background(selected ? Color.cyan : .clear, in: RoundedRectangle(cornerRadius: 8))
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain).disabled(!enabled)
-                    .accessibilityAddTraits(selected ? .isSelected : [])
-                    .accessibilityIdentifier("recorder.color." + mode.rawValue)
+        HStack(spacing: 3) {
+            ForEach(CaptureColorMode.allCases) { mode in
+                let selected = mode == camera.activeColorMode
+                let supported = mode == .sdr || (mode == .hdr ? camera.hdrSupported : camera.logSupported)
+                let enabled = camera.ready && !camera.dualActive && !camera.hasActiveTake && !camera.switchingCamera && supported
+                Button { if !selected { camera.setColorMode(mode) } } label: {
+                    Text(mode.title).font(.body.weight(selected ? .semibold : .regular))
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .foregroundStyle(selected ? .black : enabled ? Color.primary : .secondary)
+                        .background(selected ? YouRecStyle.accent : .clear, in: Capsule())
+                        .contentShape(Rectangle())
                 }
-            }.padding(3).background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 11))
-            Text(note).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-        }
+                .buttonStyle(.plain).disabled(!enabled)
+                .accessibilityAddTraits(selected ? .isSelected : [])
+                .accessibilityIdentifier("recorder.color." + mode.rawValue)
+            }
+        }.padding(3).recorderGlass(in: Capsule(), fallback: Color.white.opacity(0.08))
     }
 }
 
@@ -57,10 +53,15 @@ struct RecorderView: View {
     var insertionPosition: Double? = nil
     @AppStorage("fitRecordedFrame") private var fitRecordedFrame = true
     @State private var settingsOpen = false
+    @State private var settingsDetent: PresentationDetent = .height(430)
     @State private var adjustingHorizon = false
     @State private var zoomOpen = false
     @State private var effectsOpen = false
-    @State private var effectsExpanded = false
+    @State private var effectsSheetOpen = false
+    @State private var suspendingEffectsSheet = false
+    @State private var effectsDetent: PresentationDetent = .height(380)
+    @State private var effectsPath: [VideoEffectPage] = []
+    @State private var selectedLiveEffect: UUID?
     @State private var bookmarkAcknowledged = false
     @State private var controlsOrientation: UIInterfaceOrientation = .unknown
     @Environment(\.scenePhase) private var scenePhase
@@ -73,13 +74,15 @@ struct RecorderView: View {
             VStack(spacing: 3) {
                 Image(systemName: bookmarkAcknowledged ? "bookmark.fill" : "bookmark").font(.system(size: 20))
                 Text("Mark").font(.system(size: 11, weight: .semibold))
-            }.frame(width: 52, height: 52).background(controlPlate, in: RoundedRectangle(cornerRadius: 15))
+            }.frame(width: 52, height: 52)
+                .recorderGlass(in: RoundedRectangle(cornerRadius: 15), interactive: true, fallback: controlPlate)
                 .contentShape(Rectangle())
         }.accessibilityLabel("Add recording bookmark").accessibilityIdentifier("recorder.bookmark")
             .accessibilityValue(bookmarkAcknowledged ? "Bookmark added" : "Mark this moment")
             .disabled(!recording)
             .task(id: bookmarkAcknowledged) {
-                if bookmarkAcknowledged { try? await Task.sleep(for: .milliseconds(700)); bookmarkAcknowledged = false }
+                // Leave time to see the confirmation after the glass touch response.
+                if bookmarkAcknowledged { try? await Task.sleep(for: .seconds(2)); bookmarkAcknowledged = false }
             }
     }
     @ScaledMetric(relativeTo:.body) private var frameToolHeight = 76.0
@@ -93,8 +96,29 @@ struct RecorderView: View {
         default: return true
         }
     }
-    private func closeEffects() { effectsOpen = false }
-    private let red = Color(red: 1, green: 0.25, blue: 0.29)
+    private var effectsNeedOverlay: Bool { effectsOpen && (frameToolActive || camera.showsOpticalInspector) }
+    private var effectsSheetPath: Binding<[VideoEffectPage]> {
+        Binding(get: { effectsPath }, set: { value in
+            // A dismissed sheet must not reset the picture tool's navigation.
+            if effectsSheetOpen && !suspendingEffectsSheet { effectsPath = value }
+        })
+    }
+    private func openEffects() {
+        effectsPath = []; selectedLiveEffect = nil
+        effectsDetent = .height(380)
+        effectsOpen = true; effectsSheetOpen = true
+    }
+    private func closeEffects() {
+        effectsOpen = false; effectsSheetOpen = false; suspendingEffectsSheet = false
+        camera.inspectLiveEffect(nil); camera.cancelEffectFrameTools()
+    }
+    private func effectsSheetDismissed() {
+        if suspendingEffectsSheet {
+            suspendingEffectsSheet = false
+            if effectsOpen && !effectsNeedOverlay { effectsSheetOpen = true }
+        } else { closeEffects() }
+    }
+    private let red = YouRecStyle.accent
     private let pictureClearance: CGFloat = 12
     private let shutterSize: CGFloat = 88
     /// Keep a group in the safe letterbox if it fits, otherwise put it inside the picture.
@@ -107,7 +131,7 @@ struct RecorderView: View {
             Label(camera.crashState == .holding ? "Return" : camera.crashState == .ready ? "Crash zoom" : camera.crashState.rawValue,
                   systemImage:camera.crashState == .holding ? "arrow.down.right.and.arrow.up.left" : "viewfinder")
                 .font(.subheadline.weight(.semibold)).padding(.horizontal,16).frame(minHeight:48)
-                .background(.black.opacity(0.65),in:Capsule()).overlay(Capsule().strokeBorder(.white.opacity(0.3)))
+                .recorderGlass(in: Capsule(), interactive: true, fallback: Color.black.opacity(0.65))
         }.foregroundStyle(.white).disabled(!camera.canTriggerCrash).accessibilityIdentifier("recorder.crashZoom")
     }
     private var cameraEffectControls:some View {
@@ -117,7 +141,7 @@ struct RecorderView: View {
                     Button(action:camera.triggerDollyZoom) {
                         Label(camera.dollyState.rawValue,systemImage:camera.dollyState.moving ? "stop.circle" : "viewfinder")
                             .font(.subheadline.weight(.semibold)).padding(.horizontal,16).frame(minHeight:48)
-                            .background(.black.opacity(0.65),in:Capsule()).overlay(Capsule().strokeBorder(.white.opacity(0.3)))
+                            .recorderGlass(in: Capsule(), interactive: true, fallback: Color.black.opacity(0.65))
                     }.disabled(!camera.canTriggerDolly).accessibilityIdentifier("recorder.dollyZoom")
                 }
                 if camera.crashAvailable { crashControl }
@@ -127,7 +151,7 @@ struct RecorderView: View {
                     ProgressView(value:camera.dollyHeadroom).tint(.yellow).frame(width:120).accessibilityLabel("Dolly zoom room remaining")
                 }
                 Text(camera.dollyHint).font(.caption2).lineLimit(2).multilineTextAlignment(.center)
-                    .padding(.horizontal,10).padding(.vertical,3).background(.black.opacity(0.55),in:Capsule())
+                    .padding(.horizontal,10).padding(.vertical,3).background(.regularMaterial,in:Capsule())
             }
         }
     }
@@ -150,7 +174,7 @@ struct RecorderView: View {
             let optical = effectsOpen && camera.showsOpticalInspector && !frameToolActive
             let inspectorWidth = min(360, geometry.size.width * 0.45)
             let inspectorHeight = optical ? min(340, geometry.size.height * 0.45) :
-                min(geometry.size.height, effectsExpanded ? geometry.size.height * 0.85 : 340)
+                min(geometry.size.height, 340)
             let sideInset = optical && landscape ? inspectorWidth + 12 : 0
             let bottomInset = frameToolActive ? toolHeight + 16 : optical && !landscape ? inspectorHeight + 12 : 0
             let previewSpace = CGSize(width: max(1, geometry.size.width - sideInset),
@@ -207,7 +231,7 @@ struct RecorderView: View {
                         .ignoresSafeArea()
                 }
 
-                Group {
+                RecorderGlassContainer {
                 if landscape {
                     HStack(alignment: .center, spacing: 16) {
                         if controlsOnLeft { captureRail }
@@ -255,14 +279,11 @@ struct RecorderView: View {
                 }.opacity(effectsOpen || adjustingHorizon ? 0 : 1).allowsHitTesting(!effectsOpen && !adjustingHorizon)
             }
             .overlay(alignment: landscape && !frameToolActive ? (controlsOnLeft ? .leading : .trailing) : .bottom) {
-                if effectsOpen {
-                    LiveEffectsPanel(camera:camera,expanded:$effectsExpanded,canExpand:!landscape && !frameToolActive && !optical,onClose:closeEffects)
+                if effectsNeedOverlay {
+                    LiveEffectsPanel(camera: camera, path: $effectsPath, selected: $selectedLiveEffect, onClose: closeEffects)
                         .frame(width:frameToolActive ? min(520,geometry.size.width) : landscape ? inspectorWidth : geometry.size.width,
                                height:frameToolActive ? toolHeight : landscape ? geometry.size.height : inspectorHeight)
-                        .background(Color(white:0.06),in:RoundedRectangle(cornerRadius:20))
-                        .clipShape(RoundedRectangle(cornerRadius:20))
-                        .overlay(RoundedRectangle(cornerRadius:20).strokeBorder(.white.opacity(0.12)))
-                        .shadow(color:.black.opacity(0.35),radius:16)
+                        .recorderPanel()
                         .padding(landscape && !frameToolActive ? (controlsOnLeft ? .leading : .trailing) : .bottom,8)
                 }
             }
@@ -295,11 +316,11 @@ struct RecorderView: View {
                             ForEach(DualCameraLayout.Mode.allCases) { mode in
                                 Button { var value = camera.dualLayout; value.mode = mode; camera.updateDualLayout(value) } label: {
                                     Image(systemName: mode.icon).font(.title3).frame(width: 48, height: 44)
-                                        .background(camera.dualLayout.mode == mode ? .cyan.opacity(0.4) : .clear, in: RoundedRectangle(cornerRadius: 10))
+                                        .background(camera.dualLayout.mode == mode ? YouRecStyle.accent.opacity(0.4) : .clear, in: RoundedRectangle(cornerRadius: 10))
                                 }.accessibilityLabel(mode.title).accessibilityIdentifier("recorder.layout." + mode.rawValue)
                             }
                             Button("Done") { dualLayoutEditing = false }.font(.subheadline.weight(.semibold)).frame(minWidth: 48, minHeight: 44)
-                        }.padding(4).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+                        }.padding(4).recorderGlass(in: RoundedRectangle(cornerRadius: 18), fallback: .ultraThinMaterial)
                         if camera.dualLayout.mode == .floating {
                             HStack(spacing: 4) {
                                 ForEach([false, true], id: \.self) { round in
@@ -308,10 +329,10 @@ struct RecorderView: View {
                                     } label: {
                                         Label(round ? "Circle" : "Rectangle", systemImage: round ? "circle" : "rectangle")
                                             .font(.subheadline).padding(.horizontal, 12).frame(minHeight: 44)
-                                            .background(camera.dualLayout.isRound == round ? .cyan.opacity(0.4) : .clear, in: RoundedRectangle(cornerRadius: 10))
+                                            .background(camera.dualLayout.isRound == round ? YouRecStyle.accent.opacity(0.4) : .clear, in: RoundedRectangle(cornerRadius: 10))
                                     }.accessibilityIdentifier("recorder.insetShape." + (round ? "circle" : "rectangle"))
                                 }
-                            }.padding(4).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+                            }.padding(4).recorderGlass(in: RoundedRectangle(cornerRadius: 18), fallback: .ultraThinMaterial)
                         }
                         Text(dualLayoutHint)
                             .font(.caption).padding(6).background(.black.opacity(0.65), in: Capsule())
@@ -322,12 +343,29 @@ struct RecorderView: View {
             .coordinateSpace(name: "recorderControls")
             .foregroundStyle(.white)
             .buttonStyle(.plain)
-            .accessibilityHidden(settingsOpen)
-            .overlay {
-                if settingsOpen {
-                    CameraSettings(camera: camera, frontLightEnabled: $frontLightEnabled, adjustingHorizon: $adjustingHorizon, project: project,
-                                   landscape: landscape, close: { settingsOpen = false })
+            .overlay(alignment: .bottom) {
+                if adjustingHorizon {
+                    RecorderHorizonAnglePanel(camera: camera) {
+                        adjustingHorizon = false
+                        settingsDetent = .large
+                        settingsOpen = true
+                    }.frame(maxWidth: 420).padding(12)
                 }
+            }
+            .sheet(isPresented: $settingsOpen) {
+                CameraSettings(camera: camera, frontLightEnabled: $frontLightEnabled,
+                               adjustHorizon: { settingsOpen = false; adjustingHorizon = true },
+                               close: { settingsOpen = false })
+                    .presentationDetents([.height(430), .large], selection: $settingsDetent)
+                    .presentationDragIndicator(.visible)
+                    .presentationContentInteraction(.resizes)
+            }
+            .sheet(isPresented: $effectsSheetOpen, onDismiss: effectsSheetDismissed) {
+                LiveEffectsPanel(camera: camera, path: effectsSheetPath, selected: $selectedLiveEffect, onClose: closeEffects)
+                    .presentationDetents([.height(380), .large], selection: $effectsDetent)
+                    .presentationDragIndicator(.visible)
+                    .presentationContentInteraction(.resizes)
+                    .presentationBackgroundInteraction(.enabled(upThrough: .height(380)))
             }
         }
         .statusBarHidden()
@@ -335,9 +373,14 @@ struct RecorderView: View {
         .onChange(of: camera.dualActive) { _, active in
             if active { zoomOpen = false } else { dualLayoutEditing = false }
         }
-        .onChange(of:camera.positioningEffectID) { _,id in if id != nil {effectsExpanded=false} }
-        .onChange(of:camera.effectColorPick) { _,id in if id != nil { effectsExpanded=false } }
-        .onChange(of:camera.cleanPlateProgress) { _,progress in if progress != nil { effectsExpanded=false } }
+        .onChange(of: adjustingHorizon) { _, active in camera.previewHorizonAngle(active) }
+        .onChange(of: effectsNeedOverlay) { _, overlay in
+            guard effectsOpen else { return }
+            if overlay {
+                if effectsSheetOpen { suspendingEffectsSheet = true; effectsSheetOpen = false }
+                effectsDetent = .height(380)
+            } else if !suspendingEffectsSheet { effectsSheetOpen = true }
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
             if scenePhase == .active { evaluateCameraTurn() }
         }
@@ -354,6 +397,8 @@ struct RecorderView: View {
             } else { evaluateCameraTurn() }
         }
         .onDisappear {
+            if effectsOpen { closeEffects() }
+            if adjustingHorizon { adjustingHorizon = false; camera.previewHorizonAngle(false) }
             UIDevice.current.endGeneratingDeviceOrientationNotifications()
             RecordingAppDelegate.setOrientationLock(nil)
         }
@@ -415,7 +460,7 @@ struct RecorderView: View {
             Label(title, systemImage: icon)
                 .lineLimit(1).font(.system(size: 11, weight: .medium))
                 .padding(.horizontal, 10).frame(minHeight: 32)
-                .background(.black.opacity(0.28), in: Capsule())
+                .recorderGlass(in: Capsule(), interactive: true, fallback: Color.black.opacity(0.28))
                 .frame(minHeight: 44)
         }
     }
@@ -434,12 +479,13 @@ struct RecorderView: View {
     }
     private func topBar(compact: Bool) -> some View {
         let plate = controlPlate
-        let activePlate = Color(red: 0.06, green: 0.26, blue: 0.31).opacity(frontLightEnabled ? 1 : 0.85)
+        let activePlate = YouRecStyle.accent.opacity(frontLightEnabled ? 1 : 0.3)
         let hasFootage = project?.hasSourceMedia == true
         let clockPlate: Color
         if recording { clockPlate = red.opacity(0.8) }
         else if hasFootage && !camera.busy { clockPlate = Color(red: 0.59, green: 0.11, blue: 0.16) }
         else { clockPlate = camera.state == .paused ? .black.opacity(0.65) : plate }
+        let clockTint: Color? = recording ? red : hasFootage && !camera.busy ? Color(red: 0.59, green: 0.11, blue: 0.16) : nil
         let projectDuration = project?.edit.duration ?? 0
         return HStack(spacing: compact ? 4 : 8) {
             Button { recordingAudioOpen = true            } label: {
@@ -458,13 +504,18 @@ struct RecorderView: View {
                             .font(.system(size: 9, weight: .medium)).lineLimit(1).frame(width: 64)
                     }
                 }.font(.caption).padding(.horizontal, compact ? 6 : 10).frame(height: 44)
-                    .background(camera.microphoneID.isEmpty && !frontLightEnabled ? .orange.opacity(0.22) : plate, in: Capsule())
                     .foregroundStyle(camera.microphoneID.isEmpty ? .orange : .white)
+                    .recorderGlass(in: Capsule(), tint: camera.microphoneID.isEmpty ? .orange.opacity(0.22) : nil,
+                                   interactive: true,
+                                   fallback: camera.microphoneID.isEmpty && !frontLightEnabled ? .orange.opacity(0.22) : plate)
+                    .contentShape(Capsule())
             }
             .disabled(camera.busy)
             .popover(isPresented: $recordingAudioOpen) {
                 RecordingAudioControls(camera: camera, readings: camera.readings)
-                    .presentationCompactAdaptation(.popover)
+                    .presentationCompactAdaptation(.sheet)
+                    .presentationDetents([.height(560)]).presentationDragIndicator(.hidden)
+                    .presentationContentInteraction(.scrolls)
             }
             .accessibilityIdentifier("recorder.microphone")
             .accessibilityLabel("Microphone: \(camera.microphoneName)").accessibilityValue(camera.microphoneName)
@@ -472,40 +523,52 @@ struct RecorderView: View {
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 let elapsed = camera.startedAt.map { max(0, context.date.timeIntervalSince($0)) } ?? 0
                 let duration = recorderClock(projectDuration + elapsed)
-                HStack(spacing: 7) {
-                    if camera.busy { ProgressView().tint(.white).scaleEffect(0.7) }
-                    else if recording && !compact { Text("REC").font(.system(size: 10, weight: .bold)).foregroundStyle(.white) }
-                    else if camera.state == .paused {
-                        if compact { Image(systemName: "pause.fill").font(.caption2).foregroundStyle(.yellow) }
-                        else { Text("PAUSED").font(.system(size: 10, weight: .bold)).foregroundStyle(.yellow) }
+                VStack(spacing: 1) {
+                    HStack(spacing: 7) {
+                        if camera.busy { ProgressView().tint(.white).scaleEffect(0.7) }
+                        else if recording && !compact { Text("REC").font(.system(size: 10, weight: .bold)).foregroundStyle(.white) }
+                        else if camera.state == .paused {
+                            if compact { Image(systemName: "pause.fill").font(.caption2).foregroundStyle(.yellow) }
+                            else { Text("PAUSED").font(.system(size: 10, weight: .bold)).foregroundStyle(.yellow) }
+                        }
+                        Text(camera.busy ? camera.state.rawValue : duration)
+                            .font(.system(.subheadline, design: .monospaced).weight(.semibold))
+                            .lineLimit(1).minimumScaleFactor(0.8)
                     }
-                    Text(camera.busy ? camera.state.rawValue : duration)
-                        .font(.system(.subheadline, design: .monospaced).weight(.semibold))
-                        .lineLimit(1).minimumScaleFactor(0.8)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(hasFootage && camera.state == .idle ? "Ready to continue recording" : camera.state.rawValue)
+                    .accessibilityValue(camera.busy ? "" : duration)
+                    .accessibilityIdentifier("recorder.projectDuration")
+                    if let project {
+                        Text(project.title).font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.8)).lineLimit(1).truncationMode(.middle)
+                            .frame(maxWidth: compact ? 120 : 180)
+                            .accessibilityIdentifier("recorder.projectTitle")
+                    }
                 }
                 .frame(minWidth: compact ? 52 : 80, minHeight: 38)
                 .padding(.horizontal, compact ? 6 : 10)
-                .background(clockPlate, in: Capsule())
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(hasFootage && camera.state == .idle ? "Ready to continue recording" : camera.state.rawValue)
-                .accessibilityValue(camera.busy ? "" : duration)
-                .accessibilityIdentifier("recorder.projectDuration")
+                .recorderGlass(in: Capsule(), tint: clockTint, fallback: clockPlate)
             }
             Spacer(minLength: 4)
-            Button { effectsOpen=true } label: {
+            Button(action: openEffects) {
                 Image(systemName:"sparkles").font(.system(size:18,weight:.medium)).frame(width:44,height:44)
-                    .background(camera.videoEffects.contains(where: \.enabled) ? activePlate : plate, in: Circle())
+                    .recorderGlass(in: Circle(), tint: camera.videoEffects.contains(where: \.enabled) ? YouRecStyle.accent.opacity(0.3) : nil,
+                                   interactive: true, fallback: camera.videoEffects.contains(where: \.enabled) ? activePlate : plate)
+                    .contentShape(Circle())
             }.disabled(camera.hasActiveTake).accessibilityLabel("Live video effects").accessibilityValue(camera.effectQualityMessage == nil ? "Full quality" : "Adaptive quality").accessibilityIdentifier("recorder.videoEffects")
-            Button { dualLayoutEditing = false; settingsOpen = true } label: {
+            Button { dualLayoutEditing = false; settingsDetent = .height(430); settingsOpen = true } label: {
                 Image(systemName: "slider.horizontal.3").font(.system(size: 18, weight: .medium))
                     .frame(width: 44, height: 44)
-                    .background(camera.dualActive ? activePlate : plate, in: Circle())
-                    .foregroundStyle(camera.dualActive ? .cyan : .white)
+                    .foregroundStyle(camera.dualActive ? YouRecStyle.accent : .white)
+                    .recorderGlass(in: Circle(), tint: camera.dualActive ? YouRecStyle.accent.opacity(0.3) : nil,
+                                   interactive: true, fallback: camera.dualActive ? activePlate : plate)
                     .overlay(alignment: .bottomTrailing) {
                         if !camera.dualActive && (frontLightEnabled || camera.faceFollowEnabled || camera.singleStabilizationActive || (camera.horizonEnabled && camera.horizonUsesRear)) {
-                            Circle().fill(.cyan).frame(width: 6, height: 6).padding(7)
+                            Circle().fill(YouRecStyle.accent).frame(width: 6, height: 6).padding(7)
                         }
                     }
+                    .contentShape(Circle())
             }.accessibilityLabel("Camera settings")
                 .accessibilityValue((camera.dualActive ? "Two cameras, " : "Single camera, ") + camera.activeColorMode.title)
                 .accessibilityIdentifier("recorder.settings")
@@ -519,7 +582,7 @@ struct RecorderView: View {
                 }.accessibilityLabel("Swap cameras").accessibilityIdentifier("recorder.dualSwap")
                 Button { dualLayoutEditing.toggle() } label: {
                     Label("Layout", systemImage: camera.dualLayout.mode.icon).font(.subheadline).padding(.horizontal, 8).frame(minHeight: 44)
-                        .background(dualLayoutEditing ? .cyan.opacity(0.3) : .clear, in: Capsule())
+                        .background(dualLayoutEditing ? YouRecStyle.accent.opacity(0.3) : .clear, in: Capsule())
                 }.accessibilityIdentifier("recorder.dualLayout")
             } else {
             Button { camera.flipCamera() } label: {
@@ -561,7 +624,8 @@ struct RecorderView: View {
             }
         }
         .padding(.horizontal, 5)
-        .background(.ultraThinMaterial.opacity(0.85), in: Capsule())
+        // One shared surface; the controls inside must not stack glass layers.
+        .recorderGlass(in: Capsule(), fallback: .ultraThinMaterial.opacity(0.85))
         .fixedSize(horizontal: false, vertical: true)
     }
     private var selectedCameraName: String {
@@ -592,41 +656,53 @@ struct RecorderView: View {
                         .fill(red).frame(width: recording ? 30 : 66, height: recording ? 30 : 66)
                 }
             }
+            .frame(width: 80, height: 80)
+            .recorderGlass(in: Circle(), interactive: true, fallback: Color.clear)
             .frame(width: shutterSize, height: shutterSize)
             .contentShape(Rectangle())
-            .shadow(color: .black.opacity(0.16), radius: 6, y: 2)
         }
         .disabled(!recording && (!camera.ready || camera.busy || camera.switchingCamera))
         .accessibilityLabel(recording ? "Stop recording" : camera.state == .paused ? "Resume recording" : "Record into this project")
         .accessibilityIdentifier("recorder.record")
         .accessibilityValue(project?.title ?? "New project")
     }
+    private func destinationButton(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 5) {
+                Image(systemName: symbol).font(.system(size: 21, weight: .medium))
+                Text(title).font(.system(size: 11, weight: .semibold))
+            }
+            .frame(width: 76, height: 64)
+            .recorderGlass(in: RoundedRectangle(cornerRadius: 20), interactive: true, fallback: controlPlate)
+            .contentShape(Rectangle())
+        }
+    }
     private var libraryButton: some View {
-        Button(action: openProjects) {
-            Image(systemName: "square.stack").font(.system(size: 22, weight: .regular))
-                .frame(width: 52, height: 52).background(controlPlate, in: RoundedRectangle(cornerRadius: 15))
-                .contentShape(Rectangle())
-        }.disabled(camera.hasActiveTake).accessibilityLabel("Projects")
+        destinationButton("Projects", symbol: "folder", action: openProjects)
+            .disabled(camera.hasActiveTake).accessibilityLabel("Projects")
+            .accessibilityHint("Browse your saved video projects")
+            .accessibilityIdentifier("recorder.projects")
     }
     @ViewBuilder private var secondaryButton: some View {
         if recording {
             Button { camera.stop(pause: true) } label: {
                 Image(systemName: "pause.fill").font(.system(size: 20, weight: .semibold))
-                    .frame(width: 52, height: 52).background(controlPlate, in: Circle())
+                    .frame(width: 52, height: 52)
+                    .recorderGlass(in: Circle(), interactive: true, fallback: controlPlate)
                     .contentShape(Rectangle())
             }.accessibilityLabel("Pause recording")
         } else if camera.state == .paused {
             Button { camera.finishPausedTake() } label: {
                 Image(systemName: "stop.fill").font(.system(size: 20, weight: .semibold))
-                    .frame(width: 52, height: 52).background(controlPlate, in: Circle())
+                    .frame(width: 52, height: 52)
+                    .recorderGlass(in: Circle(), interactive: true, fallback: controlPlate)
                     .contentShape(Rectangle())
             }.accessibilityLabel("Finish paused recording")
         } else {
-            Button(action: openEditor) {
-                Image(systemName: "scissors").font(.system(size: 22, weight: .regular))
-                    .frame(width: 52, height: 52).background(controlPlate, in: Circle())
-                    .contentShape(Rectangle())
-            }.disabled(camera.busy).accessibilityLabel("Edit this project")
+            destinationButton("Edit video", symbol: "scissors", action: openEditor)
+                .disabled(camera.busy).accessibilityLabel("Edit this project")
+                .accessibilityHint("Open this project's editing timeline")
+                .accessibilityIdentifier("recorder.editor")
         }
     }
     private func warningBanner(_ warning: String) -> some View {
@@ -644,13 +720,10 @@ struct RecorderView: View {
 private struct CameraSettings: View {
     @ObservedObject var camera: CaptureController
     @Binding var frontLightEnabled: Bool
-    @Binding var adjustingHorizon: Bool
-    let project: Project?
-    let landscape: Bool
+    let adjustHorizon: () -> Void
     let close: () -> Void
     @Environment(\.dynamicTypeSize) private var typeSize
     @State private var help: String?
-    @State private var moreSettings = false
     private var pair: DualCameraPair? { camera.dualPairs.first { $0.id == camera.dualPairID } ?? camera.dualPairs.first }
     private var first: AVCaptureDevice? { camera.dualLayout.swapped ? pair?.second : pair?.first }
     private var second: AVCaptureDevice? { camera.dualLayout.swapped ? pair?.first : pair?.second }
@@ -680,121 +753,59 @@ private struct CameraSettings: View {
         if !camera.dualActive || next.id != camera.dualPairID { camera.setTwoCameras(true, pairID: next.id) }
     }
     var body: some View {
-        GeometryReader { geometry in
-            let size = geometry.size
-            let quickWidth = landscape ? min(496, size.width * 0.70) : size.width
-            let quickHeight: CGFloat = landscape || typeSize.isAccessibilitySize ? size.height :
-                min(size.height, camera.dualActive ? 464 : 388)
-            ZStack(alignment: landscape ? .trailing : .bottom) {
-                Color.black.opacity(adjustingHorizon ? 0 : moreSettings ? 1 : 0.25).ignoresSafeArea()
-                    .onTapGesture { close() }.accessibilityHidden(true)
-                if adjustingHorizon {
-                    VStack {
-                        Spacer()
-                        horizonAnglePanel.frame(maxWidth: 420)
-                    }.padding(12).frame(maxWidth: .infinity)
-                } else {
-                    navigation
-                        .frame(width: moreSettings ? size.width : quickWidth - 12,
-                               height: moreSettings ? size.height : quickHeight - 12)
-                        .background(Color(uiColor: .secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: moreSettings ? 0 : 20))
-                        .overlay {
-                            if !moreSettings {
-                                RoundedRectangle(cornerRadius: 20).strokeBorder(.white.opacity(0.12))
-                                    .allowsHitTesting(false).accessibilityHidden(true)
+        NavigationStack {
+            Form {
+                Section("Camera assists") {
+                    RecorderGlassContainer {
+                        if typeSize.isAccessibilitySize { assists(columns: 1) }
+                        else {
+                            ViewThatFits(in: .horizontal) {
+                                assists(columns: 4).frame(minWidth: 330)
+                                assists(columns: 2)
                             }
                         }
-                        .padding(moreSettings ? 0 : 6)
+                    }
+                    .padding(.horizontal, 2).padding(.vertical, 6)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                    .listRowBackground(Color.clear)
                 }
+                Section {
+                    cameras
+                } header: {
+                    Text("Cameras")
+                } footer: {
+                    if camera.dualActive { Text("1080p · 30 fps") }
+                    else if !supported { Text("Two-camera capture is unavailable on this device.") }
+                }
+                Section {
+                    RecordingColorControls(camera: camera)
+                        .padding(.horizontal, 2).padding(.vertical, 6)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                        .listRowBackground(Color.clear)
+                } header: {
+                    Text("Recording color")
+                } footer: {
+                    Text(RecordingColorControls.note(for: camera))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("recorder.colorNotice")
+                }
+                RecorderSettings(camera: camera, adjustHorizon: adjustHorizon)
+            }
+            .accessibilityIdentifier("recorder.settingsControls")
+            .navigationTitle("Camera settings").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                RecorderCloseToolbar(identifier: "recorder.settingsDone", action: close)
             }
         }
-        .environment(\.colorScheme, .dark)
-        .tint(.cyan)
-        .accessibilityAddTraits(.isModal)
-        .onChange(of: adjustingHorizon) { _, active in camera.previewHorizonAngle(active) }
-        .onDisappear { if adjustingHorizon { adjustingHorizon = false; camera.previewHorizonAngle(false) } }
-        .accessibilityAction(.escape) { if adjustingHorizon { adjustingHorizon = false } else if moreSettings { moreSettings = false } else { close() } }
+        .environment(\.colorScheme, .dark).tint(YouRecStyle.accent)
+        .accessibilityAction(.escape, close)
         .alert("Camera assist", isPresented: Binding(get: { help != nil }, set: { if !$0 { help = nil } })) {
             Button("OK", role: .cancel) { help = nil }
         } message: { Text(help ?? "") }
     }
 
-    private var navigation: some View {
-        NavigationStack {
-            GeometryReader { geometry in
-                let wide = geometry.size.width >= 458 && !typeSize.isAccessibilitySize
-                ScrollView {
-                    if wide {
-                        HStack(alignment: .top, spacing: 16) {
-                            VStack(alignment: .leading, spacing: 14) { assists(columns: 2); RecordingColorControls(camera: camera) }
-                                .frame(width: (geometry.size.width - 56) * 0.55)
-                            cameras(sideBySide: false).frame(maxWidth: .infinity)
-                        }
-                        .padding(.horizontal, 20).padding(.vertical, 8)
-                    } else {
-                        VStack(alignment: .leading, spacing: 12) {
-                            assists(columns: geometry.size.width >= 354 && typeSize <= .large ? 4 : 2)
-                            cameras(sideBySide: !typeSize.isAccessibilitySize)
-                            RecordingColorControls(camera: camera)
-                        }.padding(.horizontal, 20).padding(.vertical, 8)
-                    }
-                }.scrollBounceBehavior(.basedOnSize)
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                VStack(spacing: 0) {
-                    Divider()
-                    Button { moreSettings = true } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: "gearshape")
-                            Text("More settings").fontWeight(.medium)
-                            Spacer()
-                            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
-                        }.frame(minHeight: 48).contentShape(Rectangle())
-                    }.buttonStyle(.plain).padding(.horizontal, 20)
-                        .accessibilityIdentifier("recorder.moreSettings")
-                }.background(.bar)
-            }
-            .navigationTitle("Camera settings").navigationBarTitleDisplayMode(.inline)
-            .navigationDestination(isPresented: $moreSettings) {
-                RecorderSettings(camera: camera, project: project, adjustHorizon: { adjustingHorizon = true })
-                    .navigationTitle("More settings").navigationBarTitleDisplayMode(.inline)
-                    .toolbar { closeButton }
-            }
-            .toolbar { closeButton }
-        }
-    }
-
-    private var closeButton: some ToolbarContent {
-        ToolbarItem(placement: .confirmationAction) {
-            Button("Done", action: close).accessibilityIdentifier("recorder.settingsDone")
-        }
-    }
-
-    private var horizonAnglePanel: some View {
-        let size = camera.previewCanvas ?? CGSize(width: 1920, height: 1080)
-        let scale = HorizonFraming.scale(maxDegrees: camera.horizonDegrees, size: size)
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text("Max angle").font(.headline)
-                Text(camera.horizonDegrees.formatted() + "°").font(.headline.monospacedDigit()).foregroundStyle(.cyan)
-                Spacer()
-                Button("Done") { adjustingHorizon = false }.frame(minWidth: 48, minHeight: 44)
-                    .accessibilityIdentifier("recorder.levelAngleDone")
-            }
-            Slider(value: Binding(get: { camera.horizonDegrees }, set: camera.setHorizonDegrees),
-                   in: HorizonFraming.degreeRange, step: 0.5)
-                .accessibilityLabel("Max angle").accessibilityValue(camera.horizonDegrees.formatted() + " degrees")
-                .accessibilityIdentifier("recorder.levelAngleSlider")
-            Text(scale.formatted(.number.precision(.fractionLength(2))) + (camera.horizonEnabled ? "× framing" : "× framing · Preview only, Level horizon is off"))
-                .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 16).padding(.bottom, 12)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
-    }
-
     private func assists(columns: Int) -> some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: typeSize.isAccessibilitySize ? 1 : columns), spacing: 8) {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: columns), spacing: 8) {
             assist("Stabilize", symbol: "viewfinder", on: camera.stabilizationEnabled,
                    disabled: !canChange || (!camera.dualActive && !camera.singleStabilizationSupported && !camera.stabilizationEnabled),
                    identifier: "recorder.dualStabilization", status: camera.stabilizationStatus,
@@ -802,7 +813,7 @@ private struct CameraSettings: View {
             assist("Level horizon", symbol: "level", on: camera.horizonEnabled && camera.horizonUsesRear,
                    disabled: !canChange || !camera.horizonUsesRear || !camera.canLevelHorizon,
                    identifier: "recorder.levelHorizon",
-                   explanation: "Keeps small tilts level on rear cameras using a fixed crop. Adjust Max angle in More settings before a take or while paused.") {
+                   explanation: "Keeps small tilts level on rear cameras using a fixed crop. Adjust Max angle in Camera settings before a take or while paused.") {
                 camera.setHorizonEnabled(!camera.horizonEnabled)
             }
             assist("Follow face", symbol: "face.dashed", on: camera.faceFollowEnabled, disabled: !camera.ready || camera.busy || camera.switchingCamera,
@@ -816,17 +827,13 @@ private struct CameraSettings: View {
         }
     }
 
-    private func cameras(sideBySide: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+    private var cameras: some View {
+        Group {
             Toggle("Use two cameras", isOn: Binding(get: { camera.dualActive }, set: { camera.setTwoCameras($0) }))
-                .font(.subheadline.weight(.semibold)).tint(.cyan).frame(minHeight: 44)
                 .accessibilityIdentifier("recorder.dualEnabled").disabled(!canChange || !supported)
             if camera.dualActive {
-                if sideBySide { HStack(spacing: 8) { cameraMenu(firstSlot: true, sideBySide: true); cameraMenu(firstSlot: false, sideBySide: true) } }
-                else { cameraMenu(firstSlot: true, sideBySide: false); cameraMenu(firstSlot: false, sideBySide: false) }
-                Text("1080p · 30 fps").font(.caption).foregroundStyle(.secondary)
-            } else if !supported {
-                Text("Two-camera capture is unavailable on this device.").font(.caption).foregroundStyle(.secondary)
+                cameraMenu(firstSlot: true)
+                cameraMenu(firstSlot: false)
             }
             if camera.switchingCamera { ProgressView().frame(maxWidth: .infinity) }
         }
@@ -834,20 +841,22 @@ private struct CameraSettings: View {
     private func assist(_ title: String, symbol: String, on: Bool, disabled: Bool, identifier: String, status: String = "", explanation: String, action: @escaping () -> Void) -> some View {
         let details = status.isEmpty ? explanation : status + "\n\n" + explanation
         return Button { if help == nil { action(); UISelectionFeedbackGenerator().selectionChanged() } } label: {
-            VStack(spacing: 5) {
-                Image(systemName: symbol).font(.system(size: 21, weight: .medium))
-                Text(title).font(.caption.weight(.semibold))
-            }.frame(maxWidth: .infinity, minHeight: 62)
-                .foregroundStyle(on ? Color.cyan : Color.white)
-                .background(on ? Color.cyan.opacity(0.18) : Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
-                .overlay(alignment: .topTrailing) { if on { Image(systemName: "checkmark.circle.fill").font(.caption2).foregroundStyle(.cyan).padding(6) } }
-                .contentShape(Rectangle())
+            VStack(spacing: 8) {
+                Image(systemName: symbol).font(.system(size: 21, weight: .medium)).frame(height: 24)
+                Text(title).font(.caption.weight(.medium))
+            }
+            .frame(maxWidth: .infinity, minHeight: 68)
+            .foregroundStyle(on ? YouRecStyle.accent : Color.white)
+            .recorderGlass(in: RoundedRectangle(cornerRadius: 14), tint: on ? YouRecStyle.accent.opacity(0.25) : nil,
+                           interactive: true, fallback: on ? YouRecStyle.accent.opacity(0.18) : Color.white.opacity(0.07))
+            .overlay(alignment: .topTrailing) { if on { Image(systemName: "checkmark.circle.fill").font(.caption2).foregroundStyle(YouRecStyle.accent).padding(6) } }
+            .contentShape(Rectangle())
         }.buttonStyle(.plain).disabled(disabled)
             .highPriorityGesture(LongPressGesture(minimumDuration: 0.5).onEnded { _ in help = details })
             .accessibilityLabel(title).accessibilityValue(on ? "On" : "Off").accessibilityAddTraits(.isToggle)
             .accessibilityAction(named: "Explain setting") { help = details }.accessibilityIdentifier(identifier)
     }
-    private func cameraMenu(firstSlot: Bool, sideBySide: Bool) -> some View {
+    private func cameraMenu(firstSlot: Bool) -> some View {
         let selection = firstSlot ? first : second
         return Menu {
             ForEach(firstSlot ? devices : partners, id: \.uniqueID) { device in
@@ -856,29 +865,44 @@ private struct CameraSettings: View {
                 }
             }
         } label: {
-            if sideBySide {
-                HStack(spacing: 6) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(firstSlot ? "First" : "Second").font(.caption2).foregroundStyle(.secondary)
-                        Text(selection.map(DualCameraPair.name) ?? "Camera").font(.subheadline).lineLimit(1).minimumScaleFactor(0.8)
-                    }
-                    Spacer(minLength: 0)
-                    Image(systemName: "chevron.up.chevron.down").font(.caption)
-                }.padding(.horizontal, 12).frame(height: 48)
-                    .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
-            } else {
             HStack(spacing: 8) {
-                Text(firstSlot ? "First" : "Second").foregroundStyle(.secondary).frame(width: 52, alignment: .leading)
-                Text(selection.map(DualCameraPair.name) ?? "Camera").lineLimit(1)
-                Spacer(minLength: 0)
+                Text(firstSlot ? "First camera" : "Second camera").foregroundStyle(.primary)
+                Spacer()
+                Text(selection.map(DualCameraPair.name) ?? "Camera")
                 Image(systemName: "chevron.up.chevron.down").font(.caption)
-            }.font(.subheadline).padding(.horizontal, 12).frame(height: 48)
-                .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
             }
         }.menuOrder(.fixed).foregroundStyle(.primary).disabled(!canChange)
             .accessibilityLabel(firstSlot ? "First camera" : "Second camera")
             .accessibilityValue(selection.map(DualCameraPair.name) ?? "Unavailable")
             .accessibilityIdentifier(firstSlot ? "recorder.dualFirst" : "recorder.dualSecond")
+    }
+}
+
+private struct RecorderHorizonAnglePanel: View {
+    @ObservedObject var camera: CaptureController
+    let close: () -> Void
+
+    var body: some View {
+        let size = camera.previewCanvas ?? CGSize(width: 1920, height: 1080)
+        let scale = HorizonFraming.scale(maxDegrees: camera.horizonDegrees, size: size)
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Max angle").font(.headline)
+                Text(camera.horizonDegrees.formatted() + "°").font(.headline.monospacedDigit()).foregroundStyle(YouRecStyle.accent)
+                Spacer()
+                Button("Done", action: close).frame(minWidth: 48, minHeight: 44)
+                    .recorderButtonStyle()
+                    .accessibilityIdentifier("recorder.levelAngleDone")
+            }
+            Slider(value: Binding(get: { camera.horizonDegrees }, set: camera.setHorizonDegrees),
+                   in: HorizonFraming.degreeRange, step: 0.5)
+                .accessibilityLabel("Max angle").accessibilityValue(camera.horizonDegrees.formatted() + " degrees")
+                .accessibilityIdentifier("recorder.levelAngleSlider")
+            Text(scale.formatted(.number.precision(.fractionLength(2))) + (camera.horizonEnabled ? "× framing" : "× framing · Preview only, Level horizon is off"))
+                .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 16).padding(.bottom, 12)
+        .recorderPanel()
     }
 }
 
@@ -940,7 +964,8 @@ private struct RecorderZoomButton: View {
     var body: some View {
         Button { withAnimation(.easeOut(duration: 0.16)) { open.toggle() } } label: {
             Text(String(format: "%.1f×", readings.zoom * camera.displayZoomMultiplier)).font(.system(size: 14, weight: .bold, design: .rounded))
-                .foregroundStyle(open ? .yellow : .white).frame(width: 58, height: 44)
+                .foregroundStyle(open ? YouRecStyle.accent : .white).frame(width: 58, height: 44)
+                .contentShape(Rectangle())
         }.disabled(!camera.ready || camera.busy).accessibilityLabel("Zoom, \((readings.zoom * camera.displayZoomMultiplier).formatted()) times")
             .accessibilityIdentifier("recorder.zoom").accessibilityValue(String(format: "%.1f", readings.zoom * camera.displayZoomMultiplier))
     }
@@ -1057,7 +1082,7 @@ private struct RecorderZoomPresets: View {
                 Text("Swipe up/down to change zoom time")
                     .font(.caption.weight(.medium)).foregroundStyle(.white)
                     .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(.black.opacity(0.8), in: Capsule())
+                    .background(.regularMaterial, in: Capsule())
                     .allowsHitTesting(false)
                     .task(id: hintID) {
                         do { try await Task.sleep(for: .seconds(2.5)) } catch { return }
@@ -1082,7 +1107,8 @@ private struct RecorderZoomPresets: View {
             }.scrollIndicators(.hidden).scrollBounceBehavior(.basedOnSize)
                 .frame(maxWidth: CGFloat(max(0, presets.count * 46 - 2)))
                 .disabled(!enabled).opacity(enabled ? 1 : 0.4)
-        }.frame(height: 48).padding(.horizontal, 6).background(.ultraThinMaterial, in: Capsule())
+        }.frame(height: 48).padding(.horizontal, 12)
+            .recorderGlass(in: Capsule(), fallback: .ultraThinMaterial)
     }
     private func select(_ zoom: Double, seconds: Double) {
         hintID = nil
@@ -1103,9 +1129,12 @@ private struct RecorderZoomPreset: View {
             Text(String(format: "%g×", zoom)).font(.system(size: 13, weight: .semibold))
             if selectsMainLens { Text("Main").font(.system(size: 9, weight: .medium)) }
         }
-            .foregroundStyle(selected ? .yellow : .white)
+            .foregroundStyle(selected ? YouRecStyle.accent : .white)
             .frame(width: 44, height: 48)
-            .background(.white.opacity(pressed ? 0.18 : 0), in: Capsule())
+            .background {
+                Circle().fill(selected ? YouRecStyle.accent.opacity(0.2) : .white.opacity(pressed ? 0.18 : 0))
+                    .frame(width: 36, height: 36)
+            }
             .contentShape(Rectangle())
             // Wait to distinguish taps, but give immediate touch feedback.
             // In particular, Instant must not fire before the second tap.
@@ -1143,12 +1172,12 @@ private struct RecorderZoomDuration: View {
             }
             Image(systemName: "chevron.up.chevron.down").font(.system(size: 8, weight: .bold))
         }
-        .foregroundStyle(seconds == 0 ? .white : .yellow).frame(width: 56, height: 48).contentShape(Rectangle())
+        .foregroundStyle(seconds == 0 ? .white : YouRecStyle.accent).frame(width: 68, height: 48).contentShape(Rectangle())
         .overlay(alignment: .topLeading) {
             if dragging {
                 Text(ZoomTransition.durationLabel(seconds)).font(.caption.monospacedDigit().bold())
                     .fixedSize().padding(.horizontal, 10).padding(.vertical, 7)
-                    .background(.regularMaterial, in: Capsule()).offset(x: 36, y: -38)
+                    .recorderGlass(in: Capsule(), fallback: .regularMaterial).offset(x: 36, y: -38)
                     .allowsHitTesting(false).accessibilityHidden(true)
             }
         }
@@ -1215,18 +1244,13 @@ private struct RecorderFocusSettings: View {
 
 private struct RecorderSettings: View {
     @ObservedObject var camera: CaptureController
-    let project: Project?
     let adjustHorizon: () -> Void
     @AppStorage("zoomTransitionSeconds") private var rampSeconds = 0.0
     @AppStorage("protectRecordingAudio") private var protectRecordingAudio = false
     @AppStorage("fitRecordedFrame") private var fitRecordedFrame = true
     private var keepFraming: Bool { camera.hasActiveTake || camera.state == .paused }
     var body: some View {
-        Form {
-            Section("This project") {
-                Text(project?.title ?? "New project")
-                Text("\(recorderClock(project?.capturedDuration ?? 0)) captured").font(.caption).foregroundStyle(.secondary)
-            }
+        Group {
             Section("Level horizon") {
                 Button(action: adjustHorizon) {
                     HStack {
@@ -1319,28 +1343,94 @@ private func recorderClock(_ seconds: Double) -> String {
 private struct RecordingAudioControls: View {
     @ObservedObject var camera: CaptureController
     let readings: CaptureReadings
-    @State private var explanation = false
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @State private var choosingInput = false
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Label("Recording volume", systemImage: "mic.fill").font(.headline).onLongPressGesture { explanation = true }
-                Spacer()
-                Button { explanation.toggle() } label: { Image(systemName: "info.circle").frame(width: 44, height: 44) }
-                    .accessibilityLabel("About recording volume")
-            }
-            RecordingGainControls(camera: camera, readings: readings)
-            Menu {
-                ForEach(camera.microphones) { mic in
-                    Button { camera.selectMicrophone(mic.id) } label: {
-                        Label(mic.name, systemImage: mic.id == camera.microphoneID ? "checkmark" : "mic")
-                    }.accessibilityIdentifier("recorder.input." + mic.id)
+        NavigationStack {
+            Form {
+                Section {
+                    Button { choosingInput = true } label: {
+                        inputLabel.frame(maxWidth: .infinity, minHeight: 52, alignment: .leading).contentShape(Rectangle())
+                    }.buttonStyle(.plain).disabled(camera.microphones.isEmpty)
+                        .accessibilityLabel("Microphone: \(camera.microphoneName)")
+                        .accessibilityIdentifier("recorder.gainMicrophone")
+                } header: { Text("Input") } footer: {
+                    Text("This selection lasts until Stop. Your saved microphone priority is in Camera settings.")
                 }
-            } label: { Label(camera.microphoneName, systemImage: "chevron.down").font(.subheadline).frame(minHeight: 44) }.accessibilityIdentifier("recorder.gainMicrophone")
-            if explanation {
-                Text("Changes the volume of new recordings, including during a take. Remembered for each microphone. Red means the signal may distort; lowering gain cannot repair distortion already present in the microphone.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Section {
+                    RecordingGainControls(camera: camera, readings: readings)
+                } header: { Text("Recording volume") } footer: {
+                    Text("Changes the volume of new recordings, including during a take. Remembered for each microphone. Red means the signal may distort; lowering gain cannot repair distortion already present in the microphone.")
+                        .accessibilityIdentifier("recorder.volumeNotice")
+                }
             }
-        }.padding(18).frame(width: 310)
+            .accessibilityIdentifier("recorder.audioControls")
+            .navigationTitle("Microphone").navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(isPresented: $choosingInput) { inputPicker }
+            .toolbar { closeButton }
+        }
+        .frame(idealWidth: 360, idealHeight: 480)
+        .tint(YouRecStyle.accent).preferredColorScheme(.dark)
+    }
+
+    @ViewBuilder private var inputLabel: some View {
+        if typeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(camera.microphoneName).font(.body.weight(.semibold)).foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Label("Change microphone", systemImage: "chevron.right").font(.caption).foregroundStyle(.secondary)
+            }
+        } else {
+            HStack(spacing: 12) {
+                Image(systemName: "mic.fill").font(.title3).foregroundStyle(YouRecStyle.accent)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(camera.microphoneName).font(.body.weight(.semibold)).foregroundStyle(.primary)
+                    Text("Change microphone").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var inputPicker: some View {
+        List {
+            Section {
+                ForEach(camera.microphones) { mic in
+                    Button {
+                        camera.selectMicrophone(mic.id)
+                        choosingInput = false
+                    } label: {
+                        if typeSize.isAccessibilitySize {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(mic.name).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
+                                if mic.id == camera.microphoneID {
+                                    Label("Selected", systemImage: "checkmark").font(.caption).foregroundStyle(YouRecStyle.accent)
+                                }
+                            }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
+                        } else {
+                        HStack(spacing: 12) {
+                            Image(systemName: "mic").foregroundStyle(.secondary)
+                            Text(mic.name).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: 8)
+                            if mic.id == camera.microphoneID { Image(systemName: "checkmark").foregroundStyle(YouRecStyle.accent) }
+                        }.frame(minHeight: 44).contentShape(Rectangle())
+                        }
+                    }.buttonStyle(.plain).accessibilityLabel(mic.name)
+                        .accessibilityAddTraits(mic.id == camera.microphoneID ? .isSelected : [])
+                        .accessibilityIdentifier("recorder.input." + mic.id)
+                }
+            } header: { Text("Available inputs") } footer: {
+                Text("Choose the microphone for this take. Disconnected microphones remain in your saved priority, but cannot be selected here.")
+            }
+        }
+        .navigationTitle("Choose microphone").navigationBarTitleDisplayMode(.inline)
+        .toolbar { closeButton }
+    }
+
+    private var closeButton: some ToolbarContent {
+        RecorderCloseToolbar(identifier: "recorder.audioDone", action: { dismiss() })
     }
 }
 
@@ -1348,24 +1438,46 @@ private struct RecordingAudioControls: View {
 private struct RecordingGainControls: View {
     @ObservedObject var camera: CaptureController
     @ObservedObject var readings: CaptureReadings
+    @State private var gainDraft: Double?
     var body: some View {
         VStack(spacing: 14) {
-            HStack {
+            VStack(spacing: 3) {
                 Text(camera.recordingGainDB.formatted(.number.sign(strategy: .always()).precision(.fractionLength(1))) + " dB")
                     .font(.title3.monospacedDigit().weight(.semibold)).foregroundStyle(readings.audioClipping ? .red : .primary)
                     .accessibilityIdentifier("recorder.gainValue")
-                Spacer()
-                Button("Reset to 0") { camera.setRecordingGain(0) }.frame(minHeight: 44)
-                    .accessibilityIdentifier("recorder.gainReset")
-            }
-            Slider(value: Binding(get: { camera.recordingGainDB }, set: camera.setRecordingGain), in: RecordingGain.range, step: 0.5)
-                .tint(readings.audioClipping ? .red : .cyan).accessibilityLabel("Recording gain").accessibilityIdentifier("recorder.gain")
+                Text(camera.recordingGainDB == 0 ? "Original level" : camera.recordingGainDB < 0 ? "Reduced level" : "Boosted level")
+                    .font(.caption).foregroundStyle(.secondary)
+            }.frame(maxWidth: .infinity)
+            gainSlider
+                .tint(readings.audioClipping ? .red : YouRecStyle.accent).accessibilityLabel("Recording gain").accessibilityIdentifier("recorder.gain")
+                .accessibilityHint("Zero dB keeps the original microphone level. Drag near zero to snap to it.")
+                .accessibilityAdjustableAction { direction in
+                    gainDraft = nil
+                    camera.setRecordingGain(camera.recordingGainDB + (direction == .increment ? 0.5 : -0.5))
+                }
             HStack {
                 ProgressView(value: min(1, max(0, Double(readings.level + 60) / 60))).tint(readings.audioClipping ? .red : .green)
                 Text(readings.audioClipping ? "Clipping" : readings.audioArriving ? String(format: "%.0f dBFS", readings.level) : "No signal")
                     .font(.caption.monospacedDigit()).foregroundStyle(readings.audioClipping ? .red : .secondary)
             }
         }
+    }
+
+    private var gain: Binding<Double> {
+        Binding(get: { gainDraft ?? camera.recordingGainDB }, set: { proposed in
+            if gainDraft != nil { gainDraft = proposed }
+            let normalized = RecordingGain.normalized(proposed)
+            let value = abs(normalized) <= 1 ? 0 : normalized
+            guard value != camera.recordingGainDB else { return }
+            if value == 0 { UISelectionFeedbackGenerator().selectionChanged() }
+            camera.setRecordingGain(value)
+        })
+    }
+
+    private var gainSlider: some View {
+        Slider(value: gain, in: RecordingGain.range, step: 0.5, onEditingChanged: { editing in
+            gainDraft = editing ? camera.recordingGainDB : nil
+        })
     }
 }
 
@@ -1389,7 +1501,8 @@ private struct DualLayoutOverlay: View {
                     } label: {
                         Image(systemName: "arrow.trianglehead.2.clockwise.rotate.90")
                             .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
-                            .frame(width: 44, height: 44).background(.black.opacity(0.7), in: Circle())
+                            .frame(width: 44, height: 44)
+                            .recorderGlass(in: Circle(), interactive: true, fallback: Color.black.opacity(0.7))
                             .overlay(Circle().strokeBorder(.white.opacity(0.8), lineWidth: 1))
                             .contentShape(Circle())
                     }.position(x: size.width/2, y: size.height/2)
@@ -1400,7 +1513,8 @@ private struct DualLayoutOverlay: View {
                     let vertical = layout.mode == .sideBySide
                     Image(systemName: vertical ? "arrow.left.and.right" : "arrow.up.and.down")
                         .font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
-                        .frame(width: 44, height: 44).background(.black.opacity(0.7), in: Circle())
+                        .frame(width: 44, height: 44)
+                        .recorderGlass(in: Circle(), interactive: true, fallback: Color.black.opacity(0.7))
                         .overlay(Circle().strokeBorder(.white.opacity(0.8), lineWidth: 1))
                         .contentShape(Circle())
                         .position(x: vertical ? regions[0].maxX : size.width/2, y: vertical ? size.height/2 : regions[0].maxY)

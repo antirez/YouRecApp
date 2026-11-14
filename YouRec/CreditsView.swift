@@ -105,6 +105,7 @@ private struct LicenseText: UIViewRepresentable {
         view.font = .preferredFont(forTextStyle: .body)
         view.textColor = .label
         view.backgroundColor = .systemBackground
+        view.tintColor = UIColor(YouRecStyle.accent)
         view.textContainerInset = UIEdgeInsets(top: 16, left: 16, bottom: 24, right: 16)
         view.text = text
         view.accessibilityIdentifier = "credits.licenseText"
