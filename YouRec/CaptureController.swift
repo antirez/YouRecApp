@@ -704,7 +704,8 @@ final class CaptureController: NSObject, ObservableObject, AVCaptureVideoDataOut
     private func prepareRecorderControlFixture() {
         let widePreview = CommandLine.arguments.contains("--front-landscape-preview-test")
         let turnFixture = CommandLine.arguments.contains("--interface-turn-fixture")
-        let picture = widePreview || turnFixture ? Self.framingFixture() : nil
+        let showcase = CommandLine.arguments.contains("--liquid-glass-showcase") ? Self.showcaseFixture() : nil
+        let picture = showcase ?? (widePreview || turnFixture ? Self.framingFixture() : nil)
         let fixtureSize = picture.map { CGSize(width: CVPixelBufferGetWidth($0), height: CVPixelBufferGetHeight($0)) }
         queue.async {
             // The fixture keeps its simulated camera and meter when visiting Projects.
@@ -724,13 +725,14 @@ final class CaptureController: NSObject, ObservableObject, AVCaptureVideoDataOut
                 $0.rememberCamera("fixture-wide", front: false)
                 $0.microphoneID = "fixture-mic"; $0.microphoneName = "Built-In Microphone"
                 $0.microphones = [MicrophoneChoice(id: "fixture-mic", name: "Built-In Microphone"),
-                                  MicrophoneChoice(id: "fixture-wireless", name: "Wireless test mic")]
+                                  MicrophoneChoice(id: "fixture-wireless", name: showcase != nil ? "Studio Wireless" : "Wireless test mic")]
                 $0.meterAvailable = true; $0.focusLockSupported = true; $0.focusAdjustable = true; $0.autofocusSupported = true
                 if CommandLine.arguments.contains("--fixed-focus-fixture") {
                     $0.autofocusSupported = false; $0.focusAdjustable = false; $0.focusLockSupported = true
                 }
-                if turnFixture {
+                if turnFixture || showcase != nil {
                     $0.rotationAngle = 0
+                    if showcase != nil { $0.previewRotationAngle = 0; $0.manualFramePreview = true }
                     $0.liveEffects.requireFramePreview(true)
                 }
                 if widePreview {
@@ -750,7 +752,7 @@ final class CaptureController: NSObject, ObservableObject, AVCaptureVideoDataOut
                     if let fixtureSize {
                         // The wide fixture bypasses captureOutput. Supply the same
                         // delivered geometry while its simulated lens is selected.
-                        let canvas = $0.frontLandscape || turnFixture ? fixtureSize : nil
+                        let canvas = $0.frontLandscape || turnFixture || showcase != nil ? fixtureSize : nil
                         if $0.previewCanvas != canvas { $0.previewCanvas = canvas }
                     }
                     // Reproduce capture's frequent publication while a menu is open.
@@ -769,6 +771,17 @@ final class CaptureController: NSObject, ObservableObject, AVCaptureVideoDataOut
             }
             self.meter = timer; timer.resume()
         }
+    }
+    private static func showcaseFixture() -> CVPixelBuffer? {
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let file = documents.appendingPathComponent("RecorderShowcase/background.png")
+        guard let cg = UIImage(contentsOfFile: file.path)?.cgImage else { return nil }
+        var pixel: CVPixelBuffer?
+        guard CVPixelBufferCreate(nil, cg.width, cg.height, kCVPixelFormatType_32BGRA,
+            [kCVPixelBufferIOSurfacePropertiesKey: [:]] as CFDictionary, &pixel) == kCVReturnSuccess,
+            let pixel else { return nil }
+        CIContext().render(CIImage(cgImage: cg), to: pixel)
+        return pixel
     }
     private static func framingFixture() -> CVPixelBuffer? {
         let size = CGSize(width: 1280, height: 720)

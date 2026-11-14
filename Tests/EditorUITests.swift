@@ -2,6 +2,76 @@ import XCTest
 import ObjectiveC
 
 final class EditorUITests: XCTestCase {
+    func testLiquidGlassShowcase() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["YOUREC_RECORD_SHOWCASE"] == "1" || environment["TEST_RUNNER_YOUREC_RECORD_SHOWCASE"] == "1" else {
+            throw XCTSkip("Run explicitly with the staged simulator showcase image")
+        }
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchArguments = ["--recorder-controls-test", "--liquid-glass-showcase", "-fitRecordedFrame", "NO", "-zoomTransitionSeconds", "0",
+                               "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL", "-liveVideoEffects", "<5b5d>"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["recorder.projectTitle"].waitForExistence(timeout: 15))
+        XCTAssertEqual(app.staticTexts["recorder.projectTitle"].label, "Neon Coast")
+        func pause(_ seconds: Double = 1) { Thread.sleep(forTimeInterval: seconds) }
+        func marker(_ name: String) {
+            FileHandle.standardOutput.write(Data("YOUREC_SHOWCASE_\(name) \(Date().timeIntervalSince1970)\n".utf8))
+        }
+        func shot(_ name: String) {
+            let attachment = XCTAttachment(screenshot: app.screenshot())
+            attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
+        }
+        marker("BEGIN"); pause(2)
+        shot("Showcase camera")
+        app.buttons["recorder.zoom"].tap(); pause(1.2)
+        XCTAssertTrue(app.buttons["recorder.zoom.preset.10"].isHittable)
+        shot("Showcase zoom glass")
+        app.buttons["recorder.zoom"].tap()
+
+        app.buttons["recorder.microphone"].tap(); pause()
+        XCTAssertFalse(app.buttons["recorder.gainReset"].exists)
+        let gain = app.sliders["recorder.gain"]
+        gain.adjust(toNormalizedSliderPosition: 1); pause(0.6)
+        dragRecordingGainToZero(gain, fromUpperEnd: true); pause(1.3)
+        XCTAssertTrue(app.staticTexts["recorder.gainValue"].label.replacingOccurrences(of: ",", with: ".").contains("+0.0"))
+        shot("Showcase microphone zero detent")
+        app.buttons["recorder.gainMicrophone"].tap(); pause(0.7)
+        app.buttons["Studio Wireless"].tap(); pause(0.7)
+        app.buttons["recorder.audioDone"].tap()
+
+        app.buttons["recorder.settings"].tap(); pause(1.2)
+        shot("Showcase settings compact")
+        expandCameraSheet(in: app); pause()
+        let settingsList = app.descendants(matching: .any)["recorder.settingsControls"].firstMatch
+        revealInViewport(app.staticTexts["recorder.colorNotice"], scroll: settingsList); pause()
+        shot("Showcase camera settings typography")
+        revealInViewport(app.switches["recorder.mirrorPreview"], scroll: settingsList); pause()
+        shot("Showcase settings expanded")
+        XCTAssertFalse(app.staticTexts["This project"].exists)
+        app.buttons["recorder.settingsDone"].tap()
+
+        app.buttons["recorder.videoEffects"].tap(); pause(1.2)
+        expandLiveEffects(in: app); pause()
+        app.buttons["liveEffects.section.colorStyle"].coordinate(withNormalizedOffset: CGVector(dx: 0.55, dy: 0))
+            .withOffset(CGVector(dx: 0, dy: 3)).tap(); pause(1.2)
+        XCTAssertTrue(app.navigationBars["Color & style"].exists)
+        shot("Showcase effects navigation")
+        app.buttons["liveEffects.add.colorCorrection"].coordinate(withNormalizedOffset: CGVector(dx: 0.55, dy: 0))
+            .withOffset(CGVector(dx: 0, dy: 3)).tap(); pause()
+        app.sliders["colorCorrection.slider.exposure"].adjust(toNormalizedSliderPosition: 0.58); pause()
+        app.buttons["colorCorrection.value.exposure"].tap(); pause(0.5)
+        backFromLiveEffects(in: app); pause(0.6)
+        shot("Showcase applied effects toolbar")
+        app.buttons["liveEffects.actions"].tap(); pause()
+        shot("Showcase effects actions menu")
+        app.buttons["liveEffects.clear"].tap(); pause(0.7)
+        dismissLiveEffects(in: app); pause(2)
+        shot("Showcase closing camera")
+        marker("END")
+    }
+
     func testRecorderCreditsAndBundledLicenses() {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
@@ -11,7 +81,7 @@ final class EditorUITests: XCTestCase {
         let settings = app.buttons["recorder.settings"]
         XCTAssertTrue(settings.waitForExistence(timeout: 20))
         settings.tap()
-        app.buttons["recorder.moreSettings"].tap()
+        expandCameraSheet(in: app)
         let credits = app.buttons["recorder.credits"]
         for _ in 0..<10 {
             if credits.exists && credits.isHittable { break }
@@ -35,7 +105,7 @@ final class EditorUITests: XCTestCase {
         app.navigationBars["License notices"].buttons.element(boundBy: 0).tap()
         XCTAssertTrue(app.buttons["credits.notices"].waitForExistence(timeout: 5))
         app.navigationBars["Credits"].buttons.element(boundBy: 0).tap()
-        XCTAssertTrue(app.navigationBars["More settings"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Camera settings"].waitForExistence(timeout: 5))
     }
 
     private func revealInViewport(_ element: XCUIElement, scroll: XCUIElement, swipeX: CGFloat = 0.5) {
@@ -137,10 +207,53 @@ final class EditorUITests: XCTestCase {
         app.buttons["Cancel edit"].tap(); app.buttons["Cancel"].firstMatch.tap()
     }
 
+    private func expandSheet(in app: XCUIApplication, title: String) {
+        let bar = app.navigationBars[title]
+        XCTAssertTrue(bar.waitForExistence(timeout: 8))
+        let before = bar.frame.minY
+        guard before > app.frame.height * 0.2 else { return }
+        let grabber = bar.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0)).withOffset(CGVector(dx: 0, dy: -10))
+        grabber.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)))
+        expectation(for: NSPredicate { _, _ in bar.frame.minY < before - 80 }, evaluatedWith: bar)
+        waitForExpectations(timeout: 8)
+    }
+
+    private func expandCameraSheet(in app: XCUIApplication) { expandSheet(in: app, title: "Camera settings") }
+    private func expandLiveEffects(in app: XCUIApplication) {
+        let bar = app.navigationBars.firstMatch
+        XCTAssertTrue(bar.waitForExistence(timeout: 8))
+        expandSheet(in: app, title: bar.identifier)
+    }
+    private func backFromLiveEffects(in app: XCUIApplication) {
+        let back = app.navigationBars.buttons.matching(identifier: "BackButton").firstMatch
+        (back.exists ? back : app.navigationBars.firstMatch.buttons.element(boundBy: 0)).tap()
+    }
+    private func dismissLiveEffects(in app: XCUIApplication) {
+        let close = app.buttons["liveEffects.done"]
+        if close.exists { close.tap(); return }
+        let bar = app.navigationBars.firstMatch
+        for _ in 0..<2 {
+            guard bar.exists else { return }
+            let grabber = bar.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0)).withOffset(CGVector(dx: 0, dy: -10))
+            grabber.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98)), withVelocity: .fast, thenHoldForDuration: 0)
+            if bar.waitForNonExistence(timeout: 2) { return }
+        }
+        XCTFail("The effects sheet must dismiss through its public downward gesture")
+    }
+    private func clearLiveEffects(in app: XCUIApplication) {
+        let actions = app.buttons["liveEffects.actions"]
+        if !actions.exists, app.navigationBars.buttons.matching(identifier: "BackButton").firstMatch.exists {
+            backFromLiveEffects(in: app)
+        }
+        guard actions.exists else { return }
+        actions.tap()
+        let clear = app.buttons["liveEffects.clear"]
+        XCTAssertTrue(clear.waitForExistence(timeout: 3)); clear.tap()
+    }
     private func openMoreCameraSettings(in app: XCUIApplication) {
-        let settings = app.buttons["recorder.settings"], more = app.buttons["recorder.moreSettings"]
+        let settings = app.buttons["recorder.settings"]
         XCTAssertTrue(settings.waitForExistence(timeout: 20)); settings.tap()
-        XCTAssertTrue(more.waitForExistence(timeout: 5)); more.tap()
+        expandCameraSheet(in: app)
     }
 
     func testCameraToolbarClearsPictureEdge() {
@@ -174,6 +287,8 @@ final class EditorUITests: XCTestCase {
             XCTAssertGreaterThanOrEqual(picture.maxX - row.maxX, 11)
             XCTAssertTrue(app.buttons["recorder.settings"].isHittable)
             let library = app.buttons["Projects"], scissors = app.buttons["Edit this project"]
+            XCTAssertEqual(library.frame.width, scissors.frame.width, accuracy: 1)
+            XCTAssertEqual(library.frame.height, scissors.frame.height, accuracy: 1)
             let capture = record.frame.union(library.frame).union(scissors.frame)
             XCTAssertGreaterThanOrEqual(picture.maxY - capture.maxY, 11)
             XCTAssertGreaterThanOrEqual(capture.minX - picture.minX, 11)
@@ -222,59 +337,45 @@ final class EditorUITests: XCTestCase {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
         defer { XCUIDevice.shared.orientation = .portrait }
-        let app = XCUIApplication()
-        app.launchArguments = ["--recorder-controls-test"]; app.launch()
-        let settings = app.buttons["recorder.settings"], effects = app.buttons["recorder.videoEffects"]
-        let more = app.buttons["recorder.moreSettings"], done = app.buttons["recorder.settingsDone"]
-        let dual = app.switches["recorder.dualEnabled"], hdr = app.buttons["recorder.color.hdr"], sdr = app.buttons["recorder.color.sdr"]
-        func capture(_ name: String) {
-            let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-            shot.name = name; shot.lifetime = .keepAlways; add(shot)
-        }
-        func expect(_ element: XCUIElement, _ predicate: String) {
-            expectation(for: NSPredicate(format: predicate), evaluatedWith: element); waitForExpectations(timeout: 20)
-        }
-        XCTAssertTrue(settings.waitForExistence(timeout: 20))
-        XCTAssertFalse(app.buttons["recorder.dualCameras"].exists); XCTAssertFalse(app.buttons["recorder.colorMode"].exists)
-        XCTAssertLessThanOrEqual(effects.frame.maxX, settings.frame.minX)
-        XCTAssertGreaterThanOrEqual(settings.frame.height, 44)
-        capture("Camera toolbar")
-        settings.tap(); expect(dual, "enabled == true")
-        XCTAssertTrue(more.isHittable)
-        if dual.value as? String == "1" { dual.tap(); expect(dual, "value == '0' AND enabled == true") }
-        let initialColor = sdr.isSelected ? sdr : hdr.isSelected ? hdr : app.buttons["recorder.color.log"]
-        hdr.tap(); expect(hdr, "selected == true")
-        capture("Camera settings portrait")
-        dual.tap(); expect(dual, "value == '1' AND enabled == true")
-        XCTAssertTrue(sdr.isSelected); XCTAssertFalse(hdr.isEnabled)
-        XCTAssertTrue(app.buttons["recorder.dualFirst"].exists); XCTAssertTrue(app.buttons["recorder.dualSecond"].exists)
-        XCTAssertTrue(more.isHittable)
-        more.tap()
-        XCTAssertTrue(app.switches["recorder.mirrorPreview"].waitForExistence(timeout: 5))
-        XCTAssertFalse(sdr.isHittable)
-        let back = app.navigationBars.buttons.matching(identifier: "BackButton").firstMatch
-        (back.exists ? back : app.navigationBars.buttons.element(boundBy: 0)).tap()
-        XCTAssertTrue(more.waitForExistence(timeout: 5)); XCTAssertTrue(sdr.isSelected)
+        let app = XCUIApplication(); app.launchArguments = ["--recorder-controls-test"]; app.launch()
+        let settings = app.buttons["recorder.settings"], done = app.buttons["recorder.settingsDone"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 15)); settings.tap()
+        XCTAssertTrue(done.waitForExistence(timeout: 5))
+        XCTAssertEqual(done.label.lowercased(), "close")
+        let light = app.descendants(matching: .any)["recorder.frontLight"]
+        XCTAssertTrue(light.isHittable)
+        XCTAssertEqual(light.value as? String, "Off")
+        light.tap(); XCTAssertEqual(light.value as? String, "On")
+        light.press(forDuration: 0.7)
+        XCTAssertTrue(app.alerts["Camera assist"].waitForExistence(timeout: 3))
+        app.alerts["Camera assist"].buttons["OK"].tap()
+        XCTAssertEqual(light.value as? String, "On", "Asking for help must not toggle the setting")
+        light.tap(); XCTAssertEqual(light.value as? String, "Off")
+        XCTAssertFalse(app.staticTexts["This project"].exists)
+        XCTAssertFalse(app.buttons["recorder.moreSettings"].exists)
+        let bar = app.navigationBars["Camera settings"], collapsedTop = bar.frame.minY
+        let collapsed = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        collapsed.name = "Camera settings collapsed"; collapsed.lifetime = .keepAlways; add(collapsed)
+        expandCameraSheet(in: app)
+        XCTAssertLessThan(bar.frame.minY, collapsedTop - 80)
+        let list = app.descendants(matching: .any)["recorder.settingsControls"].firstMatch
+        revealInViewport(app.staticTexts["recorder.colorNotice"], scroll: list)
+        XCTAssertTrue(app.staticTexts["recorder.colorNotice"].isHittable)
+        let color = XCTAttachment(screenshot: app.screenshot())
+        color.name = "Camera settings typography and segmented recording color"; color.lifetime = .keepAlways; add(color)
+        let mirror = app.switches["recorder.mirrorPreview"]
+        for _ in 0..<8 { if mirror.exists && mirror.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(mirror.isHittable, "Detailed settings live in the expanded sheet")
+        XCTAssertEqual(app.buttons.matching(identifier: "recorder.settingsDone").count, 1)
+        let expanded = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        expanded.name = "Camera settings expanded"; expanded.lifetime = .keepAlways; add(expanded)
         XCUIDevice.shared.orientation = .landscapeRight
         expectation(for: NSPredicate { _, _ in app.frame.width > app.frame.height }, evaluatedWith: app); waitForExpectations(timeout: 10)
-        // Rotation leaves part of the picture visible beside the quick settings.
-        expectation(for: NSPredicate { _, _ in
-            more.exists && more.isHittable && more.frame.width < app.frame.width * 0.8 && more.frame.maxY < app.frame.maxY
-        }, evaluatedWith: more); waitForExpectations(timeout: 10)
-        XCTAssertTrue(done.isHittable); XCTAssertTrue(more.isHittable)
-        capture("Camera settings landscape with two cameras")
-        done.tap(); settings.tap()
-        XCTAssertTrue(app.buttons["recorder.dualSecond"].waitForExistence(timeout: 8))
-        XCTAssertTrue(more.isHittable)
-        capture("Camera settings opened in landscape")
-        dual.tap(); expect(dual, "value == '0' AND enabled == true"); expect(hdr, "selected == true")
-        if !initialColor.isSelected { initialColor.tap(); expect(initialColor, "selected == true") }
-        more.tap()
-        XCTAssertTrue(app.switches["recorder.mirrorPreview"].waitForExistence(timeout: 5))
-        XCTAssertEqual(app.buttons.matching(identifier: "recorder.settingsDone").count, 1)
+        XCTAssertTrue(done.isHittable)
+        done.tap(); XCTAssertTrue(settings.waitForExistence(timeout: 5)); settings.tap()
+        XCTAssertTrue(done.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["recorder.moreSettings"].exists)
         done.tap()
-        XCTAssertTrue(settings.waitForExistence(timeout: 8)); XCTAssertFalse(more.exists)
-        effects.tap(); XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 8)); app.buttons["Done"].tap()
     }
 
     func testCameraSettingsAtAccessibilityTextSize() {
@@ -282,14 +383,18 @@ final class EditorUITests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
         app.launchArguments = ["--recorder-controls-test", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
-        app.launch()
-        let settings = app.buttons["recorder.settings"], more = app.buttons["recorder.moreSettings"]
-        XCTAssertTrue(settings.waitForExistence(timeout: 15)); settings.tap()
-        XCTAssertTrue(more.waitForExistence(timeout: 5)); XCTAssertTrue(more.isHittable)
-        more.tap()
-        XCTAssertTrue(app.navigationBars["More settings"].waitForExistence(timeout: 5))
+        app.launch(); openMoreCameraSettings(in: app)
+        let notice = app.staticTexts["recorder.colorNotice"]
+        revealInViewport(notice, scroll: app.descendants(matching: .any)["recorder.settingsControls"].firstMatch)
+        XCTAssertTrue(notice.isHittable)
+        let colorNotice = XCTAttachment(screenshot: app.screenshot())
+        colorNotice.name = "Color notice wraps at accessibility text size"; colorNotice.lifetime = .keepAlways; add(colorNotice)
+        let mirror = app.switches["recorder.mirrorPreview"]
+        for _ in 0..<12 { if mirror.exists && mirror.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(mirror.isHittable)
+        XCTAssertFalse(app.buttons["recorder.moreSettings"].exists)
         app.buttons["recorder.settingsDone"].tap()
-        XCTAssertTrue(settings.isHittable)
+        XCTAssertTrue(app.buttons["recorder.settings"].isHittable)
     }
 
     func testCameraStartupPhysical() throws {
@@ -967,66 +1072,115 @@ final class EditorUITests: XCTestCase {
 
     func testLiveEffectsHeader() throws {
         continueAfterFailure = false
-        recorderReturnToPortrait = true
+        XCUIDevice.shared.orientation = .portrait
+        defer { XCUIDevice.shared.orientation = .portrait }
+        let app = XCUIApplication(); app.launchArguments = ["--recorder-controls-test", "-liveVideoEffects", "<5b5d>"]; app.launch()
+        let effects = app.buttons["recorder.videoEffects"]
+        XCTAssertTrue(effects.waitForExistence(timeout: 15)); effects.tap()
+        let done = app.buttons["liveEffects.done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 5))
+        XCTAssertEqual(done.label.lowercased(), "close")
+        XCTAssertFalse(app.buttons["Expand controls"].exists); XCTAssertFalse(app.buttons["Collapse controls"].exists)
+        let bar = app.navigationBars["Video effects"], collapsedTop = bar.frame.minY
+        expandLiveEffects(in: app)
+        XCTAssertLessThan(bar.frame.minY, collapsedTop - 80)
+        if app.buttons["liveEffects.browse"].exists { app.buttons["liveEffects.browse"].tap() }
+        app.buttons["liveEffects.section.colorStyle"].tap()
+        let category = app.navigationBars["Color & style"]
+        XCTAssertTrue(category.waitForExistence(timeout: 5))
+        XCTAssertTrue(category.staticTexts["Color & style"].exists)
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "Effects category with native navigation"; shot.lifetime = .keepAlways; add(shot)
+        backFromLiveEffects(in: app)
+        XCTAssertFalse(category.exists)
+        XCUIDevice.shared.orientation = .landscapeRight
+        expectation(for: NSPredicate { _, _ in app.frame.width > app.frame.height }, evaluatedWith: app); waitForExpectations(timeout: 10)
+        XCTAssertTrue(done.isHittable); done.tap()
+        XCTAssertTrue(effects.waitForExistence(timeout: 5))
+    }
+
+    func testLiveEffectCardsAcceptBlankAreaTaps() throws { try liveEffectCardBlankAreaTaps(largeText: false) }
+    func testLiveEffectCardsAcceptBlankAreaTapsAtLargeTextSize() throws { try liveEffectCardBlankAreaTaps(largeText: true) }
+
+    func testLiveEffectsToolbarActionsAndDismissal() {
+        continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
-        app.launchArguments = ["--recorder-controls-test"]
+        app.launchArguments = ["--recorder-controls-test", "-liveVideoEffects", "<5b5d>"]
         app.launch()
         let effects = app.buttons["recorder.videoEffects"]
-        let done = app.buttons["Done"]
-        let title = app.staticTexts["Video effects"]
-        func checkHeader(_ name: String) {
-            XCTAssertTrue(done.waitForExistence(timeout: 8))
-            XCTAssertTrue(title.exists)
-            let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-            screenshot.name = "Live header " + name
-            screenshot.lifetime = .keepAlways
-            add(screenshot)
-            XCTAssertEqual(title.frame.midY, done.frame.midY, accuracy: 2, name)
-            XCTAssertLessThanOrEqual(title.frame.height, UIFont.preferredFont(forTextStyle: .headline).lineHeight + 2, name)
-            XCTAssertLessThan(title.frame.maxX, done.frame.minX, name)
-            if app.frame.width < app.frame.height {
-                XCTAssertEqual(title.frame.midX, app.frame.midX, accuracy: 2, name)
-                XCTAssertGreaterThanOrEqual(app.frame.maxX - done.frame.maxX, 15, name)
-            }
-            XCTAssertGreaterThanOrEqual(done.frame.width, 60, name)
-            XCTAssertGreaterThanOrEqual(done.frame.height, 44, name)
+        XCTAssertTrue(effects.waitForExistence(timeout: 15)); effects.tap()
+        let close = app.buttons["liveEffects.done"], browse = app.buttons["liveEffects.browse"]
+        let actions = app.buttons["liveEffects.actions"], clear = app.buttons["liveEffects.clear"]
+        XCTAssertTrue(close.waitForExistence(timeout: 5)); XCTAssertFalse(browse.exists)
+        expandLiveEffects(in: app)
+        func addCorrection() {
+            app.buttons["liveEffects.section.colorStyle"].tap()
+            app.buttons["liveEffects.add.colorCorrection"].tap()
+            XCTAssertTrue(browse.waitForExistence(timeout: 5))
+            XCTAssertFalse(close.exists, "The inspector uses Add without a competing Close button")
         }
-        func dismiss() {
-            done.coordinate(withNormalizedOffset: CGVector(dx: 0.82, dy: 0.78)).tap()
-            XCTAssertTrue(done.waitForNonExistence(timeout: 5))
+        addCorrection()
+        let inspector = XCTAttachment(screenshot: app.screenshot())
+        inspector.name = "Effect editor with neutral Add only"; inspector.lifetime = .keepAlways; add(inspector)
+        backFromLiveEffects(in: app)
+        XCTAssertTrue(actions.waitForExistence(timeout: 5)); XCTAssertTrue(browse.exists)
+        XCTAssertFalse(close.exists); XCTAssertFalse(clear.exists)
+        actions.tap(); XCTAssertTrue(clear.waitForExistence(timeout: 3))
+        let menu = XCTAttachment(screenshot: app.screenshot())
+        menu.name = "Applied effect actions menu"; menu.lifetime = .keepAlways; add(menu)
+        clear.tap()
+        XCTAssertTrue(close.waitForExistence(timeout: 5)); XCTAssertFalse(browse.exists)
+        XCTAssertTrue(app.buttons["liveEffects.section.colorStyle"].exists)
+        addCorrection()
+        dismissLiveEffects(in: app)
+        XCTAssertTrue(effects.isHittable)
+        effects.tap(); XCTAssertTrue(actions.waitForExistence(timeout: 5))
+        XCTAssertFalse(close.exists)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25)).tap()
+        XCTAssertTrue(actions.waitForNonExistence(timeout: 5), "Tapping the viewfinder outside the compact sheet dismisses it")
+        XCTAssertTrue(effects.isHittable)
+    }
+
+    private func liveEffectCardBlankAreaTaps(largeText: Bool) throws {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchArguments = ["--recorder-controls-test", "-liveVideoEffects", "<5b5d>"]
+        if largeText { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
+        app.launch()
+        XCTAssertTrue(app.buttons["recorder.videoEffects"].waitForExistence(timeout: 15))
+        app.buttons["recorder.videoEffects"].tap()
+        expandLiveEffects(in: app)
+        let category = app.buttons["liveEffects.section.colorStyle"]
+        XCTAssertTrue(category.waitForExistence(timeout: 5))
+        // The top padding is visibly inside the glass card, outside every glyph.
+        func tapPadding(_ card: XCUIElement) {
+            card.coordinate(withNormalizedOffset: CGVector(dx: 0.55, dy: 0)).withOffset(CGVector(dx: 0, dy: 3)).tap()
         }
-        XCTAssertTrue(effects.waitForExistence(timeout: 25))
-        effects.tap(); checkHeader("portrait"); dismiss()
-        effects.tap(); app.buttons["Expand controls"].tap()
-        checkHeader("expanded")
-        title.tap()
-        XCTAssertTrue(done.exists, "A tap inside the drawer keeps it open")
-        let header = app.otherElements["liveEffects.header"]
-        let window = app.windows.firstMatch
-        func tapOutside(_ point: CGPoint) {
-            window.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: point.x, dy: point.y)).tap()
-            XCTAssertTrue(done.waitForNonExistence(timeout: 5))
-            XCTAssertTrue(effects.isHittable)
-        }
-        tapOutside(CGPoint(x: window.frame.midX, y: header.frame.minY - 14))
-        effects.tap(); app.buttons["Collapse controls"].tap()
-        tapOutside(CGPoint(x: window.frame.midX, y: window.frame.height * 0.32))
-        XCUIDevice.shared.orientation = .landscapeRight
-        expectation(for: NSPredicate { _, _ in app.frame.width > app.frame.height }, evaluatedWith: app)
-        waitForExpectations(timeout: 10)
-        effects.tap(); checkHeader("landscape")
-        tapOutside(CGPoint(x: window.frame.width * (header.frame.midX < window.frame.midX ? 0.75 : 0.25),
-                           y: window.frame.midY))
+        tapPadding(category)
+        XCTAssertTrue(app.navigationBars["Color & style"].waitForExistence(timeout: 3), "The empty part of a category card must open it")
+        let effectCard = app.buttons["liveEffects.add.colorCorrection"]
+        revealInViewport(effectCard, scroll: app.scrollViews["liveEffects.controls"])
+        tapPadding(effectCard)
+        XCTAssertTrue(app.sliders["colorCorrection.slider.exposure"].waitForExistence(timeout: 5), "The empty part of an effect card must add and open it")
+        XCTAssertFalse(app.buttons["liveEffects.done"].exists)
+        XCTAssertTrue(app.buttons["liveEffects.browse"].exists)
+        backFromLiveEffects(in: app)
+        XCTAssertTrue(app.buttons["Color Correction"].waitForExistence(timeout: 5), "The effect was added to the applied list")
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = largeText ? "Effect added through card padding at large text size" : "Effect added through card padding"
+        shot.lifetime = .keepAlways; add(shot)
+        dismissLiveEffects(in: app)
     }
 
     func testTapPreviewDismissesAppliedEffectsAndPreservesFocus() throws {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
-        app.launchArguments = ["--recorder-controls-test", "--probe-lens-controls"]
+        app.launchArguments = ["--recorder-controls-test", "--probe-lens-controls", "-liveVideoEffects", "<5b5d>"]
         app.launch()
-        let effects = app.buttons["recorder.videoEffects"], done = app.buttons["Done"]
+        let effects = app.buttons["recorder.videoEffects"], done = app.buttons["liveEffects.browse"]
         let preview = app.otherElements["recorder.preview"]
         XCTAssertTrue(effects.waitForExistence(timeout: 20))
         let focus = app.descendants(matching: .any)["recorder.focus"].firstMatch
@@ -1035,11 +1189,13 @@ final class EditorUITests: XCTestCase {
         let second = preview.coordinate(withNormalizedOffset: CGVector(dx: 0.70, dy: 0.32))
         first.tap()
         effects.tap()
-        let clear = app.buttons["liveEffects.clear"]
-        if clear.exists { clear.tap() }
+        let clear = app.buttons["liveEffects.actions"]
+        if clear.exists { clearLiveEffects(in: app) }
         openEffectSection("cameraFrame", in: app, live: true)
         app.buttons["liveEffects.add.kaleidoscope"].tap()
-        app.buttons["liveEffects.back"].tap()
+        XCTAssertTrue(app.buttons["liveEffects.done"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["liveEffects.browse"].exists, "Direct preview tools keep Close as their single toolbar action")
+        backFromLiveEffects(in: app)
         let row = app.buttons["Kaleidoscope"]
         app.switches["Enable Kaleidoscope"].tap()
         XCTAssertEqual(row.value as? String, "Off")
@@ -1057,21 +1213,21 @@ final class EditorUITests: XCTestCase {
         XCTAssertEqual(row.value as? String, "Off")
         #if !targetEnvironment(simulator)
         XCTAssertEqual(try focusPoint(), initialFocus, "Dismissing the panel must consume the tap")
-        done.tap()
+        dismissLiveEffects(in: app)
         second.tap()
         effects.tap()
         XCTAssertNotEqual(try focusPoint(), initialFocus, "The next viewfinder tap should focus normally")
         #endif
-        clear.tap()
+        clearLiveEffects(in: app)
         openEffectSection("cameraFrame", in: app, live: true)
         app.buttons["liveEffects.add.crashZoom"].tap()
         second.tap()
         XCTAssertTrue(done.exists, "The Crash Zoom inspector uses a picture tap to select its subject")
-        app.buttons["liveEffects.back"].tap()
+        backFromLiveEffects(in: app)
         second.tap()
         XCTAssertTrue(done.waitForNonExistence(timeout: 5), "An enabled zoom in the stack must still allow dismissal while browsing")
-        effects.tap(); clear.tap()
-        done.tap()
+        effects.tap(); clearLiveEffects(in: app)
+        dismissLiveEffects(in: app)
     }
 
     func testLiveEffectHelpInLandscape() throws {
@@ -1079,7 +1235,7 @@ final class EditorUITests: XCTestCase {
         let app = XCUIApplication(); app.launchArguments = ["--recorder-controls-test"]; app.launch()
         XCTAssertTrue(app.buttons["recorder.videoEffects"].waitForExistence(timeout: 20)); app.buttons["recorder.videoEffects"].tap()
         // Do not clear somebody's live effects to prepare a help-only test.
-        if app.buttons["liveEffects.clear"].waitForExistence(timeout: 2) { throw XCTSkip("Live effects are already configured; preserve them") }
+        if app.buttons["liveEffects.actions"].waitForExistence(timeout: 2) { throw XCTSkip("Live effects are already configured; preserve them") }
         XCTAssertFalse(app.buttons["liveEffects.section.presets"].exists)
         openEffectSection("colorStyle", in: app, live: true)
         app.buttons["liveEffects.add.silentTint"].tap()
@@ -1093,10 +1249,10 @@ final class EditorUITests: XCTestCase {
         app.buttons["inspectorHelp.done"].tap()
         XCTAssertTrue(app.buttons["inspectorHelp.done"].waitForNonExistence(timeout: 5))
         XCTAssertTrue(help.waitForExistence(timeout: 10))
-        app.buttons["liveEffects.back"].tap()
-        let clear = app.buttons["liveEffects.clear"]
-        XCTAssertTrue(clear.waitForExistence(timeout: 10)); clear.tap()
-        app.buttons["Done"].tap(); XCUIDevice.shared.orientation = .portrait
+        backFromLiveEffects(in: app)
+        let clear = app.buttons["liveEffects.actions"]
+        XCTAssertTrue(clear.waitForExistence(timeout: 10)); clearLiveEffects(in: app)
+        dismissLiveEffects(in: app); XCUIDevice.shared.orientation = .portrait
     }
 
     func testSubtitlePlacementAndInspection() throws {
@@ -1359,7 +1515,9 @@ final class EditorUITests: XCTestCase {
         let toggle = app.switches["recorder.dualEnabled"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: toggle); waitForExpectations(timeout: 20)
-        if (toggle.value as? String == "1") != enabled { toggle.tap() }
+        if (toggle.value as? String == "1") != enabled {
+            toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+        }
         expectation(for: NSPredicate(format: "value == %@ AND enabled == true", enabled ? "1" : "0"), evaluatedWith: toggle)
         waitForExpectations(timeout: 20)
         app.buttons["recorder.settingsDone"].tap()
@@ -1695,7 +1853,7 @@ final class EditorUITests: XCTestCase {
         XCTAssertFalse(two.isEnabled)
         XCTAssertFalse(app.buttons["recorder.color.sdr"].isEnabled)
         XCTAssertFalse(app.buttons["recorder.color.hdr"].isEnabled)
-        XCTAssertTrue(app.buttons["recorder.moreSettings"].isHittable)
+        XCTAssertTrue(app.buttons["recorder.settingsDone"].isHittable)
         shot("Camera controls during single recording")
         XCTAssertEqual(two.value as? String, "0")
         follow.tap(); awaitValue(follow, "Off"); close.tap()
@@ -1810,10 +1968,10 @@ final class EditorUITests: XCTestCase {
         XCTAssertTrue(menu.waitForExistence(timeout: 20)); wait(menu, NSPredicate(format: "enabled == true"))
         menu.tap(); app.buttons["recorder.color.sdr"].tap()
         wait(app.buttons["recorder.color.sdr"], NSPredicate(format: "selected == true"))
-        app.buttons["recorder.moreSettings"].tap()
+        expandCameraSheet(in: app)
         let quality = app.buttons["recorder.quality"]
         for _ in 0..<7 { if quality.exists && quality.isHittable { break }; app.swipeUp() }
-        quality.tap(); app.buttons["1080p · 30 fps"].tap(); app.buttons["Done"].tap()
+        quality.tap(); app.buttons["1080p · 30 fps"].tap(); app.buttons["recorder.settingsDone"].tap()
         menu.tap()
         if follow.value as? String != "On" { follow.tap() }
         if stabilize.value as? String != "On" { stabilize.tap() }
@@ -2093,14 +2251,15 @@ final class EditorUITests: XCTestCase {
         let gain = app.sliders["recorder.gain"]
         XCTAssertTrue(gain.waitForExistence(timeout: 5)); gain.adjust(toNormalizedSliderPosition: 1)
         XCTAssertTrue(app.staticTexts["recorder.gainValue"].label.replacingOccurrences(of: ",", with: ".").contains("12.0"))
-        app.buttons["recorder.gainReset"].tap(); XCTAssertTrue(app.staticTexts["recorder.gainValue"].label.replacingOccurrences(of: ",", with: ".").contains("0.0"))
+        dragRecordingGainToZero(gain, fromUpperEnd: true)
+        XCTAssertTrue(app.staticTexts["recorder.gainValue"].label.replacingOccurrences(of: ",", with: ".").contains("0.0"))
         if !physical {
             app.buttons["recorder.gainMicrophone"].tap()
             app.buttons["Wireless test mic"].tap()
             XCTAssertTrue(app.buttons["recorder.gainMicrophone"].label.contains("Wireless test mic"))
         }
 
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.65)).tap()
+        app.buttons["recorder.audioDone"].tap()
         let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); shot.name = "Two cameras floating while recording"; shot.lifetime = .keepAlways; add(shot)
         app.buttons["Pause recording"].tap()
         expectation(for: NSPredicate(format: "label == 'Resume recording'"), evaluatedWith: record); waitForExpectations(timeout: 20)
@@ -3079,7 +3238,7 @@ final class EditorUITests: XCTestCase {
             app.buttons["recorder.videoEffects"].tap()
             openEffectSection("colorStyle", in: app, live: true)
             app.buttons["liveEffects.add.bleachBypass"].tap()
-            app.buttons["Done"].tap()
+            dismissLiveEffects(in: app)
         }
         if dual {
             setDualMode(true, in: app)
@@ -3111,7 +3270,7 @@ final class EditorUITests: XCTestCase {
         take("Level off")
         if !baseline {
             settings.tap(); level.tap(); XCTAssertEqual(level.value as? String, "On")
-            app.buttons["recorder.moreSettings"].tap()
+            expandCameraSheet(in: app)
             app.buttons["recorder.levelAngle"].tap()
             let slider = app.sliders["recorder.levelAngleSlider"]
             XCTAssertTrue(slider.waitForExistence(timeout: 5))
@@ -3158,14 +3317,14 @@ final class EditorUITests: XCTestCase {
         settings.tap()
         let level = app.switches["recorder.levelHorizon"]
         if level.value as? String == "On" { level.tap() }
-        app.buttons["recorder.moreSettings"].tap()
+        expandCameraSheet(in: app)
         app.buttons["recorder.levelAngle"].tap()
         let preview = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'Preview only'")).firstMatch
         XCTAssertTrue(preview.waitForExistence(timeout: 5))
         XCUIDevice.shared.press(.home); app.activate()
         XCTAssertTrue(preview.waitForExistence(timeout: 5))
         app.buttons["recorder.levelAngleDone"].tap()
-        XCTAssertTrue(app.navigationBars["More settings"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Camera settings"].waitForExistence(timeout: 5))
         app.buttons["recorder.settingsDone"].tap()
         settings.tap()
         XCTAssertEqual(level.value as? String, "Off")
@@ -3239,6 +3398,10 @@ final class EditorUITests: XCTestCase {
         let record = app.buttons["recorder.record"], newProject = app.buttons["recorder.newProject"]
         XCTAssertTrue(newProject.waitForExistence(timeout: 15))
         XCTAssertEqual(record.value as? String, originalTitle)
+        let projectTitle = app.staticTexts["recorder.projectTitle"]
+        XCTAssertEqual(projectTitle.label, originalTitle)
+        let titleShot = XCTAttachment(screenshot: app.screenshot())
+        titleShot.name = "Current project title in camera header"; titleShot.lifetime = .keepAlways; add(titleShot)
         app.buttons["Projects"].tap()
         let projectsBefore = app.buttons.matching(identifier: "Continue recording").count
         app.buttons["Record"].tap()
@@ -3250,6 +3413,7 @@ final class EditorUITests: XCTestCase {
         app.terminate(); app.launch()
         XCTAssertTrue(record.waitForExistence(timeout: 15))
         XCTAssertEqual(record.value as? String, destination, "Relaunch continues into the chosen project")
+        XCTAssertEqual(projectTitle.label, destination)
         XCTAssertFalse(newProject.exists)
         app.buttons["Edit this project"].tap()
         let empty = app.staticTexts["Your timeline is empty"]
@@ -3422,10 +3586,10 @@ final class EditorUITests: XCTestCase {
                 app.buttons["liveEffects.add.silentTint"].tap()
                 let disable = app.buttons["Disable effect"]
                 XCTAssertTrue(disable.waitForExistence(timeout: 10)); disable.tap()
-                app.buttons["liveEffects.back"].tap()
-                let clear = app.buttons["liveEffects.clear"]
-                XCTAssertTrue(clear.waitForExistence(timeout: 5)); clear.tap()
-                app.buttons["Done"].tap()
+                backFromLiveEffects(in: app)
+                let clear = app.buttons["liveEffects.actions"]
+                XCTAssertTrue(clear.waitForExistence(timeout: 5)); clearLiveEffects(in: app)
+                dismissLiveEffects(in: app)
             }
             // Geometry alone could pass with a cropped or hidden image. Inspect
             // all four colored edges of the synthetic camera buffer on screen.
@@ -4677,12 +4841,13 @@ final class EditorUITests: XCTestCase {
         let app = XCUIApplication(); app.launchArguments = ["--recorder-controls-test"]; app.launch()
         let effects = app.buttons["recorder.videoEffects"]
         XCTAssertTrue(effects.waitForExistence(timeout: 15)); effects.tap()
-        let clear=app.buttons["liveEffects.clear"],liveControls=app.scrollViews["liveEffects.controls"]
+        let clear=app.buttons["liveEffects.actions"],liveControls=app.scrollViews["liveEffects.controls"]
         if clear.waitForExistence(timeout:3) {
             for _ in 0..<8 {if clear.isHittable {break};liveControls.swipeUp()}
-            XCTAssertTrue(clear.isHittable);clear.tap()
+            XCTAssertTrue(clear.isHittable);clearLiveEffects(in: app)
         }
         openEffectSection("colorStyle",in:app,live:true)
+        expandLiveEffects(in: app)
         let isolation = app.buttons["liveEffects.add.colorIsolation"]
         let controls = app.scrollViews["liveEffects.controls"]
         // A full swipe flicks past several rows in the compact live drawer.
@@ -4695,7 +4860,7 @@ final class EditorUITests: XCTestCase {
             start.press(forDuration:0.05,thenDragTo:end,withVelocity:.slow,thenHoldForDuration:0.15)
         }
         XCTAssertTrue(isolation.isHittable); isolation.tap()
-        app.buttons["Expand controls"].tap()
+        expandLiveEffects(in: app)
         let pick = app.buttons["liveEffects.pickColor"]
         for _ in 0..<8 { if pick.isHittable { break }; controls.swipeUp() }
         XCTAssertTrue(pick.isHittable); pick.tap()
@@ -4718,10 +4883,10 @@ final class EditorUITests: XCTestCase {
         let landscape = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); landscape.name = "Live color picker landscape"; landscape.lifetime = .keepAlways; add(landscape)
         preview.coordinate(withNormalizedOffset: CGVector(dx: 0.52, dy: 0.47)).tap()
         // A camera without a sampleable frame can keep the picker open for another try.
-        if !app.buttons["Done"].waitForExistence(timeout: 2) { cancel.tap() }
-        XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 5), "A color sample must return to the inspector")
+        if !app.buttons["liveEffects.browse"].waitForExistence(timeout: 2) { cancel.tap() }
+        XCTAssertTrue(app.buttons["liveEffects.browse"].waitForExistence(timeout: 5), "A color sample must return to the inspector")
         XCUIDevice.shared.orientation = .portrait
-        app.buttons["Done"].tap(); XCTAssertTrue(effects.isHittable)
+        dismissLiveEffects(in: app); XCTAssertTrue(effects.isHittable)
     }
 
     private func moveAndTurnSplit(in app: XCUIApplication) {
@@ -4836,8 +5001,8 @@ final class EditorUITests: XCTestCase {
 
     private func configureLiveSplit(in app: XCUIApplication, divisions: Int) {
         app.buttons["recorder.videoEffects"].tap()
-        let clear = app.buttons["liveEffects.clear"], controls = app.scrollViews["liveEffects.controls"]
-        if clear.waitForExistence(timeout: 2) { clear.tap() }
+        let clear = app.buttons["liveEffects.actions"], controls = app.scrollViews["liveEffects.controls"]
+        if clear.waitForExistence(timeout: 2) { clearLiveEffects(in: app) }
         openEffectSection("cameraFrame", in: app, live: true)
         app.buttons["liveEffects.add.kaleidoscope"].tap()
         let count = app.buttons["Divisions " + String(divisions)]
@@ -4845,7 +5010,7 @@ final class EditorUITests: XCTestCase {
         exerciseFineSourceRotation(in: app, controls: controls, live: true)
         exerciseSplit(in: app)
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Direct Kaleidoscope camera"; shot.lifetime = .keepAlways; add(shot)
-        app.buttons["Done"].tap()
+        dismissLiveEffects(in: app)
     }
 
     private func exerciseRGB(in app: XCUIApplication, controls: XCUIElement) {
@@ -4905,8 +5070,8 @@ final class EditorUITests: XCTestCase {
         let app = XCUIApplication(); app.launchArguments = ["--recorder-controls-test", "--front-landscape-preview-test"]
         app.launch(); app.buttons["recorder.videoEffects"].tap()
         let controls = app.scrollViews["liveEffects.controls"]
-        let clear = app.buttons["liveEffects.clear"]
-        if clear.waitForExistence(timeout: 2) { clear.tap() }
+        let clear = app.buttons["liveEffects.actions"]
+        if clear.waitForExistence(timeout: 2) { clearLiveEffects(in: app) }
         openEffectSection("colorStyle", in: app, live: true)
         let rgb = app.buttons["liveEffects.add.rgbOffset"]; revealInViewport(rgb, scroll: controls); rgb.tap()
         exerciseRGB(in: app, controls: controls)
@@ -4939,7 +5104,7 @@ final class EditorUITests: XCTestCase {
         }
         XCTAssertGreaterThan(peak - original, 90, "The public audition actually shows the inverted live picture")
         XCTAssertLessThan(abs(try luminance() - original), 8, "A completed audition restores the ordinary camera preview")
-        app.buttons["Done"].tap()
+        dismissLiveEffects(in: app)
         XCTAssertTrue(app.buttons["recorder.record"].isHittable)
     }
     #endif
@@ -4975,7 +5140,7 @@ final class EditorUITests: XCTestCase {
                 let fourth = app.buttons["Divisions 4"]
                 revealInViewport(fourth, scroll: app.scrollViews["liveEffects.controls"]); fourth.tap()
                 twistSource(in: app, radians: -.pi / 5)
-                app.buttons["Done"].tap()
+                dismissLiveEffects(in: app)
             }
         }
         app.buttons["Edit this project"].tap()
@@ -5010,8 +5175,8 @@ final class EditorUITests: XCTestCase {
         waitForRecordButton(); setDualMode(false, in: app)
         useEmptyRecordingProject(in: app)
         app.buttons["recorder.videoEffects"].tap()
-        let clear = app.buttons["liveEffects.clear"], controls = app.scrollViews["liveEffects.controls"]
-        if clear.waitForExistence(timeout: 2) { clear.tap() }
+        let clear = app.buttons["liveEffects.actions"], controls = app.scrollViews["liveEffects.controls"]
+        if clear.waitForExistence(timeout: 2) { clearLiveEffects(in: app) }
         openEffectSection("colorStyle", in: app, live: true)
         let rgb = app.buttons["liveEffects.add.rgbOffset"]
         revealInViewport(rgb, scroll: controls); rgb.tap()
@@ -5032,7 +5197,7 @@ final class EditorUITests: XCTestCase {
             capture("RGB strobe audition " + String(i))
             Thread.sleep(forTimeInterval: 0.18)
         }
-        app.buttons["Done"].tap(); waitForRecordButton(); record.tap()
+        dismissLiveEffects(in: app); waitForRecordButton(); record.tap()
         waitForRecordButton("Stop recording")
         for i in 0..<8 {
             capture("RGB strobe recording " + String(i))
@@ -5059,16 +5224,16 @@ final class EditorUITests: XCTestCase {
         XCTAssertTrue(front.waitForExistence(timeout:5));front.tap()
         useEmptyRecordingProject(in: app)
         app.buttons["recorder.videoEffects"].tap()
-        let clear=app.buttons["liveEffects.clear"],controls=app.scrollViews["liveEffects.controls"]
+        let clear=app.buttons["liveEffects.actions"],controls=app.scrollViews["liveEffects.controls"]
         if clear.waitForExistence(timeout:2) {
             for _ in 0..<8 {if clear.isHittable {break};controls.swipeUp()}
-            clear.tap()
+            clearLiveEffects(in: app)
         }
         openEffectSection("background",in:app,live:true)
-        app.buttons["liveEffects.add.autoBackground"].tap();app.buttons["Expand controls"].tap()
+        app.buttons["liveEffects.add.autoBackground"].tap();expandLiveEffects(in: app)
         let background=app.buttons["Blur original"]
         for _ in 0..<8 {if background.isHittable {break};controls.swipeUp()}
-        XCTAssertTrue(background.isHittable);background.tap();app.buttons["Solid"].tap();app.buttons["Done"].tap()
+        XCTAssertTrue(background.isHittable);background.tap();app.buttons["Solid"].tap();dismissLiveEffects(in: app)
         for run in 0..<2 {
             expectation(for:NSPredicate(format:"enabled == true"),evaluatedWith:record);waitForExpectations(timeout:20)
             let idle=XCTAttachment(screenshot:XCUIScreen.main.screenshot());idle.name="Auto Background idle \(run)";idle.lifetime = .keepAlways;add(idle)
@@ -5284,11 +5449,11 @@ final class EditorUITests: XCTestCase {
         continueAfterFailure=false;XCUIDevice.shared.orientation = .portrait
         let app=XCUIApplication();app.launchArguments=["--recorder-controls-test"];app.launch()
         XCTAssertTrue(app.buttons["recorder.videoEffects"].waitForExistence(timeout:20));app.buttons["recorder.videoEffects"].tap()
-        let clear=app.buttons["liveEffects.clear"],controls=app.scrollViews["liveEffects.controls"]
-        if clear.waitForExistence(timeout:2) {for _ in 0..<8 {if clear.isHittable {break};controls.swipeUp()};clear.tap()}
+        let clear=app.buttons["liveEffects.actions"],controls=app.scrollViews["liveEffects.controls"]
+        if clear.waitForExistence(timeout:2) {for _ in 0..<8 {if clear.isHittable {break};controls.swipeUp()};clearLiveEffects(in: app)}
         openEffectSection("colorStyle",in:app,live:true)
         app.buttons["liveEffects.add.colorCorrection"].tap()
-        if app.buttons["Expand controls"].exists {app.buttons["Expand controls"].tap()}
+        expandLiveEffects(in: app)
         let exposure=app.sliders["colorCorrection.slider.exposure"]
         XCTAssertTrue(exposure.waitForExistence(timeout:10));exposure.adjust(toNormalizedSliderPosition:0.65)
         app.buttons["colorCorrection.value.exposure"].tap()
@@ -5298,7 +5463,7 @@ final class EditorUITests: XCTestCase {
         temperature.adjust(toNormalizedSliderPosition:0.7)
         XCTAssertNotEqual(app.buttons["colorCorrection.value.temperature"].value as? String,"0")
         let image=XCTAttachment(screenshot:XCUIScreen.main.screenshot());image.name="Live color correction";image.lifetime = .keepAlways;add(image)
-        app.buttons["liveEffects.back"].tap();clear.tap();app.buttons["Done"].tap()
+        backFromLiveEffects(in: app);clearLiveEffects(in: app);dismissLiveEffects(in: app)
     }
 
     func testWidescreenOnSelectedClipPlaybackAndApply() throws {
@@ -5573,16 +5738,16 @@ final class EditorUITests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
         let app=XCUIApplication();app.launchArguments=["--recorder-controls-test"];app.launch()
         XCTAssertTrue(app.buttons["recorder.videoEffects"].waitForExistence(timeout:15));app.buttons["recorder.videoEffects"].tap()
-        if app.buttons["liveEffects.clear"].waitForExistence(timeout:2) {app.buttons["liveEffects.clear"].tap()}
+        if app.buttons["liveEffects.actions"].waitForExistence(timeout:2) {clearLiveEffects(in: app)}
         openEffectSection("background",in:app,live:true);app.buttons["liveEffects.add.chromaKey"].tap()
-        app.buttons["Expand controls"].tap()
+        expandLiveEffects(in: app)
         let controls=app.scrollViews["liveEffects.controls"],detect=app.switches["Detect green / blue screen"]
         for _ in 0..<6 {if detect.isHittable {break};controls.swipeUp()}
         XCTAssertTrue(detect.isHittable);detect.tap()
         XCTAssertTrue(app.buttons["Green"].waitForExistence(timeout:5));XCTAssertTrue(app.buttons["Blue"].exists)
         app.buttons["Blue"].tap();XCTAssertTrue(app.buttons["effects.sampleScreen"].exists)
         let shot=XCTAttachment(screenshot:XCUIScreen.main.screenshot());shot.name="Supported screen colors";shot.lifetime = .keepAlways;add(shot)
-        app.buttons["liveEffects.back"].tap()
+        backFromLiveEffects(in: app)
         let row=app.cells.containing(.button,identifier:"Chroma Key").firstMatch
         XCTAssertTrue(row.exists)
         row.coordinate(withNormalizedOffset:CGVector(dx:0.7,dy:0.5)).press(forDuration:0.05,thenDragTo:row.coordinate(withNormalizedOffset:CGVector(dx:0.3,dy:0.5)),withVelocity:.slow,thenHoldForDuration:0.1)
@@ -5927,7 +6092,7 @@ final class EditorUITests: XCTestCase {
         XCTAssertFalse(app.switches["Snap to cuts"].exists)
         XCTAssertFalse(app.buttons["tools.settings.snap"].exists)
         XCTAssertFalse(app.staticTexts["Editing"].exists)
-        app.buttons["Done"].tap()
+        app.buttons["recorder.settingsDone"].tap()
     }
 
     func testEditorSettingsLargeText() throws {
@@ -7685,7 +7850,7 @@ final class EditorUITests: XCTestCase {
             XCTAssertTrue(option.waitForExistence(timeout: 5)); option.tap()
             expectation(for: NSPredicate(format: "value == %@", value), evaluatedWith: transition); waitForExpectations(timeout: 5)
         }
-        app.buttons["Done"].tap(); app.terminate(); app.launch()
+        app.buttons["recorder.settingsDone"].tap(); app.terminate(); app.launch()
         openMoreCameraSettings(in: app)
         XCTAssertTrue(transition.waitForExistence(timeout: 5)); XCTAssertEqual(transition.value as? String, "3 seconds")
     }
@@ -7702,8 +7867,8 @@ final class EditorUITests: XCTestCase {
             expectation(for: predicate, evaluatedWith: element)
             waitForExpectations(timeout: 25)
         }
-        func dismissPopover() {
-            app.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.70)).tap()
+        func dismissAudioControls() {
+            app.buttons["recorder.audioDone"].tap()
         }
         XCTAssertTrue(record.waitForExistence(timeout: 30))
         waitFor(record, NSPredicate(format: "enabled == true"))
@@ -7719,7 +7884,7 @@ final class EditorUITests: XCTestCase {
         XCTAssertEqual(initialInput, highest)
         choices.matching(NSPredicate(format: "label == %@", picked)).firstMatch.tap()
         waitFor(picker, NSPredicate(format: "label CONTAINS %@", picked))
-        dismissPopover()
+        dismissAudioControls()
         app.buttons["Pause recording"].tap()
         waitFor(record, NSPredicate(format: "label == 'Resume recording'"))
         XCTAssertEqual(mic.value as? String, picked)
@@ -7729,6 +7894,72 @@ final class EditorUITests: XCTestCase {
         record.tap()
         waitFor(record, NSPredicate(format: "label == 'Record into this project' AND enabled == true"))
         waitFor(mic, NSPredicate(format: "value == %@", highest))
+    }
+
+    func testMicrophoneInlineNoticeAndInputNavigation() { checkMicrophonePanel(accessibilityText: false) }
+    func testMicrophoneInlineNoticeAtLargeTextSize() { checkMicrophonePanel(accessibilityText: true) }
+
+    private func dragRecordingGainToZero(_ slider: XCUIElement, fromUpperEnd: Bool) {
+        let inset = slider.frame.height / 2
+        let track = slider.frame.width - 2 * inset
+        let origin = slider.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5))
+        let start = origin.withOffset(CGVector(dx: fromUpperEnd ? slider.frame.width - inset : 1, dy: 0))
+        let zero = origin.withOffset(CGVector(dx: inset + track * (40.0 / 52.0), dy: 0))
+        start.press(forDuration: 0.1, thenDragTo: zero, withVelocity: .slow, thenHoldForDuration: 0.1)
+    }
+
+    private func checkMicrophonePanel(accessibilityText: Bool) {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        defer { XCUIDevice.shared.orientation = .portrait }
+        let app = XCUIApplication(); app.launchArguments = ["--recorder-controls-test"]
+        if accessibilityText { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
+        app.launch()
+        let mic = app.buttons["recorder.microphone"]
+        XCTAssertTrue(mic.waitForExistence(timeout: 15))
+        for pose in [UIDeviceOrientation.portrait, .landscapeRight] {
+            XCUIDevice.shared.orientation = pose
+            expectation(for: NSPredicate { _, _ in (app.frame.width > app.frame.height) == pose.isLandscape }, evaluatedWith: app); waitForExpectations(timeout: 10)
+            mic.tap()
+            XCTAssertFalse(app.buttons["recorder.audioInfo"].exists)
+            XCTAssertEqual(app.buttons["recorder.audioDone"].label.lowercased(), "close")
+            let picker = app.buttons["recorder.gainMicrophone"]
+            XCTAssertTrue(picker.waitForExistence(timeout: 5)); picker.tap()
+            let chosen = pose == .portrait ? "Wireless test mic" : "Built-In Microphone"
+            XCTAssertTrue(app.buttons[chosen].waitForExistence(timeout: 5)); app.buttons[chosen].tap()
+            expectation(for: NSPredicate(format: "label CONTAINS %@", chosen), evaluatedWith: picker); waitForExpectations(timeout: 5)
+            let bar = app.navigationBars["Microphone"], top = bar.frame.minY
+            let notice = app.staticTexts["recorder.volumeNotice"]
+            let content = app.descendants(matching: .any)["recorder.audioControls"].firstMatch
+            XCTAssertFalse(app.buttons["recorder.gainReset"].exists)
+            let gain = app.sliders["recorder.gain"]
+            for _ in 0..<24 {
+                if gain.exists && gain.isHittable { break }
+                let viewport = content.frame.intersection(app.frame)
+                let top = max(viewport.minY, bar.frame.maxY) + 8
+                let bottom = viewport.maxY - 16
+                let origin = app.coordinate(withNormalizedOffset: .zero)
+                let start = origin.withOffset(CGVector(dx: viewport.midX, dy: top + (bottom - top) * 0.8))
+                let end = origin.withOffset(CGVector(dx: viewport.midX, dy: top + (bottom - top) * 0.45))
+                start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.15)
+            }
+            gain.adjust(toNormalizedSliderPosition: 1)
+            XCTAssertTrue(app.staticTexts["recorder.gainValue"].label.contains("12"))
+            dragRecordingGainToZero(gain, fromUpperEnd: true)
+            XCTAssertTrue(app.staticTexts["recorder.gainValue"].label.replacingOccurrences(of: ",", with: ".").contains("+0.0"), "The gain slider snaps to zero from above: \(app.staticTexts["recorder.gainValue"].label), slider \(gain.value ?? "nil"), frame \(gain.frame)")
+            gain.adjust(toNormalizedSliderPosition: 0)
+            XCTAssertTrue(app.staticTexts["recorder.gainValue"].label.contains("−") || app.staticTexts["recorder.gainValue"].label.contains("-"))
+            dragRecordingGainToZero(gain, fromUpperEnd: false)
+            XCTAssertTrue(app.staticTexts["recorder.gainValue"].label.replacingOccurrences(of: ",", with: ".").contains("+0.0"), "The gain slider snaps to zero from below: \(app.staticTexts["recorder.gainValue"].label)")
+            for _ in 0..<10 { if notice.exists && notice.isHittable { break }; content.swipeUp() }
+            XCTAssertTrue(notice.isHittable)
+            content.swipeUp()
+            XCTAssertEqual(bar.frame.minY, top, accuracy: 3, "Scrolling volume controls must not expand the microphone panel")
+            let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            shot.name = "Fixed microphone panel \(pose.rawValue), large text \(accessibilityText)"; shot.lifetime = .keepAlways; add(shot)
+            app.buttons["recorder.audioDone"].tap()
+            XCTAssertEqual(mic.value as? String, chosen)
+        }
     }
 
     func testRecorderMicrophoneAndQualityMenusWithLiveReadings() throws {
@@ -7741,7 +7972,7 @@ final class EditorUITests: XCTestCase {
             mic.tap(); app.buttons["recorder.gainMicrophone"].tap()
             let option = app.buttons[name]
             XCTAssertTrue(option.waitForExistence(timeout: 5)); option.tap()
-            app.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.70)).tap()
+            app.buttons["recorder.audioDone"].tap()
             expectation(for: NSPredicate(format: "value == %@", name), evaluatedWith: mic); waitForExpectations(timeout: 5)
         }
         openMoreCameraSettings(in: app)
@@ -8031,7 +8262,7 @@ final class EditorUITests: XCTestCase {
         let app = XCUIApplication(); app.launchArguments = ["--recorder-controls-test"]; app.launch()
         XCTAssertTrue(app.buttons["recorder.settings"].waitForExistence(timeout: 10))
         openMoreCameraSettings(in: app)
-        zoomTimePicker(in: app).tap(); app.buttons["5 seconds"].tap(); app.buttons["Done"].tap()
+        zoomTimePicker(in: app).tap(); app.buttons["5 seconds"].tap(); app.buttons["recorder.settingsDone"].tap()
         let zoom = app.buttons["recorder.zoom"]
         zoom.tap()
         let three = app.buttons["recorder.zoom.preset.30"]
@@ -8047,7 +8278,7 @@ final class EditorUITests: XCTestCase {
         // Instant is the dangerous case: the first tap must not jump before
         // the recognizer has decided whether this is a double tap.
         openMoreCameraSettings(in: app)
-        zoomTimePicker(in: app).tap(); app.buttons["Instant"].tap(); app.buttons["Done"].tap()
+        zoomTimePicker(in: app).tap(); app.buttons["Instant"].tap(); app.buttons["recorder.settingsDone"].tap()
         three.doubleTap()
         XCTAssertNotEqual(zoom.value as? String, "3.0", "Double tapping an instant preset must still animate")
         expectation(for: NSPredicate(format: "value == '3.0'"), evaluatedWith: zoom); waitForExpectations(timeout: 2)
@@ -8151,7 +8382,7 @@ final class EditorUITests: XCTestCase {
         let app = XCUIApplication(); app.launchArguments = ["--recorder-controls-test"]; app.launch()
         XCTAssertTrue(app.buttons["recorder.settings"].waitForExistence(timeout: 10))
         openMoreCameraSettings(in: app)
-        zoomTimePicker(in: app).tap(); app.buttons["5 seconds"].tap(); app.buttons["Done"].tap()
+        zoomTimePicker(in: app).tap(); app.buttons["5 seconds"].tap(); app.buttons["recorder.settingsDone"].tap()
         app.buttons["recorder.zoom"].tap()
         let duration = app.otherElements["recorder.zoom.duration"]
         XCTAssertTrue(duration.isHittable)
@@ -8169,7 +8400,7 @@ final class EditorUITests: XCTestCase {
         XCTAssertEqual(duration.value as? String, "6 seconds")
         openMoreCameraSettings(in: app)
         XCTAssertEqual(zoomTimePicker(in: app).value as? String, "6 seconds")
-        zoomTimePicker(in: app).tap(); app.buttons["Instant"].tap(); app.buttons["Done"].tap()
+        zoomTimePicker(in: app).tap(); app.buttons["Instant"].tap(); app.buttons["recorder.settingsDone"].tap()
         XCTAssertTrue(duration.isHittable, "Zero duration stays adjustable")
         drag(29); XCTAssertEqual(duration.value as? String, "Instant")
         drag(-29); XCTAssertEqual(duration.value as? String, "1 second")
@@ -8343,10 +8574,10 @@ final class EditorUITests: XCTestCase {
         if originalPeaking { focus.press(forDuration: 0.7) }
         let effects = app.buttons["recorder.videoEffects"]
         effects.tap()
-        if app.buttons["liveEffects.clear"].waitForExistence(timeout: 2) { throw XCTSkip("Preserve existing live effect stack") }
+        if app.buttons["liveEffects.actions"].waitForExistence(timeout: 2) { throw XCTSkip("Preserve existing live effect stack") }
         openEffectSection("colorStyle", in: app, live: true)
         app.buttons["liveEffects.add.silentTint"].tap()
-        app.buttons["Done"].tap()
+        dismissLiveEffects(in: app)
         func shot(_ name: String) {
             let image = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
             image.name = name; image.lifetime = .keepAlways; add(image)
@@ -8360,8 +8591,8 @@ final class EditorUITests: XCTestCase {
         target.tap(); shot("Front effect AF target")
         if !originalPeaking { focus.press(forDuration: 0.7) }
         effects.tap()
-        if !app.buttons["liveEffects.clear"].exists, app.buttons["liveEffects.back"].exists { app.buttons["liveEffects.back"].tap() }
-        app.buttons["liveEffects.clear"].tap(); app.buttons["Done"].tap()
+        if !app.buttons["liveEffects.actions"].exists, app.navigationBars.buttons.matching(identifier: "BackButton").firstMatch.exists { backFromLiveEffects(in: app) }
+        clearLiveEffects(in: app); dismissLiveEffects(in: app)
         if changedCamera { flip.tap() }
     }
     #endif
@@ -8373,7 +8604,7 @@ final class EditorUITests: XCTestCase {
         XCTAssertTrue(camera.waitForExistence(timeout: 10))
         expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: camera); waitForExpectations(timeout: 5)
         openMoreCameraSettings(in: app)
-        zoomTimePicker(in: app).tap(); app.buttons["2 seconds"].tap(); app.buttons["Done"].tap()
+        zoomTimePicker(in: app).tap(); app.buttons["2 seconds"].tap(); app.buttons["recorder.settingsDone"].tap()
         let zoom = app.buttons["recorder.zoom"]
         zoom.tap()
         let preset = app.buttons["recorder.zoom.preset.30"]
@@ -8513,10 +8744,10 @@ final class EditorUITests: XCTestCase {
         open()
         let original = protection.value as? String ?? "0", changed = original == "0" ? "1" : "0"
         toggle(to: changed)
-        app.buttons["Done"].tap(); open()
+        app.buttons["recorder.settingsDone"].tap(); open()
         XCTAssertEqual(protection.value as? String, changed)
         toggle(to: original)
-        app.buttons["Done"].tap()
+        app.buttons["recorder.settingsDone"].tap()
     }
 
     func testDeletingPortraitTakeChangesPreviewAndExportToLandscape() throws {
