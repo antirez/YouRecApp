@@ -3,6 +3,26 @@ import AVFoundation
 import CoreGraphics
 import ImageIO
 
+func cutRebuildTests(root: URL) async throws {
+    let source = SourceMedia(filename: "source.mp4", duration: 4)
+    var project = Project(title: "Repeated cuts")
+    project.sources = [source]
+    project.commit(EditState(clips: [TimelineClip(sourceID: source.id, start: 0, end: 4)]))
+    for frame in 1..<48 {
+        project.commit(TimelineEditing.split(project.edit, at: Double(frame * 2) / 30))
+    }
+    try require(project.edit.timeline.video.count == 48 && project.edit.timeline.audio.count == 48, "Fixture has 48 linked pieces")
+    for _ in 0..<3 {
+        let start = ContinuousClock.now
+        let media = try await SourceMediaCache.shared.prepared(project: project, folder: root, effectPreparation: .cached) { _ in }
+        print("48-piece preview rebuild: \(start.duration(to: .now))")
+        try require(abs(media.media.composition.duration.seconds - 4) < 0.001, "Cuts preserve playback duration")
+        try require(media.media.composition.tracks(withMediaType: .video).count == 1 &&
+                    media.media.composition.tracks(withMediaType: .audio).count == 1, "Cuts retain picture and sound")
+        try require(media.media.videoComposition.instructions.count == 48, "The rebuilt preview retains every edit boundary")
+    }
+}
+
 func snappedBoundaryMediaTests(root: URL) async throws {
     let source = SourceMedia(filename: "source.mp4", duration: 4)
     var failures: [String] = []
@@ -476,6 +496,56 @@ func exportAudioLevelTests(root: URL) async throws {
         buffer.floatChannelData![channel][frame] = Float((frame >= 120000 && frame < 144000 ? 1.5 : 0.4) * sin(Double(frame) * .pi / 24))
     } }
     try file.write(from: buffer)
+    let original = project.edit
+    func checkRanges(_ edit: EditState, backgrounds: [EditInterval] = []) -> [EditInterval] {
+        edit.timeline.audioLevelCheckRanges(usedSources: project.sources, backgroundAudio: backgrounds)
+    }
+    let split = TimelineEditing.split(original, at: 2)
+    try require(checkRanges(original).isEmpty && checkRanges(split).isEmpty, "Original audio and ordinary cuts need no clipping scan")
+    var pictureOnly = split
+    pictureOnly.timeline.video[0].content.texts = [TextOverlay(text: "Title")]
+    pictureOnly.timeline.audio[0].fadeIn = AudioEdgeFade(seconds: 0.3)
+    pictureOnly.timeline.audio[1].volumeDB = -1
+    var bypassed = AudioEffect(kind: .gain, amount: 12); bypassed.enabled = false
+    pictureOnly.timeline.enhance([bypassed, AudioEffect(kind: .gain, amount: 0)], selection: pictureOnly.timeline.entireSelection())
+    try require(checkRanges(pictureOnly).isEmpty, "Picture edits, fades, cuts, lower volume and bypassed processing cannot boost original audio")
+    var partial = original
+    partial.timeline.audio[0].enhancements = [AudioEnhancementRegion(interval: EditInterval(0.8...1.2), effects: [.make(.highPass)])]
+    try require(checkRanges(partial) == [EditInterval(0.8...1.2)], "An audio filter has a local inspection range")
+    var mixed = original
+    var secondary = mixed.timeline.audio[0]; secondary.start = EditTime(3); secondary.id = UUID()
+    mixed.timeline.audio.append(secondary)
+    try require(checkRanges(mixed) == [EditInterval(3...4)], "Unity-gain tracks are checked only where they overlap")
+    mixed.timeline.audio[1].muted = true
+    try require(checkRanges(mixed).isEmpty && checkRanges(original, backgrounds: [EditInterval(1...2)]) == [EditInterval(1...2)],
+                "Only audible tracks, including the sound of a video background, contribute to overlap")
+    var retimed = original
+    retimed.timeline.audio[0].mapping.runs[0].duration = EditTime(2)
+    try require(checkRanges(retimed) == [EditInterval(0...2)], "Time-pitch processing is checked on its playback clock")
+
+    let plainProgress = ExportProgressTrace()
+    let plain = try await MediaRenderer.render(project: project, folder: folder, destination: folder.appendingPathComponent("straight.mp4")) { plainProgress.record($0) }
+    try require(plain.audioPeak == nil && plain.audioWarning == nil && !plainProgress.steps.contains(.audioPeak),
+                "A straight export completes without scanning untouched sound")
+    var legacy = plain; legacy.schemaVersion = 1; legacy.audioPeak = 1.5
+    let reopenedLegacy = try JSONDecoder().decode(ExportReceipt.self, from: JSONEncoder().encode(legacy))
+    try require(reopenedLegacy.audioWarning == nil, "Previously saved exports of untouched sound also lose the misleading warning")
+    if let inputs = ProcessInfo.processInfo.environment["YOUREC_AUDIO_WARNING_SAMPLES"] {
+        for (index, path) in inputs.components(separatedBy: ":").enumerated() {
+            let input = URL(fileURLWithPath: path), asset = AVURLAsset(url: input)
+            let length = try await asset.load(.duration).seconds
+            let name = "recording-\(index)." + input.pathExtension
+            try FileManager.default.copyItem(at: input, to: folder.appendingPathComponent(name))
+            var recording = Project(title: "Unchanged camera audio")
+            recording.append(SourceMedia(filename: name, duration: length))
+            let media = try await MediaRenderer.timeline(project: recording, folder: folder)
+            let inputPeak = try await ExportAudioLevel.peak(asset: media.composition, mix: media.audioMix, duration: length)
+            let receipt = try await MediaRenderer.render(project: recording, folder: folder,
+                destination: folder.appendingPathComponent("recording-export-\(index).mp4")) { _ in }
+            try require(receipt.audioWarning == nil && receipt.audioPeak == nil, "Camera or encoded input exports without advice to change an untouched mix")
+            print("Unchanged sample \(index + 1): measured \(20 * log10(inputPeak)) dBFS, no export warning")
+        }
+    }
     func level(_ edit: EditState) async throws -> Float {
         var candidate = project; candidate.history = [edit]; candidate.historyCursor = 0
         let media = try await TrackRenderer.timeline(project: candidate, folder: folder, processedSources: [sourceID: signalURL])
@@ -483,6 +553,14 @@ func exportAudioLevelTests(root: URL) async throws {
     }
     let full = try await level(project.edit)
     try require(abs(full - 1.5) < 0.001, "Final float mix preserves peaks above full scale for the check")
+    let sampleMix = try await TrackRenderer.timeline(project: project, folder: folder, processedSources: [sourceID: signalURL])
+    func measured(in ranges: [EditInterval]) async throws -> Float {
+        try await ExportAudioLevel.peak(asset: sampleMix.composition, mix: sampleMix.audioMix, duration: 4, ranges: ranges)
+    }
+    let elsewhere = try await measured(in: [EditInterval(3.1...3.4), EditInterval(0.5...1.1)])
+    let oneFrame = try await measured(in: [EditInterval(2.701...2.71)])
+    try require(abs(elsewhere - 0.4) < 0.001 && abs(oneFrame - 1.5) < 0.001,
+                "The original loud passage cannot trigger a warning for an edit elsewhere; even a short edited interval is measured")
     let quiet = EditState(clips: [TimelineClip(sourceID: sourceID, start: 0, end: 2)])
     let trimmed = try await level(quiet)
     try require(abs(trimmed - 0.4) < 0.001, "Removed source peaks never warn on the remaining quiet range")
@@ -529,6 +607,19 @@ func exportAudioLevelTests(root: URL) async throws {
     func receipt(_ url: URL) throws -> ExportReceipt { try JSONDecoder().decode(ExportReceipt.self, from: Data(contentsOf: url.deletingPathExtension().appendingPathExtension("json"))) }
     let loudReceipt = try receipt(output)
     try require(loud > 1 && loudReceipt.audioWarning != nil && loudReceipt.audioPeak == loud, "Warning is attached to the measured export receipt")
+    var nearLimit = loudReceipt
+    nearLimit.audioPeak = Float(pow(10, 0.1 / 20.0))
+    try require(nearLimit.audioWarning == nil, "A tenth of a decibel produces no distortion banner even on a processed track")
+    nearLimit.audioPeak = Float(pow(10, 0.5 / 20.0))
+    try require(nearLimit.audioWarning != nil, "An edited mix at the half-decibel threshold warns")
+    var oldLoud = loudReceipt; oldLoud.schemaVersion = 1
+    try require(oldLoud.audioWarning != nil, "A full-project gain boost in an old receipt remains actionable")
+    let checkpoint = ExportCheckpoint(folder: folder)
+    try checkpoint.prepare(project)
+    try JSONEncoder().encode(Float(1.5)).write(to: checkpoint.directory.appendingPathComponent("peak.json"))
+    try require(checkpoint.measuredPeak == nil, "A pre-update whole-movie peak cannot produce a scoped warning on resume")
+    try checkpoint.savePeak(loud)
+    try require(checkpoint.measuredPeak == loud, "The edited-range measurement survives resume")
     boosted.timeline.audio[0].volumeDB = -12; project.commit(boosted)
     let correctedURL = folder.appendingPathComponent("corrected.mp4")
     let corrected = try await MediaRenderer.render(project: project, folder: folder, destination: correctedURL) { _ in }.audioPeak ?? .nan

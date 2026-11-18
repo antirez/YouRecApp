@@ -115,6 +115,8 @@ struct VideoTimelineItem: Codable, Equatable, Identifiable {
     var content: TimelineClip
     var layer = 0
     var localOrigin = EditTime.zero
+    /// Explicitly authored across pieces, including pieces split from the same take.
+    var spanningEffects: Set<UUID>?
     var mapping: SourcePlaybackMap
     init(occurrenceID: UUID, start: EditTime, content: TimelineClip, layer: Int = 0) {
         self.occurrenceID = occurrenceID; self.start = start; self.content = content; self.layer = layer
@@ -170,6 +172,8 @@ struct AudioTimelineItem: Codable, Equatable, Identifiable {
     var start: EditTime
     var mapping: SourcePlaybackMap
     var localOrigin = EditTime.zero
+    /// Explicitly authored across pieces, including pieces split from the same take.
+    var spanningEffects: Set<UUID>?
     var followsVideo: UUID?
     var volumeDB = 0.0
     var muted = false
@@ -1251,6 +1255,11 @@ extension TrackTimeline {
 extension TrackTimeline {
     /// Stable time order for sequence-facing controls. Layer order remains
     /// independent: moving a picture must not change which overlap is in front.
+    var hasOverlappingPictures: Bool {
+        let ordered = chronologicalVideo
+        return zip(ordered, ordered.dropFirst()).contains { $0.end > $1.start }
+    }
+
     var chronologicalVideo: [VideoTimelineItem] {
         video.enumerated().sorted { a, b in
             a.element.start == b.element.start ? a.offset < b.offset : a.element.start < b.element.start
@@ -1448,7 +1457,8 @@ struct TimelineViewport {
     var minimumScale: Double { max(0.000001, (width - 2 * Self.edgeInset) / max(1, duration)) }
     var scale: Double { max(minimumScale, min(720, requestedScale)) }
     var fits: Bool { duration * scale <= width - 2 * Self.edgeInset + 0.5 }
-    var inset: Double { fits ? Self.edgeInset : width / 2 }
+    var centersPlayhead = true
+    var inset: Double { fits || !centersPlayhead ? Self.edgeInset : width / 2 }
     var contentWidth: Double { max(width, duration * scale + 2 * inset) }
     func x(_ time: Double, offset: Double) -> Double { time * scale + inset - offset }
     func time(_ x: Double, offset: Double) -> Double { min(duration, max(0, (x + offset - inset) / scale)) }
@@ -1547,12 +1557,16 @@ extension TrackTimeline {
             if let v = item.content.speed { item.content.speed?.id = fresh(v.id) }
             if let v = item.content.crop { item.content.crop?.id = fresh(v.id) }
             if let v = item.content.color { item.content.color?.id = fresh(v.id) }
+            item.content.colorRegions = item.content.colorRegions?.map { region in var copy = region; copy.grade.id = fresh(region.grade.id); return copy }
             if let v = item.content.mirror { item.content.mirror?.id = fresh(v.id) }
             if let v = item.content.pauses { item.content.pauses?.id = fresh(v.id) }
             if let id = item.content.stabilization?.id { item.content.stabilization?.id = fresh(id) }
             item.content.texts = item.content.texts?.map { var v = $0; v.id = fresh(v.id); return v }
             item.content.images = item.content.images?.map { var v = $0; v.id = fresh(v.id); return v }
             item.content.videoEffects = item.content.videoEffects?.map { var v = $0; if v.analysisFile != nil { v.capturedEffectID = v.analysisID }; v.id = fresh(v.id); return v }
+            item.content.effectWindows = item.content.effectWindows.map { Dictionary(uniqueKeysWithValues: $0.map { (fresh($0.key), $0.value) }) }
+            item.content.framingVariants = item.content.framingVariants?.map { $0.identified(fresh($0.id)) }
+            item.spanningEffects = item.spanningEffects.map { Set($0.map(fresh)) }
             addition.video[i] = item
         }
         for i in addition.audio.indices {
@@ -1562,6 +1576,7 @@ extension TrackTimeline {
             addition.audio[i].start = addition.audio[i].start + position
             addition.audio[i].subtitleWords = addition.audio[i].subtitleWords?.map { var word = $0; word.id = fresh(word.id); word.phraseID = fresh(word.phraseID); return word }
             for r in addition.audio[i].enhancements.indices { addition.audio[i].enhancements[r].id = fresh(addition.audio[i].enhancements[r].id) }
+            addition.audio[i].spanningEffects = addition.audio[i].spanningEffects.map { Set($0.map(fresh)) }
             addition.audio[i].censors = addition.audio[i].censors.map { var region = $0; region.id = fresh(region.id); return region }
         }
         addition.links = addition.links.map { TimelineLink(members: Set($0.members.map(fresh))) }
@@ -1683,11 +1698,78 @@ struct TimelineLane {
     let contentInterval: EditInterval
     let source: UUID
     let mapping: SourcePlaybackMap
-    let row: Int
+    var row: Int
     let number: Int
     let audio: Bool
     var trimsLeft: Bool { interval.start == contentInterval.start }
     var trimsRight: Bool { interval.end == contentInterval.end }
+}
+/// Adjacency in the displayed lanes, after transition folding and Move row packing.
+struct TimelineLinkLayout {
+    struct Edges {
+        var previous: UUID?
+        var previousDuration = EditTime.zero
+        var next: UUID?
+        var joinsAbove = false
+        var joinsBelow = false
+        var memberCount = 0
+        var outlinedGroup = false
+    }
+    struct Bridge {
+        let group: UUID
+        let upperRow: Int
+        var interval: EditInterval
+    }
+    private(set) var edges: [UUID: Edges] = [:]
+    private(set) var bridges: [Bridge] = []
+
+    init(lanes: [TimelineLane], links: [TimelineLink]) {
+        guard !links.isEmpty else { return }
+        var groups: [UUID: UUID] = [:]
+        for link in links where link.members.count > 1 {
+            for member in link.members {
+                groups[member] = link.id
+                edges[member] = Edges(memberCount: link.members.count)
+            }
+        }
+        let rows = Dictionary(grouping: lanes, by: \.row).mapValues { $0.sorted { $0.interval.start < $1.interval.start } }
+        var horizontalGroups: Set<UUID> = []
+        for (index, row) in rows {
+            for (left, right) in zip(row, row.dropFirst()) where left.interval.end == right.interval.start {
+                if let group = groups[left.id], group == groups[right.id] {
+                    horizontalGroups.insert(group)
+                    edges[left.id]?.next = right.id
+                    edges[right.id]?.previous = left.id
+                    edges[right.id]?.previousDuration = left.interval.duration
+                }
+            }
+            // Only adjacent picture and sound lanes can share a physical border.
+            guard row.first?.audio == false, let lower = rows[index + 1], lower.first?.audio == true else { continue }
+            var i = 0, j = 0
+            var coverage: [UUID: EditTime] = [:]
+            while i < row.count, j < lower.count {
+                let picture = row[i], sound = lower[j]
+                if let group = groups[picture.id], group == groups[sound.id],
+                   let common = picture.interval.intersection(sound.interval) {
+                    coverage[picture.id] = (coverage[picture.id] ?? .zero) + common.duration
+                    coverage[sound.id] = (coverage[sound.id] ?? .zero) + common.duration
+                    if let last = bridges.indices.last, bridges[last].group == group,
+                       bridges[last].upperRow == index, bridges[last].interval.end == common.start {
+                        bridges[last].interval.end = common.end
+                    } else {
+                        bridges.append(Bridge(group: group, upperRow: index, interval: common))
+                    }
+                }
+                if picture.interval.end <= sound.interval.end { i += 1 }
+                if sound.interval.end <= picture.interval.end { j += 1 }
+            }
+            for lane in row where coverage[lane.id] == lane.interval.duration { edges[lane.id]?.joinsBelow = true }
+            for lane in lower where coverage[lane.id] == lane.interval.duration { edges[lane.id]?.joinsAbove = true }
+        }
+        for link in links where horizontalGroups.contains(link.id) {
+            for member in link.members { edges[member]?.outlinedGroup = true }
+        }
+    }
 }
 private func displayIntervals(_ timeline: TrackTimeline, folding layout: TimelineLayout?) -> [UUID: EditInterval] {
     var visible = Dictionary(uniqueKeysWithValues: timeline.video.map { ($0.id, $0.interval) } + timeline.audio.map { ($0.id, $0.interval) })
@@ -1744,6 +1826,13 @@ func timelineLanes(_ timeline: TrackTimeline, moving: TimelineSelection? = nil) 
     func pack(_ items: [TimelineLane], base: Int) -> Int {
         var rows: [[EditInterval]] = []
         var placed: [(id: UUID, interval: EditInterval, row: Int)] = []
+        let chronological = items.sorted { $0.interval.start < $1.interval.start }
+        if !zip(chronological, chronological.dropFirst()).contains(where: { $0.interval.end > $1.interval.start }) {
+            // The common case: every part can occupy the same row. Keep the
+            // original draw/hit-test order without testing every preceding part.
+            for var item in items { item.row = base; result.append(item) }
+            return items.isEmpty ? 0 : 1
+        }
         for item in items {
             // Ordinary overlays retain their front/back order. Transition
             // partners blend, rather than cover, so reuse alternate rows for a

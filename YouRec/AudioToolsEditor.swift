@@ -82,9 +82,12 @@ struct CensorAudioEditor: View {
     @State private var token = UUID()
     private let effectID: UUID
     @State private var selectedAudio: Set<UUID>
-    @State private var start: Double
-    @State private var end: Double
-    private var selectionRange: ClosedRange<Double> { start...end }
+    @State private var timing: EditorRangeTiming
+    @StateObject private var trimPreview = RangeFramePreview()
+    @State private var trimFrame: Double?
+    private var start: Double { timing.range.lowerBound }
+    private var end: Double { timing.range.upperBound }
+    private var selectionRange: ClosedRange<Double> { timing.range }
     private var overlapping: [AudioTimelineItem] {
         project.edit.timeline.audio.filter { $0.interval.intersection(EditInterval(selectionRange)) != nil }
     }
@@ -100,7 +103,7 @@ struct CensorAudioEditor: View {
         var target = request.targets ?? project.edit.timeline.entireSelection(range: EditInterval(request.range))
         target.video = []; target.range = EditInterval(request.range)
         _selectedAudio = State(initialValue: target.audio)
-        _start = State(initialValue: request.range.lowerBound); _end = State(initialValue: request.range.upperBound)
+        _timing = State(initialValue: EditorRangeTiming(range: request.range, bounds: 0...project.edit.duration))
         self.effectID = request.effectID ?? UUID()
         let existing = project.edit.timeline.audio.filter { target.audio.contains($0.id) }.flatMap(\.censors)
             .first { $0.id == request.effectID }
@@ -119,7 +122,7 @@ struct CensorAudioEditor: View {
                 let layout = wide ? AnyLayout(HStackLayout(spacing: 0)) : AnyLayout(VStackLayout(spacing: 0))
                 layout {
                     VStack(spacing: 0) {
-                        PlayerSurface(player: loaded ? preview.player : initialPlayer, inspectionZoom: true, onPlaybackTap: play, identifier: "censor.preview")
+                        PlayerSurface(player: trimFrame != nil ? trimPreview.player : (loaded ? preview.player : initialPlayer), inspectionZoom: true, onPlaybackTap: play, identifier: "censor.preview")
                         HStack {
                             Button(action: play) {
                                 let symbol = busy ? "xmark" : preview.playing ? "pause.fill" : "play.fill"
@@ -127,12 +130,12 @@ struct CensorAudioEditor: View {
                                 else { Label(busy ? "Cancel preview" : preview.playing ? "Pause" : "Play preview", systemImage: symbol).frame(minHeight: 44) }
                             }.accessibilityLabel(busy ? "Cancel preview" : preview.playing ? "Pause" : "Play preview").accessibilityIdentifier("censor.play")
                             Spacer()
-                            Text(editorTime(loaded ? preview.playhead : initialPlayer.currentTime().seconds)).font(.caption.monospacedDigit())
+                            Text(editorTime(trimFrame ?? (loaded ? preview.playhead : initialPlayer.currentTime().seconds))).font(.caption.monospacedDigit()).accessibilityIdentifier("censor.previewTime")
                         }.padding(.horizontal, 16)
                         Slider(value: Binding(get: { min(range.upperBound, max(range.lowerBound, loaded ? preview.playhead : range.lowerBound)) }, set: { preview.seekPaused($0) }), in: range)
                             .padding(.horizontal, 16).disabled(!loaded || busy || dirty).accessibilityLabel("Censor preview position").accessibilityIdentifier("censor.seek")
                     }.frame(maxWidth: .infinity, maxHeight: wide ? .infinity : max(150, geometry.size.height * 0.36))
-                    ScrollView {
+                    DurationInspectorScroll {
                         VStack(alignment: .leading, spacing: 18) {
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack {
@@ -140,17 +143,22 @@ struct CensorAudioEditor: View {
                                     Button { help = true } label: { Image(systemName: "questionmark.circle").frame(width: 44, height: 44) }.accessibilityLabel("About audio censoring")
                                     Spacer()
                                 }
-                                boundaryControl("Start", value: start, earlier: start > 0, later: start + TimelineEditing.frame < end) { delta in start = max(0, min(end - TimelineEditing.frame, start + delta)) }
-                                boundaryControl("End", value: end, earlier: end - TimelineEditing.frame > start, later: end < project.edit.duration) { delta in end = max(start + TimelineEditing.frame, min(project.edit.duration, end + delta)) }
-                                Text("Nudge by one frame to cover the entire word.").font(.caption).foregroundStyle(.secondary)
+                                let width = wide ? min(400, geometry.size.width * 0.5) : geometry.size.width
+                                if request.scopedEffect == nil { EditorRangeDuration(timing: timing, width: width - 32, name: "Censor", identifier: "censor") { edge, time, _ in
+                                    invalidate()
+                                    timing.set(edge, to: time)
+                                    let frame = timing.previewTime(for: edge)
+                                    trimFrame = frame
+                                    trimPreview.show(frame, from: initialPlayer.currentItem)
+                                } }
                             }
                             VStack(alignment: .leading, spacing: 6) {
                                 Text("Sound to replace").font(.subheadline.weight(.semibold))
-                                ForEach(overlapping) { item in
+                                ForEach(overlapping.filter { request.scopedEffect == nil || selectedAudio.contains($0.id) }) { item in
                                     Toggle(isOn: Binding(get: { selectedAudio.contains(item.id) }, set: { enabled in
                                         if enabled { selectedAudio.insert(item.id) } else { selectedAudio.remove(item.id) }
                                     })) { Text(audioTitle(item)).font(.subheadline).lineLimit(2) }
-                                        .frame(minHeight: 44).accessibilityIdentifier("censor.track." + item.id.uuidString)
+                                        .disabled(request.scopedEffect != nil).frame(minHeight: 44).accessibilityIdentifier("censor.track." + item.id.uuidString)
                                 }
                                 if target.audio.isEmpty { Text("Select an audio part in this range.").font(.caption).foregroundStyle(.orange) }
                                 else { Text("Unselected tracks keep their sound.").font(.caption).foregroundStyle(.secondary) }
@@ -196,7 +204,7 @@ struct CensorAudioEditor: View {
                     InspectorHelpSheet(topic: InspectorHelp(title: "Censor audio", guide: "Replace a word or sound with a generated tone. Nudge Start and End to cover it completely, and choose which audio parts to replace. Unselected music or other tracks keep playing.\n\nSine is smooth; triangle and square sound sharper. Frequency sets pitch, Beep level sets the peak before track Volume, and the envelope shapes the tone without revealing speech during fades or pulse gaps.\n\nPlay preview auditions up to ten seconds around the start of the range. Changes wait for another Play tap. Apply saves the edit; Remove or Undo restores the original.", history: nil))
                 }
         }.tint(.mint).preferredColorScheme(.dark).interactiveDismissDisabled()
-            .onChange(of: settings) { _, _ in invalidate() }.onChange(of: selectionRange) { _, _ in invalidate() }.onChange(of: selectedAudio) { _, _ in invalidate() }.onDisappear { job?.cancel(); preview.stop() }
+            .onChange(of: settings) { _, _ in invalidate() }.onChange(of: selectedAudio) { _, _ in invalidate() }.onDisappear { job?.cancel(); preview.stop() }
     }
     private func audioTitle(_ item: AudioTimelineItem) -> String {
         let number = (project.edit.timeline.audio.firstIndex { $0.id == item.id } ?? 0) + 1
@@ -209,20 +217,6 @@ struct CensorAudioEditor: View {
             Text(title)
             if !typeSize.isAccessibilitySize { Spacer() }
             Text(value).monospacedDigit().fixedSize()
-        }
-    }
-    private func boundaryControl(_ title: String, value: Double, earlier: Bool, later: Bool, change: @escaping (Double) -> Void) -> some View {
-        let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2)) : AnyLayout(HStackLayout(spacing: 8))
-        return layout {
-            Text(title).font(.subheadline)
-            if !typeSize.isAccessibilitySize { Spacer(minLength: 4) }
-            HStack(spacing: 8) {
-            Button { change(-TimelineEditing.frame) } label: { Image(systemName: "minus").frame(width: 44, height: 44) }
-                .disabled(!earlier).accessibilityLabel(title + " earlier").accessibilityIdentifier("censor." + title.lowercased() + ".earlier")
-            Text(editorTime(value)).font(.subheadline.monospacedDigit()).fixedSize().accessibilityIdentifier("censor." + title.lowercased())
-            Button { change(TimelineEditing.frame) } label: { Image(systemName: "plus").frame(width: 44, height: 44) }
-                .disabled(!later).accessibilityLabel(title + " later").accessibilityIdentifier("censor." + title.lowercased() + ".later")
-            }
         }
     }
     private var envelopeDrawing: some View {
@@ -246,13 +240,13 @@ struct CensorAudioEditor: View {
         if busy { invalidate(); return }
         if loaded && !dirty && preview.error == nil { preview.togglePlay(); return }
         let current = UUID(); token = current; busy = true
-        var candidate = project; candidate.history = [state()]; candidate.historyCursor = 0
+        var candidate = project; candidate.history = [request.previewState(state(), in: project.edit)]; candidate.historyCursor = 0
         job = Task { @MainActor in
             preview.previewRange = range; preview.seekAfterEdit(range.lowerBound, duration: project.edit.duration)
             await preview.load(candidate, folder: folder, includeTimelineDetails: false, audioPreviewRange: range)
             guard !Task.isCancelled, current == token else { return }
             busy = false
-            if preview.error == nil { loaded = true; dirty = false; preview.seek(range.lowerBound); preview.togglePlay() }
+            if preview.error == nil { trimFrame = nil; loaded = true; dirty = false; preview.seek(range.lowerBound); preview.togglePlay() }
         }
     }
 }

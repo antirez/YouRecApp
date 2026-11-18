@@ -130,29 +130,36 @@ enum ProjectArchive {
             var copyError: Error?
             NSFileCoordinator().coordinate(readingItemAt: source, options: [], error: &coordinationError) { coordinated in
                 do {
-                    try Task.checkCancellation()
-                    let total = max(1, (try coordinated.resourceValues(forKeys: [.fileSizeKey])).fileSize ?? 1)
-                    try RecoverySpace.require(Int64(total), at: destination.deletingLastPathComponent())
-                    guard !FileManager.default.fileExists(atPath: destination.path),
-                          FileManager.default.createFile(atPath: destination.path, contents: nil) else { throw CocoaError(.fileWriteFileExists) }
-                    let input = try FileHandle(forReadingFrom: coordinated), output = try FileHandle(forWritingTo: destination)
-                    defer { try? input.close(); try? output.close() }
-                    var count = 0, lastProgress = -1.0, nextSpaceCheck = 16_777_216
-                    while let chunk = try input.read(upToCount: 2_097_152), !chunk.isEmpty {
-                        try Task.checkCancellation(); try output.write(contentsOf: chunk); count += chunk.count
-                        if count >= nextSpaceCheck {
-                            try RecoverySpace.require(0, at: destination.deletingLastPathComponent())
-                            nextSpaceCheck = count + 16_777_216
-                        }
-                        let value = Double(count) / Double(total)
-                        if value - lastProgress >= 0.005 { lastProgress = value; progress(min(1, value)) }
-                    }
-                    try Task.checkCancellation(); try output.synchronize(); progress(1)
+                    try copyContents(coordinated, to: destination, checkCancellation: Task.checkCancellation, progress: progress)
                 } catch { copyError = error }
             }
             if let error = copyError ?? coordinationError { throw error }
         }
         try await withTaskCancellationHandler(operation: { try await task.value }, onCancel: { task.cancel() })
+    }
+
+    // NSItemProvider grants a file for the duration of its callback. Its
+    // caller can use the same bounded, cancellable disk copy synchronously.
+    static func copyContents(_ source: URL, to destination: URL, checkCancellation: () throws -> Void,
+                             progress: (Double) -> Void) throws {
+        try checkCancellation()
+        let total = max(1, (try source.resourceValues(forKeys: [.fileSizeKey])).fileSize ?? 1)
+        try RecoverySpace.require(Int64(total), at: destination.deletingLastPathComponent())
+        guard !FileManager.default.fileExists(atPath: destination.path),
+              FileManager.default.createFile(atPath: destination.path, contents: nil) else { throw CocoaError(.fileWriteFileExists) }
+        let input = try FileHandle(forReadingFrom: source), output = try FileHandle(forWritingTo: destination)
+        defer { try? input.close(); try? output.close() }
+        var count = 0, lastProgress = -1.0, nextSpaceCheck = 16_777_216
+        while let chunk = try input.read(upToCount: 2_097_152), !chunk.isEmpty {
+            try checkCancellation(); try output.write(contentsOf: chunk); count += chunk.count
+            if count >= nextSpaceCheck {
+                try RecoverySpace.require(0, at: destination.deletingLastPathComponent())
+                nextSpaceCheck = count + 16_777_216
+            }
+            let value = Double(count) / Double(total)
+            if value - lastProgress >= 0.005 { lastProgress = value; progress(min(1, value)) }
+        }
+        try checkCancellation(); try output.synchronize(); progress(1)
     }
 
     private static func preservedOriginals(_ project: Project, in folder: URL) throws -> [String: URL] {
@@ -402,12 +409,12 @@ enum ProjectArchive {
         return try publish(project, from: staged, into: disk)
     }
 
-    private static func stagingDisk(in disk: ProjectDisk) -> ProjectDisk {
+    static func stagingDisk(in disk: ProjectDisk) -> ProjectDisk {
         discardInterruptedRestores(in: disk)
         return ProjectDisk(root: restoreWorkspace(in: disk).appendingPathComponent(restoreSession, isDirectory: true))
     }
 
-    private static func publish(_ project: Project, from staged: ProjectDisk, into disk: ProjectDisk) throws -> Project {
+    static func publish(_ project: Project, from staged: ProjectDisk, into disk: ProjectDisk) throws -> Project {
         try Task.checkCancellation()
         try staged.save(project)
         try Task.checkCancellation()

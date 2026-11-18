@@ -108,6 +108,14 @@ func subtitleTests(root: URL) async throws {
             }
         }
     }
+    for (finger, expected) in [
+        (CGPoint(x: 0.486, y: 0.7), CGPoint(x: 0.5, y: 0.7)),
+        (CGPoint(x: 0.3, y: 0.514), CGPoint(x: 0.3, y: 0.5)),
+        (CGPoint(x: 0.51, y: 0.49), CGPoint(x: 0.5, y: 0.5)),
+        (CGPoint(x: 0.48, y: 0.52), CGPoint(x: 0.48, y: 0.52))
+    ] {
+        try require(OverlayPlacement.snappedCenter(finger) == expected, "Caption center follows each axis independently")
+    }
     var placement = SubtitleSettings(); placement.font = .classic; placement.x = 0.3; placement.size = 0.13; placement.y = 0.2
     let encoded = try JSONEncoder().encode(placement)
     let decoded = try JSONDecoder().decode(SubtitleSettings.self, from: encoded)

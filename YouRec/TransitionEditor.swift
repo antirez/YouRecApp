@@ -33,6 +33,7 @@ final class TransitionWorkspace: ObservableObject {
     private let context = CIContext(options: [.cacheIntermediates: false])
     private var job: Task<Void, Never>?
     private var observer: Any?
+    private var playbackEnd: EffectPreviewEndObserver?
     private var status: NSKeyValueObservation?
     private var revision = UUID()
     private var playbackRevision = UUID()
@@ -63,11 +64,14 @@ final class TransitionWorkspace: ObservableObject {
         existing = join.transition != nil
         settings = join.transition ?? ClipTransition(duration: min(0.5, join.maximum))
         visitedStyles.insert(settings.style)
-        observer = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 30), queue: .main) { [weak self] time in
+        playbackEnd = EffectPreviewEndObserver(player: player) { [weak self] in
+            guard let self, self.playing, self.player.currentTime().seconds >= self.previewRange.upperBound - 0.001 else { return }
+            self.seek(self.previewRange.upperBound)
+        }
+        observer = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 30), queue: .main) { [weak self] _ in
             Task { @MainActor in
                 guard let self, self.playing else { return }
-                self.position = time.seconds
-                if time.seconds >= self.previewRange.upperBound - TimelineEditing.frame { self.pause(); self.seek(self.previewRange.lowerBound) }
+                self.position = min(self.lastPreviewFrame, max(self.previewRange.lowerBound, self.player.currentTime().seconds))
             }
         }
     }
@@ -120,7 +124,7 @@ final class TransitionWorkspace: ObservableObject {
                 let media = try await MediaRenderer.timeline(project: candidate, folder: folder,effectPreparation:.cached)
                 try Task.checkCancellation(); guard revision == token else { return }
                 let join = candidate.edit.layout.joins[joinIndex]
-                previewRange = max(0, join.range.lowerBound - 0.65)...min(candidate.edit.duration, join.range.upperBound + 0.65)
+                previewRange = join.range.clamped(to: 0...candidate.edit.duration)
                 let samples = candidate.edit.layout.placements.map { max(0, min($0.clip.duration - TimelineEditing.frame, join.origin + join.timing.videoDuration / 2 - $0.start)) }
                 if frames.isEmpty || frameTimes != samples {
                     var next: [CIImage] = []
@@ -153,6 +157,8 @@ final class TransitionWorkspace: ObservableObject {
                     still = UIImage(cgImage: frame)
                 }
                 let item = AVPlayerItem(asset: media.composition); item.videoComposition = media.playbackVideoComposition; item.audioMix = media.audioMix
+                item.reversePlaybackEndTime = CMTime(seconds: previewRange.lowerBound, preferredTimescale: 60000)
+                item.forwardPlaybackEndTime = CMTime(seconds: previewRange.upperBound, preferredTimescale: 60000)
                 status = item.observe(\.status, options: [.new]) { [weak self, weak item] _, _ in
                     Task { @MainActor in
                         guard let self, self.revision == token, let item, item === self.player.currentItem else { return }
@@ -160,7 +166,7 @@ final class TransitionWorkspace: ObservableObject {
                     }
                 }
                 player.replaceCurrentItem(with: item)
-                position = join.origin + join.timing.videoDuration / 2
+                position = min(lastPreviewFrame, join.origin + join.timing.videoDuration / 2)
                 await player.seek(to: CMTime(seconds: position, preferredTimescale: 60000), toleranceBefore: .zero, toleranceAfter: .zero)
                 try Task.checkCancellation(); guard revision == token else { return }
                 busy = false
@@ -196,7 +202,12 @@ final class TransitionWorkspace: ObservableObject {
             Task { @MainActor in guard let self, finished, !self.busy, self.playbackRevision == token else { return }; self.playing = true; self.player.play() }
         }
     }
-    func seek(_ time: Double) { pause(); position = time; player.seek(to: CMTime(seconds: time, preferredTimescale: 60000), toleranceBefore: .zero, toleranceAfter: .zero) }
+    private var lastPreviewFrame: Double { max(previewRange.lowerBound, previewRange.upperBound - TimelineEditing.frame) }
+    func seek(_ time: Double) {
+        pause()
+        position = min(lastPreviewFrame, max(previewRange.lowerBound, time))
+        player.seek(to: CMTime(seconds: position, preferredTimescale: 60000), toleranceBefore: .zero, toleranceAfter: .zero)
+    }
     func resetFraming() { settings.first = TransitionFraming(); settings.second = TransitionFraming(); settings.divider = 0.5 }
 }
 
@@ -207,6 +218,7 @@ struct TransitionEditor: View {
     let apply: (EditState) -> Void
     @State private var framing = true
     @State private var choosingStyle = false
+    @State private var customDuration = false
     init(project: Project, folder: URL, request: ToolRequest, cancel: @escaping () -> Void, apply: @escaping (EditState) -> Void) {
         _model = StateObject(wrappedValue: TransitionWorkspace(project: project, folder: folder, boundary: request.boundaryIndex ?? 0))
         self.cancel = cancel; self.apply = apply
@@ -283,7 +295,7 @@ struct TransitionEditor: View {
                 EditorDurationPicker(title: model.settings.style == .still ? "Freeze duration" : "Blend duration",
                                      seconds: model.settings.duration, maximum: maximum, width: width,
                                      choices: EditorDurationPresets.transitionSeconds, identifier: "transition.timing",
-                                     presetPrefix: "transition.duration") { value in
+                                     presetPrefix: "transition.duration", custom: $customDuration) { value in
                     model.settings.duration = value
                 } details: {
                     Text("Up to \(maximum.formatted(.number.precision(.fractionLength(0...2)))) s")
@@ -291,7 +303,10 @@ struct TransitionEditor: View {
                 }
                 // SwiftUI requires at least one full step in the slider's range.
                 // A one-frame neighbor has only one valid duration, so disable adjustment.
-                Slider(value: Binding(get: { min(max(TimelineEditing.frame, maximum), max(TimelineEditing.frame, model.settings.duration)) }, set: { model.settings.duration = $0 }), in: TimelineEditing.frame...max(2 * TimelineEditing.frame, maximum), step: TimelineEditing.frame)
+                Slider(value: Binding(get: { min(max(TimelineEditing.frame, maximum), max(TimelineEditing.frame, model.settings.duration)) }, set: { value in
+                    customDuration = true
+                    model.settings.duration = value
+                }), in: TimelineEditing.frame...max(2 * TimelineEditing.frame, maximum), step: TimelineEditing.frame)
                     .disabled(maximum < 2 * TimelineEditing.frame)
                     .accessibilityLabel("Transition duration").accessibilityIdentifier("transition.duration")
                 Text(model.lengthNote).font(.caption).foregroundStyle(.secondary)

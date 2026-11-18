@@ -135,18 +135,7 @@ struct EffectAnimation: Codable, Equatable, Sendable {
         a == other.a && b == other.b && timing == other.timing
     }
     func elapsed(at source: Double) -> Double {
-        guard let first = clock.first, let last = clock.last else { return source }
-        if source <= first.source { return first.elapsed }
-        if source >= last.source { return last.elapsed }
-        var lower = 0
-        var upper = clock.count - 1
-        while upper - lower > 1 {
-            let mid = (upper + lower) / 2
-            if clock[mid].source < source { lower = mid } else { upper = mid }
-        }
-        let l = clock[lower]
-        let r = clock[upper]
-        return l.elapsed + (r.elapsed - l.elapsed) * (source - l.source) / (r.source - l.source)
+        StrobeTimePoint.elapsed(at: source, in: clock)
     }
     func fraction(at source: Double) -> Double {
         timing.fraction(at: elapsed(at: source), duration: duration, frame: frame)
@@ -250,5 +239,22 @@ extension VideoEffectSettings {
                     guard case .number(let n) = p.value(at: time) else { return nil }
                     return (p.id, n)
                 }))
+    }
+}
+
+extension StrobeTimePoint {
+    static func elapsed(at source: Double, in clock: [Self]) -> Double {
+        guard let first = clock.first, let last = clock.last else { return source }
+        if source <= first.source { return first.elapsed }
+        if source >= last.source { return last.elapsed }
+        var lower = 0
+        var upper = clock.count - 1
+        while upper - lower > 1 {
+            let mid = (upper + lower) / 2
+            if clock[mid].source < source { lower = mid } else { upper = mid }
+        }
+        let l = clock[lower]
+        let r = clock[upper]
+        return l.elapsed + (r.elapsed - l.elapsed) * (source - l.source) / (r.source - l.source)
     }
 }

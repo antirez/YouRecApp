@@ -7,7 +7,10 @@ func timelineClipboardChecks() throws {
         guard condition else { throw NSError(domain: "ClipboardQA", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
     }
     let source = SourceMedia(filename: "clipboard.mov", duration: 10)
-    let clips = (0..<5).map { TimelineClip(sourceID: source.id, start: Double($0 * 2), end: Double($0 * 2 + 2)) }
+    let clips = (0..<5).map { (index: Int) -> TimelineClip in
+        let start = Double(index * 2)
+        return TimelineClip(sourceID: source.id, start: start, end: start + 2)
+    }
     var base = TrackTimeline(clips: clips)
     func boundary(_ t: TrackTimeline, _ second: Double, _ kind: TimelinePasteTarget.Kind = .picture) -> TimelinePasteTarget? {
         t.pasteTargets(layout: EditState(timeline: t).layout).first { $0.kind == kind && $0.isAt(EditTime(second)) }

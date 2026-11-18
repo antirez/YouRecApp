@@ -189,7 +189,7 @@ final class ImportedFonts: @unchecked Sendable {
 
 extension EditState {
     var importedFontFiles: Set<String> {
-        let faces = timeline.video.flatMap { ($0.content.texts ?? []).compactMap { $0.appearance?.face } }
+        let faces = timeline.video.flatMap { ($0.content.texts ?? []).flatMap(\.fontFaces) }
         return Set((faces + [timeline.subtitles?.appearance?.face].compactMap { $0 })
             .compactMap { ImportedFontFace.Reference($0)?.filename })
     }

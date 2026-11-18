@@ -142,6 +142,8 @@ final class MultiCameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDe
                 if format.supportedColorSpaces.contains(.sRGB) { device.activeColorSpace = .sRGB }
                 device.videoZoomFactor = 1
                 if device.isFocusModeSupported(.continuousAutoFocus) { device.focusMode = .continuousAutoFocus }
+                // A single-camera manual aperture must not carry into the dual session.
+                if device.isExposureModeSupported(.continuousAutoExposure) { device.exposureMode = .continuousAutoExposure }
                 device.unlockForConfiguration()
                 let output = AVCaptureVideoDataOutput()
                 output.alwaysDiscardsLateVideoFrames = true

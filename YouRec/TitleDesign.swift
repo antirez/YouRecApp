@@ -103,43 +103,191 @@ struct TitleDesign: Codable, Equatable, Hashable, Sendable {
         next.borderWidth = borderWidth
         return next
     }
-    static let looks: [(name: String, design: Self)] = {
-        var film = Self()
-        film.face = "sourceserif4"
-        film.weight = 500
-        var lower = Self()
-        lower.face = "barlowcondensed"
-        lower.plate = .block
-        lower.shadow = false
-        lower.alignment = .left
-        var heavy = Self()
-        heavy.face = "archivoblack"
-        var note = Self()
-        note.face = "caveat"
-        note.weight = 600
-        var label = Self()
-        label.face = "ibmplexmono"
-        label.weight = 500
-        label.tracking = 0.06
-        var editorial = Self()
-        editorial.face = "fraunces"
-        editorial.gradient = TitleGradient.gallery[0].value
-        var clear = Self()
-        clear.face = "atkinsonhyperlegiblenext"
-        clear.weight = 600
-        var sunsetMono = label
-        sunsetMono.gradient = TitleGradient.gallery[0].value
-        return [
-            ("Clean", clear), ("Film title", film), ("Lower third", lower), ("Headline", heavy),
-            ("Field note", note), ("Dateline", label), ("Warm editorial", editorial), ("Sunset mono", sunsetMono),
-        ]
-    }()
+    enum LookCollection: String, CaseIterable {
+        case editorial = "Editorial", cinema = "Cinema", print = "Print", display = "Display"
+    }
+
+    static let looks: [(collection: LookCollection, name: String, design: Self)] = [
+        (.editorial, "Clean", Self(face: "atkinsonhyperlegiblenext", weight: 600, lineSpacing: 0.04,
+                                   shade: TitleInk(0x090B0D, alpha: 240), shadowBlur: 0.085, shadowOffset: 0.035)),
+        (.editorial, "Field report", Self(face: "barlowcondensed", weight: 700, alignment: .left, tracking: 0.02, lineSpacing: 0.05,
+                                          fill: TitleInk(0xF8F8F4), shadow: false, plate: .lines,
+                                          backing: TitleInk(0x102335, alpha: 224), padding: 0.15, radius: 0)),
+        (.editorial, "Dateline", Self(face: "ibmplexmono", weight: 500, alignment: .left, tracking: 0.025, lineSpacing: 0.06,
+                                      fill: TitleInk(0xFFD79B), shade: TitleInk(0x21170F, alpha: 250), shadowBlur: 0.055, shadowOffset: 0.055)),
+        (.editorial, "Caption box", Self(face: "atkinsonhyperlegiblenext", weight: 500, lineSpacing: 0.09,
+                                         shadow: false, plate: .block, backing: TitleInk(0x111319, alpha: 168), padding: 0.24, radius: 0.24)),
+        (.editorial, "Pull quote", Self(face: "sourceserif4", weight: 600, alignment: .left, tracking: -0.012, lineSpacing: 0.12,
+                                        fill: TitleInk(0x27231F), shadow: false, plate: .block,
+                                        backing: TitleInk(0xF4EFDF), padding: 0.31, radius: 0.025)),
+        (.editorial, "Interview", Self(face: "system", weight: 600, alignment: .left, tracking: -0.01, lineSpacing: 0.06,
+                                       fill: TitleInk(0x121D28), shadow: false, plate: .block,
+                                       backing: TitleInk(0xEFF6FA, alpha: 166), padding: 0.26, radius: 0.14)),
+
+        (.cinema, "Film title", Self(face: "sourceserif4", weight: 500, tracking: 0.035, lineSpacing: 0.10,
+                                     fill: TitleInk(0xF9EFDC), shade: TitleInk(0x181519, alpha: 245), shadowBlur: 0.10, shadowOffset: 0.045)),
+        (.cinema, "Opening credit", Self(face: "barlowcondensed", weight: 400, tracking: 0.075, lineSpacing: 0.16,
+                                         fill: TitleInk(0xF4F6FA), shade: TitleInk(0x101720, alpha: 245), shadowBlur: 0.07, shadowOffset: 0.04)),
+        (.cinema, "Intertitle", Self(face: "bodonimoda", weight: 600, tracking: 0.035, lineSpacing: 0.12,
+                                     fill: TitleInk(0xF3E6CE), shadow: false, plate: .block,
+                                     backing: TitleInk(0x19191A, alpha: 214), padding: 0.40, radius: 0.035)),
+        (.cinema, "Daylight", Self(face: "bodonimoda", weight: 700, italic: true, tracking: -0.012, lineSpacing: 0.08,
+                                   fill: TitleInk(0x28212A), shade: TitleInk(0xFFF9ED, alpha: 229), shadowBlur: 0.12, shadowOffset: 0)),
+        (.cinema, "Night drive", Self(face: "unbounded", weight: 500, tracking: 0.065, lineSpacing: 0.12,
+                                      fill: TitleInk(0xDEEDFF), gradient: TitleGradient(0xF4F8FC, 0xA9CDFA, 90),
+                                      shade: TitleInk(0x192D50), shadowBlur: 0.07, shadowOffset: 0.035,
+                                      plate: .block, backing: TitleInk(0x112238, alpha: 102), padding: 0.22, radius: 0.075)),
+        (.cinema, "Matinée", Self(face: "barlowcondensed", weight: 700, italic: true, tracking: 0.02,
+                                  fill: TitleInk(0xFFDAA8), shadow: false, plate: .lines,
+                                  backing: TitleInk(0x531E27, alpha: 190), padding: 0.16, radius: 0.035)),
+
+        (.print, "Headline", Self(face: "archivoblack", weight: 400, alignment: .left, tracking: -0.035,
+                                  fill: TitleInk(0xFFFCF2), shade: TitleInk(0x151319), shadowBlur: 0.018, shadowOffset: 0.065)),
+        (.print, "Magazine italic", Self(face: "fraunces", weight: 600, italic: true, tracking: -0.018, lineSpacing: 0.04,
+                                         fill: TitleInk(0xFFE7DC), shade: TitleInk(0x352027, alpha: 245), shadowBlur: 0.09, shadowOffset: 0.04)),
+        (.print, "Source note", Self(face: "ibmplexmono", weight: 400, alignment: .left, tracking: 0.015, lineSpacing: 0.12,
+                                     fill: TitleInk(0x302822), shadow: false, plate: .lines,
+                                     backing: TitleInk(0xF4E4C7, alpha: 181), padding: 0.16, radius: 0)),
+        (.print, "Masthead", Self(face: "bodonimoda", weight: 800, alignment: .left, tracking: -0.04,
+                                  fill: TitleInk(0x471628), shadow: false, plate: .block,
+                                  backing: TitleInk(0xF7E9E9, alpha: 232), padding: 0.12, radius: 0)),
+        (.print, "Clothbound", Self(face: "sourceserif4", weight: 500, tracking: 0.045, lineSpacing: 0.10,
+                                    fill: TitleInk(0xF1E2B2), shadow: false, plate: .block,
+                                    backing: TitleInk(0x183F34, alpha: 200), padding: 0.38, radius: 0.065)),
+        (.print, "Field note", Self(face: "caveat", weight: 700, alignment: .left, lineSpacing: 0.06,
+                                    fill: TitleInk(0xFFE379), shade: TitleInk(0x292018), shadowBlur: 0.095, shadowOffset: 0.045)),
+
+        (.display, "Gaffer tape", Self(face: "caveat", weight: 700, alignment: .left, tracking: 0.025, lineSpacing: 0.06,
+                                       fill: TitleInk(0x1A2025), shadow: false, plate: .lines,
+                                       backing: TitleInk(0xF3F1E6, alpha: 186), padding: 0.14, radius: 0)),
+        (.display, "Highlighter", Self(face: "atkinsonhyperlegiblenext", weight: 800, alignment: .left, tracking: -0.025, lineSpacing: 0.04,
+                                       fill: TitleInk(0x142214), shadow: false, plate: .lines,
+                                       backing: TitleInk(0xD9FA68), padding: 0.13, radius: 0.045)),
+        (.display, "Afterglow", Self(face: "fraunces", weight: 800, tracking: -0.025, lineSpacing: 0.03,
+                                     fill: TitleInk(0xFFF0AD), gradient: TitleGradient(0xFFF0AD, 0xFFA68E, 105),
+                                     shade: TitleInk(0x462335, alpha: 245), shadowBlur: 0.08, shadowOffset: 0.055)),
+        (.display, "Wide type", Self(face: "unbounded", weight: 800, alignment: .left, tracking: -0.03,
+                                     fill: TitleInk(0xDDF4C9), shade: TitleInk(0x17362B), shadowBlur: 0.02, shadowOffset: 0.075)),
+        (.display, "Flyer", Self(face: "archivoblack", weight: 400, tracking: -0.025, lineSpacing: 0.04,
+                                 fill: TitleInk(0xFFFFF5), shadow: false, plate: .block,
+                                 backing: TitleInk(0xAC2633, alpha: 226), padding: 0.22, radius: 0)),
+        (.display, "Lilac gel", Self(face: "unbounded", weight: 600, tracking: -0.025, lineSpacing: 0.05,
+                                     fill: TitleInk(0x261A40), shadow: false, plate: .block,
+                                     backing: TitleInk(0xE8D9FF, alpha: 170), padding: 0.30, radius: 0.80)),
+    ]
+
     var valid: Bool {
         !face.isEmpty && face.utf8.count <= 255 && (100...1000).contains(weight) && (-0.05...0.25).contains(tracking)
             && (0...0.8).contains(lineSpacing) && (0...0.20).contains(borderWidth) && (0...0.6).contains(shadowBlur)
             && (-0.5...0.5).contains(shadowOffset) && (0...0.8).contains(padding) && (0...0.8).contains(radius)
             && (0...360).contains(gradient?.angle ?? 0)
     }
+}
+
+/// Both lines share the overlay's anchor, size, timing and animation.
+struct LabelHeadline: Codable, Equatable, Sendable {
+    enum Part: String, CaseIterable { case label = "Label", headline = "Headline", card = "Card" }
+
+    static let defaultHeadline = "Second text"
+    var label = "First text"
+    var labelStyle = TitleDesign(face: "system", weight: 700, alignment: .left, tracking: 0.09,
+                                 fill: .black, shadow: false, plate: .block, backing: .white, padding: 0.32, radius: 0.27)
+    var headlineStyle = TitleDesign(face: "archivoblack", weight: 400, alignment: .left, tracking: -0.045, shadow: false)
+    var labelScale = 0.36
+    var headlineScale = 1.0
+    var card = TitleCard()
+
+    var valid: Bool {
+        label.count <= 500 && labelStyle.valid && headlineStyle.valid && card.valid
+            && (0.2...1).contains(labelScale) && (0.5...1.8).contains(headlineScale)
+    }
+}
+
+struct TitleCard: Codable, Equatable, Sendable {
+    struct Offset: Codable, Equatable, Sendable {
+        // Each axis is a fraction of the travel from the preset position to that edge.
+        var x = 0.0, y = 0.0
+
+        var valid: Bool { (-1...1).contains(x) && (-1...1).contains(y) }
+    }
+
+    var fill = TitleInk(0x08090B, alpha: 139)
+    var border = TitleInk(0xFFFFFF, alpha: 72)
+    // Dimensions are relative to the base headline size, so the whole design scales together.
+    var borderWidth = 0.017
+    var padding = 0.42
+    var radius = 0.29
+    var spacing = 0.08
+    var labelOffset: Offset?
+    var headlineOffset: Offset?
+
+    var valid: Bool {
+        (0...0.1).contains(borderWidth) && (0...1).contains(padding)
+            && (0...1).contains(radius) && (0...1).contains(spacing)
+            && labelOffset?.valid != false && headlineOffset?.valid != false
+    }
+}
+
+extension LabelHeadline {
+    /// A reusable look contains appearance only. Words and manual placement belong to the title.
+    struct Look: Codable, Equatable, Sendable {
+        var label, headline: TitleDesign
+        var labelScale, headlineScale: Double
+        var card: TitleCard
+    }
+
+    var look: Look {
+        var frame = card
+        frame.labelOffset = nil
+        frame.headlineOffset = nil
+        return Look(label: TitleDesign().applyingLook(labelStyle), headline: TitleDesign().applyingLook(headlineStyle),
+                    labelScale: labelScale, headlineScale: headlineScale, card: frame)
+    }
+
+    func applyingLook(_ look: Look) -> Self {
+        var result = self
+        result.labelStyle = labelStyle.applyingLook(look.label)
+        result.headlineStyle = headlineStyle.applyingLook(look.headline)
+        result.labelScale = look.labelScale
+        result.headlineScale = look.headlineScale
+        result.card = look.card
+        result.card.labelOffset = card.labelOffset
+        result.card.headlineOffset = card.headlineOffset
+        return result
+    }
+
+    static let looks: [(name: String, design: Look)] = {
+        let broadcast = Look(
+            label: TitleDesign(face: "barlowcondensed", weight: 700, alignment: .left, tracking: 0.08,
+                               fill: TitleInk(0x111111), shadow: false, plate: .block, backing: TitleInk(0xFFD60A), padding: 0.20, radius: 0.06),
+            headline: TitleDesign(face: "barlowcondensed", weight: 700, alignment: .left, shadow: false),
+            labelScale: 0.44, headlineScale: 1.0,
+            card: TitleCard(fill: TitleInk(0x0B0F14, alpha: 236), borderWidth: 0, padding: 0.36, radius: 0.08, spacing: 0.12))
+        let editorial = Look(
+            label: TitleDesign(face: "ibmplexmono", weight: 500, alignment: .left, tracking: 0.075, fill: TitleInk(0x962C26), shadow: false),
+            headline: TitleDesign(face: "sourceserif4", weight: 600, alignment: .left, tracking: -0.01, fill: TitleInk(0x221D1A), shadow: false),
+            labelScale: 0.42, headlineScale: 1.0,
+            card: TitleCard(fill: TitleInk(0xF7F3EA, alpha: 246), border: TitleInk(0x51463C), borderWidth: 0.022, padding: 0.46, radius: 0.04, spacing: 0.12))
+        let terminal = Look(
+            label: TitleDesign(face: "ibmplexmono", weight: 500, alignment: .left, tracking: 0.06, fill: TitleInk(0x61E3A5), shadow: false),
+            headline: TitleDesign(face: "ibmplexmono", weight: 700, alignment: .left, tracking: -0.025, fill: TitleInk(0xE6EDF3), shadow: false),
+            labelScale: 0.41, headlineScale: 0.94,
+            card: TitleCard(fill: TitleInk(0x0D1517, alpha: 240), border: TitleInk(0x61E3A5), borderWidth: 0.025, padding: 0.40, radius: 0.12, spacing: 0.12))
+        let poster = Look(
+            label: TitleDesign(face: "barlowcondensed", weight: 700, alignment: .left, tracking: 0.07, fill: .black,
+                               shadow: false, plate: .block, backing: .white, padding: 0.18, radius: 0),
+            headline: TitleDesign(face: "archivoblack", weight: 400, alignment: .left, tracking: -0.035,
+                                  shadow: false, plate: .block, backing: TitleInk(0xB7251F), padding: 0.15, radius: 0),
+            labelScale: 0.44, headlineScale: 1.0,
+            card: TitleCard(fill: TitleInk(0, alpha: 0), borderWidth: 0, padding: 0.12, radius: 0, spacing: 0.03))
+        let notebook = Look(
+            label: TitleDesign(face: "caveat", weight: 700, alignment: .left, fill: TitleInk(0xFFE066), shadow: false),
+            headline: TitleDesign(face: "fraunces", weight: 600, italic: true, alignment: .left, tracking: -0.01, shadow: false),
+            labelScale: 0.62, headlineScale: 1.0,
+            card: TitleCard(fill: TitleInk(0x14213D, alpha: 232), borderWidth: 0, padding: 0.44, radius: 0.30, spacing: 0.06))
+        return [("Graphite", Self().look), ("Editorial", editorial), ("Broadcast", broadcast),
+                ("Notebook", notebook), ("Terminal", terminal), ("Poster", poster)]
+    }()
 }
 
 struct TitleTypeface {
@@ -162,6 +310,8 @@ struct TitleTypeface {
         .init(
             id: "ibmplexmono", name: "IBM Plex Mono", upright: "IBMPlexMono-Regular", slanted: "IBMPlexMono-Italic",
             weights: [400, 500, 700]),
+        .init(id: "bodonimoda", name: "Bodoni Moda", upright: "BodoniModa-Regular", slanted: "BodoniModa-Italic"),
+        .init(id: "unbounded", name: "Unbounded", upright: "Unbounded-Regular"),
         .init(id: "caveat", name: "Caveat", upright: "Caveat-Regular", weights: [400, 500, 600, 700]),
     ]
     private static let registered: Void = {
@@ -256,6 +406,11 @@ struct TitleMotion: Codable, Equatable, Hashable, Sendable {
         let hold = min(0.1, max(0, duration * 0.2))
         let fit = min(1, max(0, duration - hold) / (a + b))
         return (a * fit, b * fit)
+    }
+    func readableRange(in clock: ClosedRange<Double>) -> ClosedRange<Double> {
+        let ends = fittedEnds(duration: clock.upperBound - clock.lowerBound)
+        let first = clock.lowerBound + ends.entrance
+        return first...max(first, clock.upperBound - ends.exit)
     }
     func previewWindow(exit atEnd: Bool, duration: Double) -> ClosedRange<Double> {
         let ends = fittedEnds(duration: duration)

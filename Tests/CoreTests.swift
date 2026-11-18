@@ -15,8 +15,16 @@ struct CoreTests {
     }
     static func run() async throws {
         let root = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
+        if CommandLine.arguments.contains("--cut-rebuild") { try await cutRebuildTests(root: root); return }
+        if CommandLine.arguments.contains("--timeline-effect-range") { try await timelineEffectRangeTests(root: root); return }
         if CommandLine.arguments.contains("--effect-animation") { try await effectAnimationTests(root:root); return }
         if CommandLine.arguments.contains("--auto-background-export") { try await autoBackgroundExportTests(root); return }
+        if CommandLine.arguments.contains("--hdr-effects") {
+            try testHDREffectDisplayBrightness()
+            try await testHDREffectExport(root: root)
+            print("PASS: HDR display and neutral creative effect brightness in the saved movie")
+            return
+        }
         if CommandLine.arguments.contains("--batch-video-import") { try await batchVideoImportTests(root); return }
         if CommandLine.arguments.contains("--export-options") { try await exportOptionsTests(root); return }
         if CommandLine.arguments.contains("--export-resume") { try await resumableExportTests(root); return }
@@ -866,7 +874,7 @@ private func resumableExportTests(_ root: URL) async throws {
     var edit = EditState(clips: clips, outputSize: CGSize(width: 640, height: 360))
     edit.timeline.video[3].content.texts = [TextOverlay(text: "Section boundary", start: 0.1, end: 3.9)]
     edit.timeline.audio[3].volumeDB = -12
-    edit.timeline.enhance([AudioEffect(kind: .gain, amount: -3)], selection: edit.timeline.entireSelection())
+    edit.timeline.enhance([AudioEffect(kind: .gain, amount: 3)], selection: edit.timeline.entireSelection())
     project.commit(edit)
     let snapshot = project
     let checkpoint = ExportCheckpoint(folder: folder)

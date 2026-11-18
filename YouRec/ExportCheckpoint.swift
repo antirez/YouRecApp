@@ -63,13 +63,16 @@ struct ExportCheckpoint {
         return retired
     }
 
+    // The old peak.json measured the entire movie and cannot identify a peak
+    // in an edited range. Its encoded audio and picture sections remain valid.
+    private var peakFile: URL { directory.appendingPathComponent("edited-audio-peak.json") }
     var measuredPeak: Float? {
-        guard let data = try? Data(contentsOf: directory.appendingPathComponent("peak.json")) else { return nil }
+        guard let data = try? Data(contentsOf: peakFile) else { return nil }
         return try? JSONDecoder().decode(Float.self, from: data)
     }
 
     func savePeak(_ peak: Float) throws {
-        try JSONEncoder().encode(peak).write(to: directory.appendingPathComponent("peak.json"), options: .atomic)
+        try JSONEncoder().encode(peak).write(to: peakFile, options: .atomic)
     }
 
     private func section(_ index: Int) -> URL { directory.appendingPathComponent("picture-\(index).mp4") }

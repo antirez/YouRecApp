@@ -47,7 +47,15 @@ struct TimelineNavigation {
         }
         let joins = edit.layout.joins.filter { $0.transition != nil }
         let compiled = timeline.compile()
-        func addVideo(_ token: String, on item: VideoTimelineItem, range: EditInterval) {
+        func addVideo(_ token: String, on item: VideoTimelineItem, range: EditInterval, effectID: UUID? = nil) {
+            if let effectID, let windows = item.content.effectWindows?[effectID] {
+                for window in windows {
+                    let clip = item.content
+                    let allowed = EditInterval(item.start + EditTime(clip.gradeOffset(at: window.start)), item.start + EditTime(clip.gradeOffset(at: window.end)))
+                    if let hit = range.intersection(allowed) { addVideo(token, on: item, range: hit) }
+                }
+                return
+            }
             for span in compiled {
                 guard let rank = span.video.firstIndex(of: item.id), let part = range.intersection(span.interval) else { continue }
                 add("video.\(rank)." + token, part)
@@ -65,18 +73,18 @@ struct TimelineNavigation {
             } ?? false
             if !hidden { cuts.insert(frame(time)) }
         }
-        func sourceEffect<T: Encodable>(_ kind: String, _ value: T, start: Double, end: Double, on item: VideoTimelineItem, omit: Set<String> = ["start", "end"]) {
+        func sourceEffect<T: Encodable>(_ kind: String, _ value: T, start: Double, end: Double, on item: VideoTimelineItem, id: UUID, omit: Set<String> = ["start", "end"]) {
             let token = recipe(kind, value, omit: omit)
             var local = EditTime.zero
             for run in item.mapping.runs {
                 defer { local = local + run.duration }
                 if run.isHold {
-                    if start <= run.sourceStart && end > run.sourceStart { addVideo(token, on: item, range: EditInterval(item.start + local, item.start + local + run.duration)) }
+                    if start <= run.sourceStart && end > run.sourceStart { addVideo(token, on: item, range: EditInterval(item.start + local, item.start + local + run.duration), effectID: id) }
                 } else {
                     let a = max(start, run.sourceStart), b = min(end, run.sourceEnd)
                     guard b > a else { continue }
                     let scale = run.duration.seconds / (run.sourceEnd - run.sourceStart)
-                    addVideo(token, on: item, range: EditInterval(item.start + local + EditTime((a-run.sourceStart)*scale), item.start + local + EditTime((b-run.sourceStart)*scale)))
+                    addVideo(token, on: item, range: EditInterval(item.start + local + EditTime((a-run.sourceStart)*scale), item.start + local + EditTime((b-run.sourceStart)*scale)), effectID: id)
                 }
             }
         }
@@ -92,19 +100,37 @@ struct TimelineNavigation {
             itemCut(item.start, videoID: item.id); itemCut(item.end, videoID: item.id)
             internalCuts(item.mapping, start: item.start, videoID: item.id)
             func whole<T: Encodable>(_ kind: String, _ value: T, omit: Set<String> = []) { addVideo(recipe(kind, value, omit: omit), on: item, range: item.interval) }
-            if let value = clip.crop { whole("crop", value) }
-            if let value = clip.mirror, value.horizontal || value.vertical { whole("mirror", value) }
+            func framing<T: Encodable>(_ kind: String, _ value: T, window: SourceInterval?, id: UUID, omit: Set<String> = []) {
+                let token = recipe(kind, value, omit: omit.union(["activeRange"]))
+                let range = window.map {
+                    EditInterval(item.start + EditTime(clip.gradeOffset(at: $0.start)), item.start + EditTime(clip.gradeOffset(at: $0.end)))
+                } ?? item.interval
+                addVideo(token, on: item, range: range, effectID: id)
+            }
+            if let value = clip.crop { framing("crop", value, window: value.activeRange, id: value.id) }
+            if let value = clip.mirror, value.horizontal || value.vertical { framing("mirror", value, window: value.activeRange, id: value.id) }
             if let value = clip.speed, value.rate != 1 { whole("speed", value) }
-            if let value = clip.color, value.look != .natural && value.amount > 0 { whole("color", value) }
-            if let value = clip.stabilization, value.level != .off { whole("stabilize", value, omit: ["referenceStart", "referenceEnd"]) }
+            for region in clip.visibleGrades where !region.grade.isIdentity {
+                let interval = EditInterval(item.start + EditTime(clip.gradeOffset(at: region.start)),
+                                            item.start + EditTime(clip.gradeOffset(at: region.end)))
+                addVideo(recipe("color", region.grade), on: item, range: interval)
+            }
+            if let value = clip.stabilization, value.level != .off { framing("stabilize", value, window: value.activeRange, id: value.id ?? clip.id, omit: ["referenceStart", "referenceEnd"]) }
+            for variant in clip.framingVariants ?? [] {
+                switch variant {
+                case .crop(let v): framing("crop", v, window: v.activeRange, id: variant.id)
+                case .mirror(let v): framing("mirror", v, window: v.activeRange, id: variant.id)
+                case .stabilization(_, let v): framing("stabilize", v, window: v.activeRange, id: variant.id, omit: ["referenceStart", "referenceEnd"])
+                }
+            }
             if let value = clip.pauses { whole("pauses", value, omit: ["cuts", "candidates", "analyzed"]) }
             if clip.frozenFrame != nil { whole("freeze", true) }
-            for value in clip.texts ?? [] where !value.text.isEmpty { sourceEffect("text", value, start: value.start, end: value.end, on: item) }
-            for value in clip.images ?? [] where value.opacity > 0 { sourceEffect("image", value, start: value.start, end: value.end, on: item) }
+            for value in clip.texts ?? [] where value.hasText { sourceEffect("text", value, start: value.start, end: value.end, on: item, id: value.id) }
+            for value in clip.images ?? [] where value.opacity > 0 { sourceEffect("image", value, start: value.start, end: value.end, on: item, id: value.id) }
             for value in clip.videoEffects ?? [] where value.enabled {
                 if value.kind.descriptor.supportsIntensity, value.number("intensity") == 0,
                    value.parameters.first(where: { $0.id == "intensity" })?.keyframes.isEmpty != false { continue }
-                sourceEffect("effect", value, start: value.start, end: value.end, on: item,
+                sourceEffect("effect", value, start: value.start, end: value.end, on: item, id: value.id,
                              omit: ["start", "end", "analysisFile", "analysisDataFile", "capturedEffectID"])
             }
         }

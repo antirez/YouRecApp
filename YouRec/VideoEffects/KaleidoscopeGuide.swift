@@ -79,11 +79,13 @@ struct KaleidoscopeGuide: View {
         let picture = CGRect(x: 0, y: 0, width: 1, height: 1).applying(transform)
         let visible = picture.intersection(CGRect(origin: .zero, size: size))
         let angle = (pose.degrees - 90) * .pi / 180
-        let directions = (0..<divisions).map { sector in
-            let ray = angle + Double(sector) * 2 * .pi / Double(divisions)
-            return CGVector(dx: transform.a * cos(ray) / width + transform.c * sin(ray) / height,
-                            dy: transform.b * cos(ray) / width + transform.d * sin(ray) / height)
+        func direction(at angle: Double) -> CGVector {
+            let x = CGFloat(cos(angle)) / width
+            let y = CGFloat(sin(angle)) / height
+            return CGVector(dx: transform.a * x + transform.c * y, dy: transform.b * x + transform.d * y)
         }
+        let sectorAngle = 2 * Double.pi / Double(divisions)
+        let directions = (0..<divisions).map { direction(at: angle + Double($0) * sectorAngle) }
         let reach = hypot(picture.width, picture.height)
         let rays = Path { path in
             for ray in directions {
@@ -95,18 +97,19 @@ struct KaleidoscopeGuide: View {
         let length = min(82, max(40, min(picture.width, picture.height) * 0.3))
         let safe = visible.insetBy(dx: min(22, visible.width / 4), dy: min(22, visible.height / 4))
         let candidate = directions.map { CGPoint(x: pivot.x + $0.dx * length, y: pivot.y + $0.dy * length) }
-        let handle = candidate.first(where: safe.contains) ?? candidate.map {
-            CGPoint(x: min(safe.maxX, max(safe.minX, $0.x)), y: min(safe.maxY, max(safe.minY, $0.y)))
-        }.max(by: { hypot($0.x-pivot.x, $0.y-pivot.y) < hypot($1.x-pivot.x, $1.y-pivot.y) })!
+        let clamped = candidate.map { point in
+            CGPoint(x: min(safe.maxX, max(safe.minX, point.x)), y: min(safe.maxY, max(safe.minY, point.y)))
+        }
+        func distance(_ point: CGPoint) -> CGFloat { hypot(point.x - pivot.x, point.y - pivot.y) }
+        let handle = candidate.first { safe.contains($0) } ?? clamped.max { distance($0) < distance($1) } ?? pivot
         return ZStack(alignment: .topLeading) {
             rays.stroke(.black.opacity(0.55), lineWidth: 2.5)
             rays.stroke(.white.opacity(0.75), style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
             // A short arc identifies the source wedge as the user turns the split.
             Path { path in
                 for i in 0...24 {
-                    let ray = angle + Double(i) / 24 * 2 * .pi / Double(divisions)
-                    let pt = CGPoint(x: pivot.x + 24 * (transform.a * cos(ray) / width + transform.c * sin(ray) / height),
-                                     y: pivot.y + 24 * (transform.b * cos(ray) / width + transform.d * sin(ray) / height))
+                    let ray = direction(at: angle + Double(i) / 24 * sectorAngle)
+                    let pt = CGPoint(x: pivot.x + 24 * ray.dx, y: pivot.y + 24 * ray.dy)
                     if i == 0 { path.move(to: pt) } else { path.addLine(to: pt) }
                 }
             }.stroke(.cyan, lineWidth: 2)

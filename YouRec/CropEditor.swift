@@ -18,12 +18,15 @@ final class CropWorkspace: ObservableObject {
     let folder: URL
     let request: ToolRequest
     let player = AVPlayer()
-    let clips: [TimelineClip]
+    private(set) var clips: [TimelineClip]
     private let scoped: EditState
     private let ids: Set<UUID>
     private let effectID: UUID
-    private let origins: [UUID:Double]
-    private let scope: ClosedRange<Double>
+    private var origins: [UUID:Double]
+    private let sourceIDs: Set<UUID>
+    @Published private(set) var timing: EditorRangeTiming
+    private var scope: ClosedRange<Double> { timing.range }
+    private var inspectingFullClips = false
     @Published var crop = CropSettings()
     @Published var endpoint: EffectEndpoint?
     private var previewEndpoint: EffectEndpoint?
@@ -96,9 +99,10 @@ final class CropWorkspace: ObservableObject {
     var canApply: Bool { !busy && error == nil && frame != nil && originalCanvas != nil }
     var active: (clip: TimelineClip, offset: Double, index: Int)? {
         let t = scope.lowerBound + position
+        let originByID = origins, lower = scope.lowerBound
         guard let index = clips.indices.min(by:{ l,r in
             func distance(_ clip:TimelineClip) -> Double {
-                let start = origins[clip.id] ?? scope.lowerBound
+                let start = originByID[clip.id] ?? lower
                 return max(0, start-t, t-start-clip.duration+0.000001)
             }
             return distance(clips[l]) < distance(clips[r])
@@ -115,20 +119,25 @@ final class CropWorkspace: ObservableObject {
         effectID = request.effectID ?? UUID(); aspect = project.edit.outputSize.map { $0.width / $0.height }
         let placements = selection.0.layout.placements.filter { selection.1.contains($0.clip.id) }
         origins = Dictionary(uniqueKeysWithValues:placements.map { ($0.clip.id,$0.start) })
-        scope = request.videoPreviewRange(in:selection.0,ids:selection.1)
-        self.position = min(max(0,scope.upperBound-scope.lowerBound-TimelineEditing.frame),max(0,position-scope.lowerBound))
+        let range = request.videoPreviewRange(in:selection.0,ids:selection.1)
+        let eligibleIDs = request.clipIDs ?? request.targets?.video ?? Set(project.edit.timeline.video.filter { $0.interval.intersection(EditInterval(range)) != nil }.map(\.id))
+        sourceIDs = eligibleIDs
+        let intervals = project.edit.timeline.video.filter { eligibleIDs.contains($0.id) }.map(\.interval)
+        let bounds = (intervals.map(\.start).min()?.seconds ?? range.lowerBound)...(intervals.map(\.end).max()?.seconds ?? range.upperBound)
+        timing = EditorRangeTiming(range: range, bounds: bounds)
+        self.position = min(max(0,range.upperBound-range.lowerBound-TimelineEditing.frame),max(0,position-range.lowerBound))
         crop = active?.clip.crop ?? CropSettings(); crop.id = effectID
         animation = crop.motion; crop.motion = nil
         endpointPlaybackEnd = EffectPreviewEndObserver(player:player) { [weak self] in
-            guard let self, self.endpoint != nil else { return }
-            self.playing = false; self.returnToEndpoint()
+            guard let self, self.reviewing, self.player.currentTime().seconds >= self.scope.upperBound - 0.001 else { return }
+            self.playing = false
+            if self.endpoint != nil { self.returnToEndpoint() } else { self.seek(self.duration) }
         }
         observer = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 15), queue: .main) { [weak self] time in
             Task { @MainActor in
                 guard let self, self.reviewing else { return }
                 self.playing = self.player.rate > 0
-                if self.playing && time.seconds.isFinite { self.position = min(self.duration,max(0,time.seconds-self.scope.lowerBound)) }
-                if time.seconds >= self.scope.upperBound - 0.02 { self.player.pause(); self.playing = false; self.returnToEndpoint() }
+                if self.playing && time.seconds.isFinite { self.position = min(max(0, self.duration - TimelineEditing.frame), max(0,time.seconds-self.scope.lowerBound)) }
             }
         }
     }
@@ -141,7 +150,8 @@ final class CropWorkspace: ObservableObject {
                 var original = project; var edit = original.edit; edit.outputSize = nil; original.commit(edit)
                 let canvas = try await MediaRenderer.canvas(project: original, folder: folder)
                 var sizes: [UUID: CGSize] = [:]
-                for sourceID in Set(clips.map(\.sourceID)) {
+                let inspectable = project.edit.timeline.video.filter { sourceIDs.contains($0.id) }
+                for sourceID in Set(inspectable.map { $0.content.sourceID }) {
                     guard let source = project.sources.first(where: { $0.id == sourceID }),
                           let track = try await AVURLAsset(url: folder.appendingPathComponent(source.filename)).loadTracks(withMediaType: .video).first else { throw ProjectError.missingMedia }
                     let size = try await track.load(.naturalSize), transform = try await track.load(.preferredTransform)
@@ -200,23 +210,57 @@ final class CropWorkspace: ObservableObject {
         if previewEndpoint != nil { return crop }
         if animationChanged {
             let offset = (origins[active.clip.id] ?? scope.lowerBound) - scope.lowerBound
-            motion = motion.placed(on: active.clip, offset: offset, replacing: active.clip.crop?.motion)
+            motion = motion.placed(on: active.clip, offset: offset, replacing: scope == request.range ? active.clip.crop?.motion : nil)
         }
         let time = active.clip.frozenFrame.map { $0.sourceTime + $0.offset + active.offset } ?? active.clip.sourceTime(at:active.offset)
         return crop.applying(motion.pose(at:time))
     }
     func resetFraming() { adjust(CropSettings(id: effectID)) }
+    func trim(_ edge: EditorRangeTiming.Edge, to value: Double, previewEdge: Bool) {
+        let previousTime = scope.lowerBound + position
+        if !inspectingFullClips {
+            let items = project.edit.layout.placements.filter { sourceIDs.contains($0.clip.id) }
+            clips = items.map(\.clip)
+            origins = Dictionary(uniqueKeysWithValues: items.map { ($0.clip.id, $0.start) })
+            generatorClip = nil
+            inspectingFullClips = true
+        }
+        timing.set(edge, to: value)
+        if var motion = capturedAnimation {
+            motion.duration = duration; animation = motion; animationChanged = true
+        }
+        previewEndpoint = nil
+        position = (previewEdge ? timing.previewTime(for: edge) : min(timing.previewTime(for: .end), max(scope.lowerBound, previousTime))) - scope.lowerBound
+        player.pause(); playing = false; reviewing = false; reviewJob?.cancel()
+        if originalCanvas != nil { loadFrame(debounce: false) }
+    }
     func state(removing: Bool = false, forPreview: Bool = false) -> EditState {
+        let retimed = scope != request.range && inspectingFullClips
+        if removing && request.effectID != nil { return project.edit.removingTool(request) }
         var edit = scoped
+        var targets = ids, starts = origins
+        if retimed {
+            edit = request.effectID == nil ? project.edit : project.edit.removingTool(request)
+            let original = TimelineSelection(video: sourceIDs, range: EditInterval(scope))
+            let members = edit.timeline.remapping(original, from: project.edit.timeline).video
+            let parts = edit.timeline.scoped(TimelineSelection(video: members, range: EditInterval(scope)))
+            edit.timeline = parts.timeline
+            targets = parts.selection.video
+            starts = Dictionary(uniqueKeysWithValues: edit.timeline.video.map { ($0.id, $0.start.seconds) })
+        } else if inspectingFullClips {
+            starts = Dictionary(uniqueKeysWithValues: scoped.timeline.video.map { ($0.id, $0.start.seconds) })
+        }
         var changedCrop = false
-        for index in edit.clips.indices where ids.contains(edit.clips[index].id) {
-            let offset = (origins[edit.clips[index].id] ?? scope.lowerBound) - scope.lowerBound
+        for index in edit.clips.indices where targets.contains(edit.clips[index].id) {
+            let offset = (starts[edit.clips[index].id] ?? scope.lowerBound) - scope.lowerBound
             let previous = edit.clips[index].crop
-            var proposed: CropSettings? = framingChanged ? crop : previous ?? CropSettings(id: effectID)
+            var proposed: CropSettings? = framingChanged || (retimed && request.effectID != nil) ? crop : previous ?? CropSettings(id: effectID)
             if let motion = capturedAnimation, animationChanged {
                 proposed = crop.applying(motion.a)
-                proposed?.motion = motion.placed(on:edit.clips[index],offset:offset,replacing:previous?.motion)
+                proposed?.motion = motion.placed(on:edit.clips[index],offset:offset,replacing:retimed ? nil : previous?.motion)
             }
+            if retimed { proposed?.activeRange = nil }
+            else if request.effectID != nil { proposed?.activeRange = previous?.activeRange }
             if removing { proposed = nil }
             else if let size = sourceSizes[edit.clips[index].sourceID], let value = proposed {
                 if value.motion == nil && value.isFullFrame(source: size, canvas: canvas) { proposed = nil }
@@ -224,7 +268,7 @@ final class CropWorkspace: ObservableObject {
             changedCrop = changedCrop || proposed != previous
             edit.clips[index].crop = proposed
         }
-        if !forPreview && !changedCrop {
+        if !forPreview && !changedCrop && !(retimed && request.effectID != nil) {
             edit = project.edit // A neutral crop must not leave split boundaries behind.
         }
         guard !removing else { return edit }
@@ -246,14 +290,14 @@ final class CropWorkspace: ObservableObject {
         let index = min(clips.count - 1, max(0, active.index + delta))
         seek((origins[clips[index].id] ?? scope.lowerBound)-scope.lowerBound)
     }
-    func loadFrame() {
+    func loadFrame(debounce: Bool = true) {
         guard originalCanvas != nil else { start(); return }
         frameJob?.cancel(); generator?.cancelAllCGImageGeneration()
         let token = UUID(); revision = token; busy = true; error = nil
         frameJob = Task {
             defer { if revision == token { busy = false; RecordingAppDelegate.keepAwake(awakeReason, active: false) } }
             do {
-                try await Task.sleep(for: .milliseconds(80))
+                if debounce { try await Task.sleep(for: .milliseconds(80)) }
                 RecordingAppDelegate.keepAwake(awakeReason, active: true)
                 guard let active else { throw ProjectError.emptyTimeline }
                 if generatorClip != active.clip.id {
@@ -271,12 +315,12 @@ final class CropWorkspace: ObservableObject {
                 try Task.checkCancellation(); guard revision == token else { return }
                 guard let size = sourceSizes[active.clip.sourceID] else { throw ProjectError.invalidMedia }
                 let time = active.clip.sourceTime(at: active.offset)
-                if !framingChanged {
+                if !framingChanged && !(inspectingFullClips && request.effectID != nil) {
                     crop = active.clip.crop ?? CropSettings()
                     if let motion = crop.motion { crop = crop.applying(motion[.a]) }
                     crop.id = effectID
                 }
-                let projectTime = (scoped.layout.placements.first { $0.clip.id == active.clip.id }?.start ?? 0) + active.offset
+                let projectTime = (origins[active.clip.id] ?? 0) + active.offset
                 var poses: [UUID:TitleMotion.Pose] = [:]
                 for text in active.clip.texts ?? [] {
                     if let motion=text.motion, let range=titleRanges.range(for:text,at:projectTime) {
@@ -304,7 +348,7 @@ final class CropWorkspace: ObservableObject {
             do {
                 if debounce { try await Task.sleep(for: .milliseconds(120)) }
                 RecordingAppDelegate.keepAwake(awakeReason, active: true)
-                var candidate = project; let edit = state(forPreview: true)
+                var candidate = project; let edit = request.previewState(state(forPreview: true), in: project.edit)
                 candidate.history = [edit]; candidate.historyCursor = 0
                 let media = try await MediaRenderer.timeline(project: candidate, folder: folder, canvasSize: canvas,effectPreparation:.cached)
                 try Task.checkCancellation(); guard revision == token else { return }
@@ -342,11 +386,11 @@ struct CropEditor: View {
             let landscape = geometry.size.width > geometry.size.height
             VStack(spacing: 0) {
                 HStack {
-                    Button("Cancel", action: cancel).frame(minWidth: 60, minHeight: 44).accessibilityIdentifier("tool.cancel")
+                    Button("Cancel", action: cancel).editorDecisionButton(primary: false).frame(minWidth: 60, minHeight: 44).accessibilityIdentifier("tool.cancel")
                     Spacer(minLength: 0)
                     VStack(spacing: 2) {
                         Text("Crop").font(.headline)
-                        Text(model.request.scopeTitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        Text(model.timing.range == model.request.range ? model.request.scopeTitle : editorTime(model.timing.range.lowerBound) + "–" + editorTime(model.timing.range.upperBound)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
                     Spacer(minLength: 0)
                     if model.request.effectID != nil {
@@ -354,7 +398,7 @@ struct CropEditor: View {
                             Image(systemName: "trash").frame(width: 44, height: 44)
                         }.foregroundStyle(.white.opacity(0.7)).accessibilityLabel("Remove crop").accessibilityHint("Keeps the project's video shape.").accessibilityIdentifier("tool.remove")
                     }
-                    Button("Apply") { model.stop(); apply(model.state()) }.bold().frame(minWidth: 60, minHeight: 44)
+                    Button("Apply") { model.stop(); apply(model.state()) }.bold().editorDecisionButton(primary: true).frame(minWidth: 60, minHeight: 44)
                         .disabled(!model.canApply).accessibilityIdentifier("tool.apply")
                 }.padding(.horizontal, 16)
                 let layout = landscape ? AnyLayout(HStackLayout(spacing: 12)) : AnyLayout(VStackLayout(spacing: 0))
@@ -370,7 +414,13 @@ struct CropEditor: View {
                         }.frame(maxWidth: .infinity, maxHeight: .infinity).clipped()
                         playback.padding(.horizontal, 14)
                     }.frame(maxWidth: .infinity, maxHeight: .infinity)
-                    ScrollView { settings.padding(16) }.accessibilityIdentifier("crop.settings")
+                    DurationInspectorScroll {
+                        VStack(alignment: .leading, spacing: 12) {
+                            settings
+                            if model.request.scopedEffect == nil { EditorRangeDuration(timing: model.timing, width: (landscape ? min(320, geometry.size.width * 0.38) : geometry.size.width) - 32,
+                                                name: "Crop", identifier: "crop.range", change: model.trim) }
+                        }.padding(16)
+                    }.accessibilityIdentifier("crop.settings")
                         .frame(width: landscape ? min(320, geometry.size.width * 0.38) : nil)
                         .frame(maxHeight: landscape ? .infinity : min(typeSize.isAccessibilitySize ? 340 : 280, geometry.size.height * 0.43))
                         .background(Color(white: 0.08))
@@ -432,7 +482,7 @@ struct CropEditor: View {
                         Spacer(); Text(model.shapeTitle).lineLimit(1); Image(systemName: "chevron.up.chevron.down").font(.caption)
                     }.frame(minHeight: 48)
                 }
-            }.disabled(!model.canApply).accessibilityIdentifier("crop.shape")
+            }.disabled(!model.canApply || model.request.scopedEffect?.local == true).accessibilityIdentifier("crop.shape")
             Text(model.reviewing ? "Preview includes text and other video tools." : "Pinch to crop · drag to frame").font(.subheadline)
             if !model.reviewing {
                 VStack(spacing: 0) {

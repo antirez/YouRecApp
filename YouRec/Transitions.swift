@@ -275,13 +275,15 @@ extension TimelineLayout {
         guard !pictures.isEmpty else { joins = []; placements = []; return }
         var built: [TransitionJoin] = []
         let last = pictures.max { $0.end < $1.end }!
+        let endings = Dictionary(grouping: pictures, by: \.end)
+        let byID = Dictionary(uniqueKeysWithValues: pictures.map { ($0.id, $0) })
         for index in 0...pictures.count {
             let right = index < pictures.count ? pictures[index] : nil
             let relation = timeline.transitions.first { $0.incoming == right?.id && (right != nil || $0.outgoing == last.id) }
             let left: VideoTimelineItem?
-            if let relation { left = pictures.first { $0.id == relation.outgoing } }
+            if let relation { left = relation.outgoing.flatMap { byID[$0] } }
             else if let right, index > 0 {
-                let ending = pictures.filter { $0.id != right.id && $0.end == right.start }
+                let ending = endings[right.start] ?? []
                 left = ending.filter { $0.layer <= right.layer }.max(by: TrackTimeline.backToFront)
                     ?? ending.min(by: TrackTimeline.backToFront) ?? pictures[index - 1]
             } else { left = right == nil ? last : nil }
@@ -311,7 +313,7 @@ extension TimelineLayout {
         // An opening fade belongs to its picture; it must not hide a real
         // adjacent cut when that picture was moved later in the project.
         for right in pictures where timeline.transitions.contains(where: { $0.incoming == right.id && $0.outgoing == nil }) {
-            let ending = pictures.filter { $0.id != right.id && $0.end == right.start }
+            let ending = endings[right.start] ?? []
             if let left = ending.filter({ $0.layer <= right.layer }).max(by: TrackTimeline.backToFront) ?? ending.min(by: TrackTimeline.backToFront),
                !built.contains(where: { $0.outgoingID == left.id && $0.incomingID == right.id }) {
                 let time = right.start.seconds
@@ -321,9 +323,12 @@ extension TimelineLayout {
             }
         }
         joins = built
+        let transitions = built.filter { $0.transition != nil }
+        let incomingByID = Dictionary(grouping: transitions, by: \.incomingID)
+        let outgoingByID = Dictionary(grouping: transitions, by: \.outgoingID)
         placements = pictures.enumerated().map { index, item in
-            let incoming = built.first { $0.incomingID == item.id && $0.transition != nil }
-            let outgoing = built.first { $0.outgoingID == item.id && $0.transition != nil }
+            let incoming = incomingByID[item.id]?.first
+            let outgoing = outgoingByID[item.id]?.first
             return TimelinePlacement(clip: clips[index], index: index, start: item.start.seconds,
                 incoming: max(0, incoming?.timing.overlap ?? 0), outgoing: max(0, outgoing?.timing.overlap ?? 0),
                 lower: incoming?.time ?? item.start.seconds, upper: outgoing?.time ?? item.end.seconds)

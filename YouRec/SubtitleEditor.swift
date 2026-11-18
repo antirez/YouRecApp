@@ -41,6 +41,7 @@ struct SubtitleEditor: View {
     @State private var interruptionMessage: String?
     @State private var pendingRange: ClosedRange<Double>?
     @State private var started = false
+    @State private var showingOpeningFrame = true
     @FocusState private var textFocused: Bool
     @Environment(\.scenePhase) private var scenePhase
     private let awakeReason = "subtitle-editor"
@@ -64,6 +65,30 @@ struct SubtitleEditor: View {
         request.range.lowerBound...max(request.range.lowerBound, request.range.upperBound - min(1.0 / 30, (request.range.upperBound - request.range.lowerBound) / 2))
     }
     private var ready: Bool { !busy && !preview.loading && !preview.processingPreview && preview.player.currentItem != nil }
+    private func openingTime() -> Double {
+        let range = request.range, middle = (range.lowerBound + range.upperBound) / 2
+        let motion = settings.motion
+        var best: Double?
+        for cue in cues {
+            let clock = cue.start...cue.end
+            let timing = EditorRangeTiming(range: clock, bounds: range)
+            let offset = timing.openingPosition(footage: [clock], readable: motion?.readableRange(in: clock))
+            let time = timing.range.lowerBound + offset
+            if best.map({ abs(time - middle) < abs($0 - middle) }) ?? true { best = time }
+        }
+        return best ?? range.lowerBound
+    }
+    private func togglePreview() {
+        if showingOpeningFrame {
+            showingOpeningFrame = false
+            preview.seekPaused(request.range.lowerBound)
+        }
+        preview.togglePlay()
+    }
+    private func seekPreview(_ time: Double) {
+        showingOpeningFrame = false
+        preview.seekPaused(time)
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -78,7 +103,7 @@ struct SubtitleEditor: View {
                 let layout = wide ? AnyLayout(HStackLayout(spacing: 0)) : AnyLayout(VStackLayout(spacing: 0))
                 layout {
                     VStack(spacing: 4) {
-                        PlayerSurface(player: preview.player, onPlaybackTap: { if ready && editing == nil { preview.togglePlay() } }, identifier: "subtitles.preview", preserveInspection: true, captions: captionPreview)
+                        PlayerSurface(player: preview.player, onPlaybackTap: { if ready && editing == nil { togglePreview() } }, identifier: "subtitles.preview", preserveInspection: true, captions: captionPreview)
                             .overlay { if preview.loading { ProgressView() } }
                             .overlay(alignment: .topLeading) {
                                 Button { inspecting.toggle() } label: {
@@ -88,10 +113,10 @@ struct SubtitleEditor: View {
                                     .accessibilityIdentifier("subtitles.inspect").disabled(!ready).padding(8)
                             }
                         HStack(spacing: 12) {
-                            Button { preview.togglePlay() } label: { Image(systemName: preview.playing ? "pause.fill" : "play.fill").frame(width: 44, height: 44) }
+                            Button(action: togglePreview) { Image(systemName: preview.playing ? "pause.fill" : "play.fill").frame(width: 44, height: 44) }
                                 .disabled(!ready || editing != nil).accessibilityLabel(preview.playing ? "Pause subtitles preview" : "Play subtitles preview")
 
-                            Slider(value: Binding(get: { max(seekRange.lowerBound, min(seekRange.upperBound, preview.playhead)) }, set: { preview.seekPaused($0) }), in: seekRange)
+                            Slider(value: Binding(get: { max(seekRange.lowerBound, min(seekRange.upperBound, preview.playhead)) }, set: seekPreview), in: seekRange)
                                 .disabled(!ready || editing != nil).accessibilityIdentifier("subtitles.seek")
                             Text(editorTime(preview.playhead)).monospacedDigit().font(.caption).frame(minWidth: 45)
                         }.padding(.horizontal, 12)
@@ -132,7 +157,7 @@ struct SubtitleEditor: View {
                 // load() makes playback ready before it finishes thumbnails.
                 // Set the initial position first, so finishing background work
                 // cannot undo a seek the user has already made in this sheet.
-                if !started { started = true; preview.seekAfterEdit(request.range.lowerBound, duration: candidate.edit.duration) }
+                if !started { started = true; preview.seekAfterEdit(openingTime(), duration: candidate.edit.duration) }
                 await preview.load(candidate, folder: folder)
             }
             .onChange(of: preview.canvas) { _, _ in rebuildCaptionLayout() }
@@ -183,19 +208,18 @@ struct SubtitleEditor: View {
     private var captionPreview: CaptionPreview? {
         guard let captionLayout, currentIndex != nil else { return nil }
         return CaptionPreview(envelope: captionLayout.envelope(settings),
-            value: String(format: "%.3f x · %.3f y · %.4f size · %@", settings.centerX, settings.y, settings.size, settings.appearance.map {TitleTypeface.label($0.face, folder:folder)} ?? settings.resolvedFont.title), editable: !busy && editing == nil && !inspecting, change: { gesture in
-                preview.pause()
-                var value = settings
-                switch gesture {
-                case .pan(let delta): value.x = value.centerX + delta.x; value.y += delta.y
-                case .pinch(let factor, let from, let to):
-                    let target = min(captionLayout.maximumSize, max(captionLayout.minimumSize, value.size * factor))
-                    let ratio = target / value.size
+            value: String(format: "%.3f x · %.3f y · %.4f size · %@", settings.centerX, settings.y, settings.size, settings.appearance.map {TitleTypeface.label($0.face, folder:folder)} ?? settings.resolvedFont.title),
+            editable: !busy && editing == nil && !inspecting, begin: preview.pause,
+            move: { point in
+                let center = OverlayPlacement.snappedCenter(point)
+                place { $0.x = center.x; $0.y = center.y }
+            }, resize: { factor, from, to in
+                place { value in
+                    let size = min(captionLayout.maximumSize, max(captionLayout.minimumSize, value.size * factor))
+                    let ratio = size / value.size
                     value.x = to.x + (value.centerX - from.x) * ratio
-                    value.y = to.y + (value.y - from.y) * ratio; value.size = target
-                case .ended: break
+                    value.y = to.y + (value.y - from.y) * ratio; value.size = size
                 }
-                draft.timeline.subtitles = captionLayout.constrained(value)
             })
     }
     private func rebuildCaptionLayout() {
@@ -290,7 +314,7 @@ struct SubtitleEditor: View {
                                let window=(settings.motion ?? TitleMotion()).previewWindow(exit:exit,duration:cue.end-cue.start)
                                let lower=max(request.range.lowerBound,cue.start+window.lowerBound)
                                let upper=min(request.range.upperBound,cue.start+window.upperBound)
-                               if upper>lower {preview.audition(from:lower,to:upper)}
+                               if upper>lower { showingOpeningFrame = false; preview.audition(from:lower,to:upper) }
                            }, pauseForFonts: preview.pause).disabled(busy || editing != nil)
             HStack { Text("Size").font(.caption).frame(width: 55, alignment: .leading)
                 Slider(value: Binding(get: { settings.size }, set: { size in place { $0.size = size } }), in: (captionLayout?.minimumSize ?? 0.012)...(captionLayout?.maximumSize ?? 0.10)).accessibilityLabel("Subtitle size")
@@ -326,7 +350,7 @@ struct SubtitleEditor: View {
         } else {
             Button {
                 let edit = !all || selectedTranscriptID == cue.id
-                preview.seekPaused(max(request.range.lowerBound, cue.start))
+                seekPreview(max(request.range.lowerBound, cue.start))
                 if all { selectedTranscriptID = cue.id }
                 if edit { editingInAll = all; editing = cue; editedText = cue.text; textFocused = true }
             } label: {
@@ -350,6 +374,7 @@ struct SubtitleEditor: View {
         projectCues = draft.timeline.subtitleCues
         resolvedCues = projectCues.filter { $0.start < request.range.upperBound && $0.end > request.range.lowerBound }
         failure = nil; preview.pause(); rebuildCaptionLayout()
+        if showingOpeningFrame { preview.seekPaused(openingTime()) }
     }
     private func finish(_ action: () -> Void) { cancelJob(); preview.stop(); action() }
 

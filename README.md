@@ -57,6 +57,11 @@ Implemented:
   hardware permits. A sample-buffer writer and independent microphone engine
   keep audio running while cameras switch; the image holds during the camera
   transition.
+- On cameras with adjustable physical aperture (iOS 27 or later), the aperture
+  icon beside AF opens Auto and the lens's available f-stops. Auto is the default;
+  a manual choice replaces the icon with its f-number. Aperture is remembered
+  per camera while shutter and ISO remain automatic. Two-camera mode uses
+  automatic exposure.
 - Microphone selection, remembered preference ranking, active route name and level
   before and during recording. No automatic upgrade during a take; fallback on
   microphone loss. Manual selection is separate from persistent priority, which

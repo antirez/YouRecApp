@@ -1,5 +1,6 @@
 import SwiftUI
 import AVKit
+import PhotosUI
 import UniformTypeIdentifiers
 
 private let accent = YouRecStyle.accent
@@ -7,11 +8,22 @@ private let surface = Color(red: 0.09, green: 0.10, blue: 0.13)
 
 struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
-    @StateObject private var store = ProjectStore()
+    @StateObject private var store: ProjectStore
+    init(projectDirectory: URL? = nil) {
+        _store = StateObject(wrappedValue: ProjectStore(projectDirectory: projectDirectory))
+    }
+    #if targetEnvironment(macCatalyst)
+    @EnvironmentObject private var desktopLibrary: DesktopProjectLibrary
+    @StateObject private var camera = DesktopRecorder()
+    @State private var screen = 1
+    #else
     @StateObject private var camera = CaptureController()
     @State private var screen = 0
+    #endif
     @State private var wasBackgrounded = false
-    @State private var importing = false
+    @State private var choosingImportFile = false
+    @State private var importFileType = UTType.zip
+    @State private var choosingPhotos = false
     @State private var repairFeedback: String?
     @State private var repairing: Project?
     @State private var relinkSource: SourceMedia?
@@ -23,6 +35,7 @@ struct ContentView: View {
     @State private var renamedTitle = ""
     @State private var showingDeleted = false
     @State private var erasing: Project?
+    @State private var eraseAllIDs: [UUID] = []
     @State private var expiredDeletions: [ProjectDeletion] = []
     @State private var showingExpiredDeletionPrompt = false
     @State private var insertingRecording = false
@@ -37,10 +50,16 @@ struct ContentView: View {
     var body: some View {
         Group {
             if screen == 0 {
+                #if targetEnvironment(macCatalyst)
+                DesktopRecorderView(camera: camera, project: store.selected, start: startRecording,
+                                    newProject: startNewProject, projects: { if insertingRecording { finishInsertion() } else { screen = 1 } },
+                                    edit: editFromRecorder, inserting: insertingRecording)
+                #else
                 RecorderView(camera: camera, project: store.selected, start: startRecording, startNewProject: startNewProject,
                              openProjects: { if insertingRecording { finishInsertion() } else { screen = 1 } },
                              openEditor: editFromRecorder,
                              insertionPosition: insertingRecording ? store.selected?.recordingInsertion : nil)
+                #endif
             } else if screen == 2, let project = store.selected {
                 EditorView(store: store, projectID: project.id, back: { screen = 1 }, recordHere: { position, site in
                     camera.finishPausedTake()
@@ -52,6 +71,12 @@ struct ContentView: View {
                     HStack {
                         Text("you").foregroundStyle(.white) + Text("rec").foregroundStyle(accent)
                         Spacer()
+                        #if targetEnvironment(macCatalyst)
+                        Button {
+                            NotificationCenter.default.post(name: .desktopProjectSettings, object: nil)
+                        } label: { Image(systemName: "gearshape") }
+                            .accessibilityLabel("Settings").accessibilityIdentifier("projects.settings")
+                        #endif
                         Text(screen == 1 ? "PROJECTS" : "EDITOR")
                             .font(.caption.monospaced().weight(.semibold)).foregroundStyle(.secondary)
                     }
@@ -99,6 +124,11 @@ struct ContentView: View {
         .sheet(item: $originals) { value in OriginalRecordingsView(store: store, projectID: value.id) }
         .background(Color(red: 0.035, green: 0.04, blue: 0.055))
         .tint(accent)
+        #if targetEnvironment(macCatalyst)
+        .onChange(of: screen == 1 && !store.importing && !store.recovering && store.unsavedDrafts.isEmpty && !camera.hasActiveTake, initial: true) { _, canSwitch in
+            desktopLibrary.canSwitch = canSwitch
+        }
+        #endif
         .onChange(of: screen == 0 && scenePhase == .active, initial: true) { _, visible in
             RecordingAppDelegate.keepAwake("camera-screen", active: visible)
         }
@@ -109,6 +139,10 @@ struct ContentView: View {
             if CommandLine.arguments.contains("--retention-ui-fixture") { screen = 1; return }
             if CommandLine.arguments.contains("--night-fix-cleanup") {NightFixDiagnostics.cleanup();return}
             if CommandLine.arguments.contains("--night-fix-selftest") {await NightFixDiagnostics.run();return}
+            #if !targetEnvironment(macCatalyst)
+            if CommandLine.arguments.contains("--aperture-effect-fixture"), CommandLine.arguments.contains("--recorder-controls-test") {
+                camera.setVideoEffects([VideoEffectSettings(.silentTint)])
+            }
             if CommandLine.arguments.contains("--color-correction-selftest") { await VideoEffectsDiagnostics.colorCorrection(); return }
             if CommandLine.arguments.contains("--log-recovery-selftest") { await VideoEffectsDiagnostics.logRecovery(); return }
             if CommandLine.arguments.contains("--video-effects-selftest") { await VideoEffectsDiagnostics.run(camera); return }
@@ -118,6 +152,7 @@ struct ContentView: View {
             if CommandLine.arguments.contains("--color-selftest") { await CaptureDiagnostics.color(camera); return }
             if CommandLine.arguments.contains("--capture-reset-selftest") { await CaptureDiagnostics.previewReset(camera); return }
             if CommandLine.arguments.contains("--front-landscape-selftest") { await CaptureDiagnostics.frontLandscape(camera); return }
+            #endif
             if CommandLine.arguments.contains("--transitions-selftest") { await TransitionDiagnostics.run(); return }
             if CommandLine.arguments.contains("--pauses-selftest") { await PausesDiagnostics.run(); return }
             if CommandLine.arguments.contains("--tools-selftest") { await EditorToolsDiagnostics.run(); return }
@@ -140,11 +175,13 @@ struct ContentView: View {
             if CommandLine.arguments.contains("--subtitle-selftest") { await SubtitleDiagnostics.run(); return }
             if CommandLine.arguments.contains("--studio-restoration-selftest") { await AudioDiagnostics.run(studioRestoration: true); return }
             if CommandLine.arguments.contains("--audio-selftest") { await AudioDiagnostics.run(); return }
+            #if !targetEnvironment(macCatalyst)
             if CommandLine.arguments.contains("--capture-selftest") { await CaptureDiagnostics.run(camera); return }
             if CommandLine.arguments.contains("--capture-review-selftest") { await CaptureDiagnostics.reviewLifecycle(camera); return }
             if CommandLine.arguments.contains("--recorder-polish-selftest") { await CaptureDiagnostics.recorderPolish(camera); return }
             if CommandLine.arguments.contains("--zoom-selftest") { await CaptureDiagnostics.zoom(camera); return }
             if CommandLine.arguments.contains("--capture-stress") { await CaptureDiagnostics.stress(camera); return }
+            #endif
             if CommandLine.arguments.contains("--editor-preview") {
                 let mixedCanvas = CommandLine.arguments.contains("--mixed-canvas-fixture")
                 let logFixture=CommandLine.arguments.contains("--log-recovery-ui-fixture")
@@ -153,7 +190,8 @@ struct ContentView: View {
                 let subtitleSpeech = CommandLine.arguments.contains("--subtitle-speech-fixture")
                 let fixtureTitle=ProcessInfo.processInfo.environment["YOUREC_EDITOR_FIXTURE_TITLE"] ?? (logFixture ? "Log recovery · UI test" : subtitleSpeech ? "Subtitle speech · UI test" : speechFixture ? "Speech waveform · UI test — SDR picture, original audio" : depthFixture ? "Cinematic depth · UI test" : "Studio notes · UI test")
                 let documents=FileManager.default.urls(for:.documentDirectory,in:.userDomainMask)[0]
-                let fixture=logFixture ? documents.appendingPathComponent("LogRecoveryQA/input.mov") : subtitleSpeech ? documents.appendingPathComponent("SubtitlesQA/input.mov") : speechFixture ? documents.appendingPathComponent("speech-waveform.mov") : depthFixture ? documents.appendingPathComponent("depth-ui-fixture.mov") : Bundle.main.url(forResource:"editor-fixture",withExtension:"mp4") ?? documents.appendingPathComponent("editor-fixture.mp4")
+                let endingFixture = CommandLine.arguments.contains("--playback-end-fixture")
+                let fixture=logFixture ? documents.appendingPathComponent("LogRecoveryQA/input.mov") : subtitleSpeech ? documents.appendingPathComponent("SubtitlesQA/input.mov") : speechFixture ? documents.appendingPathComponent("speech-waveform.mov") : depthFixture ? documents.appendingPathComponent("depth-ui-fixture.mov") : Bundle.main.url(forResource: endingFixture ? "playback-ending" : "editor-fixture", withExtension: "mp4") ?? documents.appendingPathComponent("editor-fixture.mp4")
                 if let existing = store.projects.first(where: { $0.title == fixtureTitle }) {
                     store.select(existing.id)
                     if CommandLine.arguments.contains("--reset-ui-fixture") {
@@ -197,6 +235,25 @@ struct ContentView: View {
                         project.history = [EditState(clips: clips)]; project.historyCursor = 0
                     }
                 }
+                if CommandLine.arguments.contains("--title-preview-fixture"), let id = store.selectedID {
+                    store.update(id) { project in
+                        var edit = project.edit
+                        guard !edit.timeline.video.isEmpty else { return }
+                        var design = TitleDesign()
+                        design.plate = .block; design.backing = TitleInk(0xff00ff); design.shadow = false
+                        let title = TextOverlay(text: "READABLE", start: 4, end: 12, size: 0.16,
+                                                appearance: design, motion: TitleMotion(entrance: .fade, inSeconds: 2))
+                        edit.timeline.video[0].content.texts = [title]
+                        if CommandLine.arguments.contains("--cross-cut-title-fixture") {
+                            edit = TimelineEditing.split(edit, at: 3)
+                            edit = TimelineEditing.split(edit, at: 13)
+                            for i in edit.timeline.video.indices where edit.timeline.video[i].start != EditTime(3) {
+                                edit.timeline.video[i].content.texts = nil
+                            }
+                        }
+                        project.commit(edit)
+                    }
+                }
                 if CommandLine.arguments.contains("--frame-clock-fixture"), let id = store.selectedID {
                     store.update(id) { project in
                         var edit = project.edit
@@ -215,6 +272,13 @@ struct ContentView: View {
                         var edit = project.edit
                         let words = SubtitleTiming.estimate(CommandLine.arguments.contains("--long-subtitles-ui-fixture") ? (1...100).map { "Sentence \($0) is part of a long transcript." }.joined(separator: " ") : "This is the opening sentence. We can correct these words. Captions follow the spoken audio. Change the style while watching. Short phrases are easy to read. The final sentence ends here.", speech: [0.4...max(0.5, edit.duration - 0.4)])
                         edit.timeline.installSubtitles(words, range: 0...edit.duration, language: "English")
+                        project.commit(edit)
+                    }
+                }
+                if CommandLine.arguments.contains("--mono-filmstrip-fixture"), let id = store.selectedID {
+                    store.update(id) { project in
+                        var edit = project.edit
+                        for i in edit.timeline.video.indices { edit.timeline.video[i].content.color = ColorSettings(look: .mono) }
                         project.commit(edit)
                     }
                 }
@@ -262,6 +326,19 @@ struct ContentView: View {
                     store.update(id) { project in
                         var edit = project.edit
                         edit.timeline.split(at: EditTime(1.0/30), selection: edit.timeline.entireSelection())
+                        project.commit(edit)
+                    }
+                }
+                if endingFixture, let id = store.selectedID {
+                    store.update(id) { project in
+                        guard let source = project.sources.first, source.duration > 4 else { return }
+                        var last = TimelineClip(sourceID: source.id, start: source.duration - 1.0 / 30, end: source.duration)
+                        if CommandLine.arguments.contains("--graded-ending") { last.color = ColorSettings(look: .mono) }
+                        var edit = EditState(clips: [TimelineClip(sourceID: source.id, start: 0, end: 4), last])
+                        if CommandLine.arguments.contains("--audio-only-ending"), let tail = edit.timeline.video.last {
+                            edit.timeline.unlink(edit.timeline.selection(of: tail.id))
+                            edit.timeline.remove(TimelineSelection(video: [tail.id]))
+                        }
                         project.commit(edit)
                     }
                 }
@@ -338,11 +415,13 @@ struct ContentView: View {
                 screen = 2; return
             }
             #endif
+            #if !targetEnvironment(macCatalyst)
             if store.projects.isEmpty { _ = store.create() }
             #if DEBUG && targetEnvironment(simulator)
-            if CommandLine.arguments.contains("--liquid-glass-showcase"), let id = store.selectedID {
+            if CommandLine.arguments.contains("--recorder-controls-test"), CommandLine.arguments.contains("--liquid-glass-showcase"), let id = store.selectedID {
                 store.update(id) { $0.title = "Neon Coast" }
             }
+            #endif
             #endif
             camera.onSegment = { url, completion in
                 // A take belongs to the project folder the writer opened, even
@@ -368,7 +447,15 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, phase in
             if (phase == .active || phase == .background) && !store.unsavedDrafts.isEmpty { store.retrySaves() }
             if phase == .background && camera.hasActiveTake { RecordingAppDelegate.protectPendingSave() }
-            if phase == .background { wasBackgrounded = true; camera.suspend() }
+            if phase == .background {
+                wasBackgrounded = true
+                #if targetEnvironment(macCatalyst)
+                // A screen recording continues while the user works in the shared app.
+                if !camera.hasActiveTake { camera.suspend() }
+                #else
+                camera.suspend()
+                #endif
+            }
             else if phase == .active && screen == 0 && startupRecoveryComplete {
                 #if DEBUG
                 if CommandLine.arguments.contains("--video-effects-depth-only") || CommandLine.arguments.contains("--video-effects-cinematic-only") || CommandLine.arguments.contains("--video-effects-depth-import-only") || CommandLine.arguments.contains("--video-effects-matting-only") {return}
@@ -511,7 +598,11 @@ struct ContentView: View {
         .sheet(isPresented: $showingDeleted) {
             NavigationStack {
                 List {
-                    Section { Text("Originals and editing history stay here until you permanently delete them.").font(.subheadline).foregroundStyle(.secondary) }
+                    if store.deletedProjects.isEmpty {
+                        ContentUnavailableView("No recently deleted projects", systemImage: "trash")
+                    } else {
+                        Section { Text("Originals and editing history stay here until you permanently delete them.").font(.subheadline).foregroundStyle(.secondary) }
+                    }
                     ForEach(store.deletedProjects) { project in
                         VStack(alignment: .leading, spacing: 12) {
                             Text(project.title).font(.headline)
@@ -520,7 +611,7 @@ struct ContentView: View {
                                     .font(.caption).foregroundStyle(.secondary)
                                 if record.isOlderThan30Days(at: Date()) { Text("Over 30 days").font(.caption).foregroundStyle(.orange) }
                             } else {
-                                Text("Deletion date unavailable · excluded from bulk cleanup").font(.caption).foregroundStyle(.secondary)
+                                Text("Deletion date unavailable").font(.caption).foregroundStyle(.secondary)
                             }
                             HStack {
                                 Button("Restore") { store.restoreDeleted(project) }.buttonStyle(.bordered).accessibilityLabel("Restore " + project.title)
@@ -530,16 +621,42 @@ struct ContentView: View {
                         }.padding(.vertical, 6)
                     }
                 }.navigationTitle("Recently deleted").navigationBarTitleDisplayMode(.inline)
-                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showingDeleted = false } } }
+                    .toolbar {
+                        if !store.deletedProjects.isEmpty {
+                            ToolbarItem(placement: .topBarLeading) {
+                                Button("Delete All", role: .destructive) {
+                                    eraseAllIDs = store.deletedProjects.map(\.id)
+                                }.tint(.red).disabled(store.importing)
+                            }
+                        }
+                        ToolbarItem(placement: .confirmationAction) { Button("Done") { showingDeleted = false } }
+                    }
+                    .alert("Empty Recently Deleted?", isPresented: Binding(get: { !eraseAllIDs.isEmpty }, set: { if !$0 { eraseAllIDs = [] } }),
+                           presenting: eraseAllIDs) { ids in
+                        Button("Cancel", role: .cancel) {}
+                        Button(ids.count == 1 ? "Delete 1 project" : "Delete \(ids.count) projects", role: .destructive) {
+                            store.eraseDeleted(ids)
+                        }
+                    } message: { _ in
+                        Text("This permanently deletes the projects in Recently Deleted, including their recordings, edits and exports. You can’t undo this.")
+                    }
                     .confirmationDialog("Permanently delete this project and its original takes?", isPresented: Binding(get: { erasing != nil }, set: { if !$0 { erasing = nil } }), titleVisibility: .visible) {
-                        Button("Delete permanently", role: .destructive) { if let project = erasing { store.eraseDeleted(project) }; erasing = nil }
+                        Button("Delete permanently", role: .destructive) { if let project = erasing { store.eraseDeleted([project.id]) }; erasing = nil }
                     }
             }
         }
-        .fileImporter(isPresented: $importing, allowedContentTypes: [.movie, .zip], allowsMultipleSelection: false) { result in
+        .sheet(isPresented: $choosingPhotos) {
+            OrderedMediaPicker { items in
+                choosingPhotos = false
+                if !items.isEmpty { store.newProjectFromPhotos(items) { screen = 2 } }
+            }
+            .ignoresSafeArea()
+        }
+        .fileImporter(isPresented: $choosingImportFile, allowedContentTypes: [importFileType]) { result in
             switch result {
-            case .success(let urls): if let url = urls.first { store.beginImport(url) }
-            case .failure(let error): store.error = error.localizedDescription
+            case .success(let url): store.beginImport(url) { screen = 2 }
+            case .failure(let error) where (error as NSError).code != NSUserCancelledError: store.error = error.localizedDescription
+            default: break
             }
         }
     }
@@ -626,6 +743,57 @@ struct ContentView: View {
         }
     }
 
+    private var projectCards: some View {
+        ForEach(store.projects) { project in
+            let duration = project.edit.duration
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    ProjectThumbnail(url: project.sources.first.map { store.mediaURL(project, $0) })
+                        .frame(width: 64, height: 56).clipShape(RoundedRectangle(cornerRadius: 8))
+                    Button { renamedTitle = project.title; renaming = project } label: {
+                        HStack(spacing: 6) {
+                            Text(project.title).font(.headline).lineLimit(2).multilineTextAlignment(.leading)
+                            Image(systemName: "pencil").font(.caption).foregroundStyle(.secondary)
+                        }.frame(minHeight: 44, alignment: .leading)
+                    }.buttonStyle(.plain).disabled(store.importing)
+                        .accessibilityLabel("Rename " + project.title)
+                    Spacer()
+                    if store.selectedID == project.id { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
+                    Menu {
+                        Button("Rename", systemImage: "pencil") { renamedTitle = project.title; renaming = project }
+                        Button("Duplicate project", systemImage: "plus.square.on.square") {
+                            store.duplicate(project) { copy in
+                                duplicatedProjectID = copy.id
+                                UIAccessibility.post(notification: .announcement, argument: "Created " + copy.title)
+                            }
+                        }
+                        Button("Original recordings", systemImage: "film.stack") { originals = ProjectTarget(id: project.id) }
+                        #if targetEnvironment(macCatalyst)
+                        Button("Reveal in Finder", systemImage: "folder") {
+                            if !DesktopProjectLibrary.reveal(store.folder(project)) { store.error = "Finder couldn’t reveal this project folder." }
+                        }.accessibilityIdentifier("project.reveal." + project.id.uuidString)
+                        #endif
+                        Button("Zip project", systemImage: "shippingbox") { store.archive(project) }
+                        if !store.disk.recoveryFiles(in: project).isEmpty {
+                            Button("Unfinished recordings", systemImage: "exclamationmark.video") { recoveryProject = project }
+                        }
+                        Button("Move to Recently deleted", systemImage: "trash", role: .destructive) { store.moveToDeleted(project) }
+                    } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }.disabled(store.importing).accessibilityLabel("Actions for " + project.title)
+                }
+                if !store.missingSources(project).isEmpty {
+                    let missing = store.missingSources(project)
+                    let affectsTimeline = !project.edit.timeline.items(usingSources: Set(missing.map(\.id))).isEmpty
+                    Button { repairFeedback = nil; repairing = project } label: {
+                        Label(affectsTimeline ? "Repair media · \(missing.count) missing" : "\(missing.count) missing from history", systemImage: affectsTimeline ? "exclamationmark.triangle" : "info.circle")
+                            .foregroundStyle(affectsTimeline ? Color.orange : Color.secondary)
+                    }
+                }
+                Text(sourceSummary(project) + " · " + timeLabel(duration) + " edited")
+                    .font(.subheadline).foregroundStyle(.secondary)
+                projectActions(project, canExport: duration > 0).disabled(store.importing)
+            }.padding(18).background(surface, in: RoundedRectangle(cornerRadius: 18)).id(project.id)
+        }
+    }
     private var projectListContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -633,54 +801,37 @@ struct ContentView: View {
                 HStack {
                     Button { if store.create() != nil { screen = 0 } } label: { Label("New project", systemImage: "plus") }
                     Spacer()
-                    Button { importing = true } label: { Label("Import", systemImage: "square.and.arrow.down") }
+                    Menu {
+                        Section("Create a new project") {
+                            Button { choosingPhotos = true } label: {
+                                Label("From Photos", systemImage: "photo.on.rectangle")
+                                Text("Select photos and videos in playback order")
+                            }.accessibilityIdentifier("projects.import.photos")
+                            Button {
+                                importFileType = .movie; choosingImportFile = true
+                            } label: { Label("Video from Files", systemImage: "film") }
+                            .accessibilityIdentifier("projects.import.video")
+                        }
+                        Section("Restore a project") {
+                            Button {
+                                importFileType = .zip; choosingImportFile = true
+                            } label: {
+                                Label("YouRec project ZIP", systemImage: "shippingbox")
+                                Text("Open a copy with its media and edit history")
+                            }.accessibilityIdentifier("projects.import.zip")
+                        }
+                    } label: { Label("Import", systemImage: "square.and.arrow.down") }
+                    .accessibilityIdentifier("projects.import")
                 }.buttonStyle(.bordered).disabled(store.importing)
                 Button { privacyPolicy = true } label: {
                     Label("Privacy policy", systemImage: "hand.raised").font(.subheadline).frame(minHeight: 44)
                 }
-                ForEach(store.projects) { project in
-                    let duration = project.edit.duration
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            ProjectThumbnail(url: project.sources.first.map { store.mediaURL(project, $0) })
-                                .frame(width: 64, height: 56).clipShape(RoundedRectangle(cornerRadius: 8))
-                            Button { renamedTitle = project.title; renaming = project } label: {
-                                HStack(spacing: 6) {
-                                    Text(project.title).font(.headline).lineLimit(2).multilineTextAlignment(.leading)
-                                    Image(systemName: "pencil").font(.caption).foregroundStyle(.secondary)
-                                }.frame(minHeight: 44, alignment: .leading)
-                            }.buttonStyle(.plain).disabled(store.importing)
-                                .accessibilityLabel("Rename " + project.title)
-                            Spacer()
-                            if store.selectedID == project.id { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
-                            Menu {
-                                Button("Rename", systemImage: "pencil") { renamedTitle = project.title; renaming = project }
-                                Button("Duplicate project", systemImage: "plus.square.on.square") {
-                                    store.duplicate(project) { copy in
-                                        duplicatedProjectID = copy.id
-                                        UIAccessibility.post(notification: .announcement, argument: "Created " + copy.title)
-                                    }
-                                }
-                                Button("Original recordings", systemImage: "film.stack") { originals = ProjectTarget(id: project.id) }
-                                Button("Zip project", systemImage: "shippingbox") { store.archive(project) }
-                                if !store.disk.recoveryFiles(in: project).isEmpty {
-                                    Button("Unfinished recordings", systemImage: "exclamationmark.video") { recoveryProject = project }
-                                }
-                                Button("Move to Recently deleted", systemImage: "trash", role: .destructive) { store.moveToDeleted(project) }
-                            } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }.disabled(store.importing).accessibilityLabel("Actions for " + project.title)
-                        }
-                        if !store.missingSources(project).isEmpty {
-                            let missing = store.missingSources(project)
-                            let affectsTimeline = !project.edit.timeline.items(usingSources: Set(missing.map(\.id))).isEmpty
-                            Button { repairFeedback = nil; repairing = project } label: {
-                                Label(affectsTimeline ? "Repair media · \(missing.count) missing" : "\(missing.count) missing from history", systemImage: affectsTimeline ? "exclamationmark.triangle" : "info.circle")
-                                    .foregroundStyle(affectsTimeline ? Color.orange : Color.secondary)
-                            }
-                        }
-                        Text(sourceSummary(project) + " · " + timeLabel(duration) + " edited")
-                            .font(.subheadline).foregroundStyle(.secondary)
-                        projectActions(project, canExport: duration > 0).disabled(store.importing)
-                    }.padding(18).background(surface, in: RoundedRectangle(cornerRadius: 18)).id(project.id)
+                if UIDevice.current.userInterfaceIdiom == .phone {
+                    projectCards
+                } else {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 350), spacing: 16)], alignment: .leading, spacing: 16) {
+                        projectCards
+                    }
                 }
                 ForEach(store.unavailableProjects.keys.sorted(by: { $0.uuidString < $1.uuidString }), id: \.self) { id in
                     VStack(alignment: .leading, spacing: 8) {

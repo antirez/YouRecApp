@@ -448,7 +448,7 @@ import Metal
                     let clock=VideoEffectSequenceClock(project.edit.clips[0])
                     for frame in 30..<60 {
                         let time=Double(frame)/30,source=project.edit.clips[0].sourceTime(at:time)
-                        guard let index=clock.cadence.hold(at:source)?.index else {throw ProjectError.invalidMedia}
+                        guard let index=clock.hold(at:source)?.index else {throw ProjectError.invalidMedia}
                         let image=try await generator.image(at:CMTime(value:Int64(frame),timescale:30)).image
                         guard let data=UIImage(cgImage:image).pngData() else {throw ProjectError.invalidMedia}
                         if let old=held[index] {

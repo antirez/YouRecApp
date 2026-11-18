@@ -78,6 +78,45 @@ struct DualCameraLayout: Codable, Equatable {
         insetX = clamp(insetX, 0...1); insetY = clamp(insetY, 0...1)
         first.constrain(); second.constrain()
     }
+    enum InsetCorner: CaseIterable {
+        case topLeft, topRight, bottomLeft, bottomRight
+
+        private var left: Bool { self == .topLeft || self == .bottomLeft }
+        private var top: Bool { self == .topLeft || self == .topRight }
+        func point(in rect: CGRect) -> CGPoint {
+            CGPoint(x: left ? rect.minX : rect.maxX, y: top ? rect.minY : rect.maxY)
+        }
+        func opposite(in rect: CGRect) -> CGPoint {
+            CGPoint(x: left ? rect.maxX : rect.minX, y: top ? rect.maxY : rect.minY)
+        }
+    }
+
+    /// Drag coordinates are relative to the fitted video, just like regions(in:).
+    /// Keep the grabbed corner's opposite corner stationary throughout a resize.
+    mutating func dragInset(from start: CGRect, by delta: CGSize, corner: InsetCorner?, canvas: CGSize) {
+        guard mode == .floating, canvas.width > 0, canvas.height > 0,
+              start.width > 0, start.height > 0, delta.width.isFinite, delta.height.isFinite else { return }
+        if let corner {
+            let anchor = corner.opposite(in: start), handle = corner.point(in: start)
+            let dx = handle.x - anchor.x, dy = handle.y - anchor.y
+            let proposedScale = 1 + (dx * delta.width + dy * delta.height) / (dx * dx + dy * dy)
+            let roomX = dx < 0 ? anchor.x : canvas.width - anchor.x
+            let roomY = dy < 0 ? anchor.y : canvas.height - anchor.y
+            let unit = min(canvas.width, canvas.height)
+            let minimum = 0.18 * unit / min(start.width, start.height)
+            let scale = min(roomX / start.width, roomY / start.height, max(minimum, proposedScale))
+            let width = start.width * scale, height = start.height * scale
+            insetSize = sqrt(width * height) / unit
+            insetX = (anchor.x + dx * scale / 2) / canvas.width
+            insetY = (anchor.y + dy * scale / 2) / canvas.height
+        } else {
+            let x = max(0, min(canvas.width - start.width, start.minX + delta.width))
+            let y = max(0, min(canvas.height - start.height, start.minY + delta.height))
+            insetX = (x + start.width / 2) / canvas.width
+            insetY = (y + start.height / 2) / canvas.height
+        }
+    }
+
     /// Top-left coordinates, in output pixels or view points. Shared by UI/rendering.
     func regions(in size: CGSize) -> [CGRect] {
         let w = size.width, h = size.height

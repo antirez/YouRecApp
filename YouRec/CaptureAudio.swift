@@ -1,5 +1,8 @@
 @preconcurrency import AVFoundation
 import Foundation
+#if targetEnvironment(macCatalyst)
+import CoreAudio
+#endif
 
 /// The saved list controls preview. A quick selection or an open take pins a
 /// port until Stop, except when iOS confirms that a replacement is in use.

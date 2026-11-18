@@ -311,6 +311,28 @@ others are unchanged. Repeat at supported range limits and with a temporary
 format restriction. The interrupted-ramp expectation follows the chosen policy
 above; independent camera memory is mandatory under either policy.
 
+## Variable aperture
+
+The camera/zoom/focus bar includes an aperture control only when the selected
+physical camera supports adjustable aperture with automatic shutter and ISO.
+Tap the standard aperture icon to open a second bar, like the zoom presets,
+with **Auto** and the available lens f-stops. Auto is the default and displays
+only the icon in the main bar. A manual selection displays its f-number there,
+including when the second bar is closed. Opening aperture closes zoom presets
+and vice versa; changing camera closes the aperture bar.
+
+Remember the requested setting separately for each physical camera. A manual
+aperture must not lock shutter speed, ISO or focus. Switching to a fixed-aperture
+lens removes the control; returning restores that camera's own setting. The
+control works before and during recording and while paused. Two-camera mode
+uses automatic exposure and hides the single-camera aperture control.
+
+Discover supported stops from the active capture format on iOS 27 or later.
+Older systems and fixed-aperture cameras retain their existing controls.
+Acceptance requires exercising the public aperture bar on the physical camera,
+checking actual aperture readback, and reviewing the live preview and saved
+footage.
+
 ## Fixed focus
 
 **Confirmed:** fixed focus is available before and during recording. Provide an

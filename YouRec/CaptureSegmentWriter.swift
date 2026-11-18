@@ -64,6 +64,7 @@ final class CaptureSegmentWriter: @unchecked Sendable {
     private var holdingVideo = false
     private var expectedVideoHold = false
     private var outputSize = CGSize.zero
+    private var includesMicrophone = true
     private var requestedCanvas: CGSize?
     private var outputHDR = false
     private var outputLog: LUTInput?
@@ -75,7 +76,7 @@ final class CaptureSegmentWriter: @unchecked Sendable {
         videoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange]
     }
     func connection(with type: AVMediaType) -> AVCaptureConnection? { videoOutput.connection(with: type) }
-    func startRecording(to url: URL, canvas: CGSize? = nil) {
+    func startRecording(to url: URL, canvas: CGSize? = nil, includesMicrophone: Bool = true) {
         queue.async {
             guard self.destination == nil, !self.finishing else { return }
             self.destination = url; self.events = []
@@ -87,6 +88,7 @@ final class CaptureSegmentWriter: @unchecked Sendable {
                 }
             }
             #endif
+            self.includesMicrophone = includesMicrophone
             self.requestedCanvas = canvas
             self.sessionStart = .invalid; self.lastVideo = .invalid; self.lastVideoEnd = .invalid
             self.lastPixel = nil; self.finishFailure = nil; self.requestedEnd = .invalid; self.closing = false; self.paddingDeadline = nil
@@ -191,7 +193,7 @@ final class CaptureSegmentWriter: @unchecked Sendable {
     }
     func appendAudio(_ sample: CMSampleBuffer) {
         audioHint = sample.formatDescription
-        guard destination != nil, !closing else { return }
+        guard includesMicrophone, destination != nil, !closing else { return }
         if let format = audioHint.flatMap({ CMAudioFormatDescriptionGetStreamBasicDescription($0)?.pointee }), format.mSampleRate > 0 {
             let time = sample.presentationTimeStamp
             lock.lock()
@@ -247,8 +249,9 @@ final class CaptureSegmentWriter: @unchecked Sendable {
             AVNumberOfChannelsKey: 2, AVEncoderBitRateKey: 192000
         ])
         audio.expectsMediaDataInRealTime = true
-        guard writer.canAdd(video), writer.canAdd(audio) else { throw ProjectError.invalidMedia }
-        writer.add(video); writer.add(audio)
+        guard writer.canAdd(video), !includesMicrophone || writer.canAdd(audio) else { throw ProjectError.invalidMedia }
+        writer.add(video)
+        if includesMicrophone { writer.add(audio) }
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: video, sourcePixelBufferAttributes: [
             kCVPixelBufferPixelFormatTypeKey as String: outputHDR || outputLog != nil ? kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange : kCVPixelFormatType_32BGRA,
             kCVPixelBufferWidthKey as String: width, kCVPixelBufferHeightKey as String: height,
@@ -256,9 +259,9 @@ final class CaptureSegmentWriter: @unchecked Sendable {
         ])
         guard writer.startWriting() else { throw writer.error ?? ProjectError.invalidMedia }
         sessionStart = firstVideo.presentationTimeStamp
-        normalizer = CaptureAudioNormalizer(start: sessionStart)
+        normalizer = includesMicrophone ? CaptureAudioNormalizer(start: sessionStart) : nil
         writer.startSession(atSourceTime: sessionStart)
-        self.writer = writer; self.video = video; self.audio = audio; self.adaptor = adaptor
+        self.writer = writer; self.video = video; self.audio = includesMicrophone ? audio : nil; self.adaptor = adaptor
         onCanvas?(outputSize)
         onStart?(destination)
     }
@@ -306,7 +309,7 @@ final class CaptureSegmentWriter: @unchecked Sendable {
         // An engine tap may deliver a 100-ms block after Stop that contains the
         // final words before Stop. Allow bounded delivery/encoder drain time.
         drainAudio()
-        let waitingForAudio = paddingDeadline == nil && (!lastAudioEnd.isValid || lastAudioEnd < requestedEnd)
+        let waitingForAudio = includesMicrophone && paddingDeadline == nil && (!lastAudioEnd.isValid || lastAudioEnd < requestedEnd)
         let waitingForEncoder = !pendingAudio.isEmpty || !readyAudio.isEmpty || video?.isReadyForMoreMediaData == false
         if finishFailure == nil, writer?.status == .writing, (waitingForAudio || waitingForEncoder), ProcessInfo.processInfo.systemUptime < deadline {
             queue.asyncAfter(deadline: .now() + .milliseconds(5)) { self.finishWhenDrained(destination, deadline: deadline) }

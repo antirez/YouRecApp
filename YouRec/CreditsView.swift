@@ -45,7 +45,7 @@ struct CreditsView: View {
                         }
                     }.navigationTitle("Fonts")
                 }
-                Text("All seven font families are distributed under the SIL Open Font License 1.1. Select a family to read its copyright and license.")
+                Text("The bundled title fonts are distributed under the SIL Open Font License 1.1. Select a family to read its copyright and license.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
             Section("Platform") {

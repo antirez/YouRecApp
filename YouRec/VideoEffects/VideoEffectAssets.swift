@@ -64,11 +64,11 @@ actor VideoEffectAnalysis {
                 let selected=frames.times[frames.last(at:t)],beforeFirst=frames.times[0]>t+0.0000001
                 let sample=try reader.sample(at:beforeFirst ? t : selected,firstAtOrAfter:!beforeFirst)
                 let (picture,transform)=instruction.preparedImage(try self.nightPicture.render(sample.image,instruction:instruction,time:t),at:t,analysis:analysis)
-                let contexts=try self.inputs!.frameContexts(image:picture,effects:upstream,time:t,folder:folder,palettes:instruction.effectPalettes,subjects:instruction.effectSubjects,masks:instruction.effectMasks,maskSource:analysis ? instruction.maskSource?.forPalette : instruction.maskSource,rawSource:sample.image,depth:instruction.effectDepth,depthStream:"\(instruction.trackID)|\(instruction.clip.id)",maskTransform:transform,sourceSize:instruction.sourceSize,analysisTime:beforeFirst ? t : selected,hdr:hdr,plateColor:instruction.clip.color,plateColorHDR:instruction.hdr,temporalHistories:histories,disableMatteCuts:Set(instruction.effectMatteHistories.filter {$0.value.replay(at:selected)}.keys),currentMatteCuts:Set(instruction.effectMatteHistories.filter {$0.value.replay(at:selected) && !$0.value.accepted(at:selected)}.keys),provisional:instruction.effectAnalysisPending)
+                let contexts=try self.inputs!.frameContexts(image:picture,effects:upstream,time:t,folder:folder,palettes:instruction.effectPalettes,subjects:instruction.effectSubjects,masks:instruction.effectMasks,maskSource:analysis ? instruction.maskSource?.forPalette : instruction.maskSource,rawSource:sample.image,depth:instruction.effectDepth,depthStream:"\(instruction.trackID)|\(instruction.clip.id)",maskTransform:transform,sourceSize:instruction.sourceSize,analysisTime:beforeFirst ? t : selected,hdr:hdr,plateColor:instruction.grade(at:t),plateColorHDR:instruction.hdr,temporalHistories:histories,disableMatteCuts:Set(instruction.effectMatteHistories.filter {$0.value.replay(at:selected)}.keys),currentMatteCuts:Set(instruction.effectMatteHistories.filter {$0.value.replay(at:selected) && !$0.value.accepted(at:selected)}.keys),provisional:instruction.effectAnalysisPending)
                 return .init(image:picture,contexts:contexts)
             },lease:lease)
         }
-        let contexts=try inputs!.frameContexts(image:image,effects:prefix,time:time,folder:folder,palettes:instruction?.effectPalettes ?? [:],subjects:instruction?.effectSubjects ?? [:],masks:instruction?.effectMasks,maskSource:analysis ? instruction?.maskSource?.forPalette : instruction?.maskSource,rawSource:raw,depth:instruction?.effectDepth,depthStream:instruction.map {"\($0.trackID)|\($0.clip.id)"} ?? "analysis",maskTransform:matrix,sourceSize:instruction?.sourceSize,analysisTime:sampleTime,hdr:hdr,plateColor:instruction?.clip.color,plateColorHDR:instruction?.hdr ?? false,provisional:instruction?.effectAnalysisPending ?? false)
+        let contexts=try inputs!.frameContexts(image:image,effects:prefix,time:time,folder:folder,palettes:instruction?.effectPalettes ?? [:],subjects:instruction?.effectSubjects ?? [:],masks:instruction?.effectMasks,maskSource:analysis ? instruction?.maskSource?.forPalette : instruction?.maskSource,rawSource:raw,depth:instruction?.effectDepth,depthStream:instruction.map {"\($0.trackID)|\($0.clip.id)"} ?? "analysis",maskTransform:matrix,sourceSize:instruction?.sourceSize,analysisTime:sampleTime,hdr:hdr,plateColor:instruction?.grade(at:time),plateColorHDR:instruction?.hdr ?? false,provisional:instruction?.effectAnalysisPending ?? false)
         return try renderer!.render(image,effects:prefix.filter {$0.kind != .nightFix},sourceTime:time,hdr:hdr,mapInputOnly:true,contexts:contexts,lease:lease)
     }
     static func prefix(_ effects:[VideoEffectSettings],before id:UUID)->[VideoEffectSettings] {
@@ -134,7 +134,7 @@ actor VideoEffectAnalysis {
     func palette(source: SourceMedia, effect: VideoEffectSettings, folder: URL, instruction:VideoToolInstruction? = nil, analysisRange: ClosedRange<Double>? = nil, generate:Bool=true, progress: @escaping @Sendable (Double) -> Void = { _ in }) async throws -> EffectPaletteTrack {
         struct Key: Encodable {
             let version:Int;let source:SourceMedia;let effect:VideoEffectSettings;let prefix:[VideoEffectSettings]
-            let geometry:[Double];let color:ColorSettings?;let stabilization:[StabilizationSample]?;let depth:String?
+            let geometry:[Double];let color:ColorSettings?;let colorRegions:[ColorRegion]?;let stabilization:[StabilizationSample]?;let depth:String?
         }
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
         let start=min(source.duration,max(effect.start,analysisRange?.lowerBound ?? instruction?.clip.start ?? effect.start))
@@ -148,7 +148,7 @@ actor VideoEffectAnalysis {
             let m=i.transform
             geometry=[m.a,m.b,m.c,m.d,m.tx,m.ty,i.canvas.width,i.canvas.height,i.sourceSize.width,i.sourceSize.height,i.stabilization?.zoom ?? 1,i.clip.stabilizationStart,i.hdr ? 1 : 0]
         }
-        let key = SHA256.hash(data: try encoder.encode(Key(version: prefix.contains(where: \.usesAutoMaskStream) ? 8 : 7, source: source, effect: analysisEffect,prefix:prefix,geometry:geometry,color:instruction?.clip.color,stabilization:instruction?.stabilization?.samples,depth:prefix.contains(where:{$0.enabled && $0.kind == .dollyZoom}) ? instruction?.effectDepth?.identity : nil))).map { String(format: "%02x", $0) }.joined()
+        let key = SHA256.hash(data: try encoder.encode(Key(version: prefix.contains(where: \.usesAutoMaskStream) ? 8 : 7, source: source, effect: analysisEffect,prefix:prefix,geometry:geometry,color:instruction?.clip.color,colorRegions:instruction?.clip.colorRegions,stabilization:instruction?.stabilization?.samples,depth:prefix.contains(where:{$0.enabled && $0.kind == .dollyZoom}) ? instruction?.effectDepth?.identity : nil))).map { String(format: "%02x", $0) }.joined()
         while true {
             try Task.checkCancellation()
             if generate && gate.mustWait(key,deferrable:VideoEffectPreparation.deferrable) {

@@ -56,6 +56,7 @@ struct RecorderView: View {
     @State private var settingsDetent: PresentationDetent = .height(430)
     @State private var adjustingHorizon = false
     @State private var zoomOpen = false
+    @State private var apertureOpen = false
     @State private var effectsOpen = false
     @State private var effectsSheetOpen = false
     @State private var suspendingEffectsSheet = false
@@ -252,6 +253,7 @@ struct RecorderView: View {
                             projectChip
                             if camera.crashAvailable || camera.dollyAvailable { cameraEffectControls }
                             if zoomOpen && !camera.dualActive { zoomPresets.padding(.bottom, 8) }
+                            if apertureOpen && camera.apertureAvailable { aperturePresets.padding(.bottom, 8) }
                             cameraStrip
                         }.padding(.top, toolbarTop).padding(.bottom, 12)
                         if !controlsOnLeft { captureRail }
@@ -265,6 +267,7 @@ struct RecorderView: View {
                         projectChip.padding(.bottom, 6)
                         if camera.crashAvailable || camera.dollyAvailable { cameraEffectControls.padding(.bottom,6) }
                         if zoomOpen && !camera.dualActive { zoomPresets.padding(.bottom, 10) }
+                        if apertureOpen && camera.apertureAvailable { aperturePresets.padding(.bottom, 10) }
                         cameraStrip.padding(.bottom, 22)
                         HStack {
                             projectOrMarkButton.frame(maxWidth: .infinity)
@@ -353,7 +356,7 @@ struct RecorderView: View {
                 }
             }
             .sheet(isPresented: $settingsOpen) {
-                CameraSettings(camera: camera, frontLightEnabled: $frontLightEnabled,
+                CameraSettings(camera: camera, project: project, frontLightEnabled: $frontLightEnabled,
                                adjustHorizon: { settingsOpen = false; adjustingHorizon = true },
                                close: { settingsOpen = false })
                     .presentationDetents([.height(430), .large], selection: $settingsDetent)
@@ -371,8 +374,12 @@ struct RecorderView: View {
         .statusBarHidden()
         .persistentSystemOverlays(.hidden)
         .onChange(of: camera.dualActive) { _, active in
-            if active { zoomOpen = false } else { dualLayoutEditing = false }
+            if active { zoomOpen = false; apertureOpen = false } else { dualLayoutEditing = false }
         }
+        .onChange(of: zoomOpen) { _, open in if open { apertureOpen = false } }
+        .onChange(of: apertureOpen) { _, open in if open { zoomOpen = false } }
+        .onChange(of: camera.cameraID) { _, _ in apertureOpen = false }
+        .onChange(of: camera.apertureAvailable) { _, available in if !available { apertureOpen = false } }
         .onChange(of: adjustingHorizon) { _, active in camera.previewHorizonAngle(active) }
         .onChange(of: effectsNeedOverlay) { _, overlay in
             guard effectsOpen else { return }
@@ -621,6 +628,10 @@ struct RecorderView: View {
                             .offset(y: -34).allowsHitTesting(false).accessibilityIdentifier("recorder.focusFeedback")
                     }
                 }
+            if camera.apertureAvailable {
+                Rectangle().fill(.white.opacity(0.2)).frame(width: 1, height: 16)
+                RecorderApertureButton(camera: camera, readings: camera.readings, open: $apertureOpen)
+            }
             }
         }
         .padding(.horizontal, 5)
@@ -640,6 +651,7 @@ struct RecorderView: View {
         }.disabled(!choice.available)
     }
     private var zoomPresets: some View { RecorderZoomPresets(camera: camera, readings: camera.readings) }
+    private var aperturePresets: some View { RecorderAperturePresets(camera: camera) }
     private var recordButton: some View {
         Button {
             if recording { camera.stop() } else { start() }
@@ -719,6 +731,7 @@ struct RecorderView: View {
 /// capture session's canonical pair order. Only supported partners are offered.
 private struct CameraSettings: View {
     @ObservedObject var camera: CaptureController
+    let project: Project?
     @Binding var frontLightEnabled: Bool
     let adjustHorizon: () -> Void
     let close: () -> Void
@@ -789,7 +802,7 @@ private struct CameraSettings: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("recorder.colorNotice")
                 }
-                RecorderSettings(camera: camera, adjustHorizon: adjustHorizon)
+                RecorderSettings(camera: camera, project: project, adjustHorizon: adjustHorizon)
             }
             .accessibilityIdentifier("recorder.settingsControls")
             .navigationTitle("Camera settings").navigationBarTitleDisplayMode(.inline)
@@ -968,6 +981,74 @@ private struct RecorderZoomButton: View {
                 .contentShape(Rectangle())
         }.disabled(!camera.ready || camera.busy).accessibilityLabel("Zoom, \((readings.zoom * camera.displayZoomMultiplier).formatted()) times")
             .accessibilityIdentifier("recorder.zoom").accessibilityValue(String(format: "%.1f", readings.zoom * camera.displayZoomMultiplier))
+    }
+}
+
+private struct RecorderApertureButton: View {
+    @ObservedObject var camera: CaptureController
+    @ObservedObject var readings: CaptureReadings
+    @Binding var open: Bool
+
+    private var value: String {
+        let selection = camera.selectedAperture.map(CameraAperture.label) ?? "Auto"
+        #if DEBUG
+        if CommandLine.arguments.contains("--probe-aperture-controls") {
+            return selection + "; " + readings.apertureProbe
+        }
+        #endif
+        return selection
+    }
+
+    var body: some View {
+        Button { withAnimation(.easeOut(duration: 0.16)) { open.toggle() } } label: {
+            ZStack {
+                if let aperture = camera.selectedAperture {
+                    Text(CameraAperture.label(aperture)).font(.system(size: 12, weight: .semibold))
+                } else { Image(systemName: "camera.aperture").font(.system(size: 18, weight: .medium)) }
+            }
+            .foregroundStyle(open || camera.selectedAperture != nil ? .yellow : .white)
+            .frame(width: 52, height: 44)
+            .contentShape(Rectangle())
+        }
+        .disabled(!camera.ready || camera.busy || camera.switchingCamera)
+        .accessibilityIdentifier("recorder.aperture").accessibilityLabel("Aperture")
+        .accessibilityValue(value)
+        .accessibilityHint("Show or hide automatic aperture and the available f-stops.")
+    }
+}
+
+private struct RecorderAperturePresets: View {
+    @ObservedObject var camera: CaptureController
+
+    var body: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 2) {
+                option(nil)
+                ForEach(camera.apertureStops, id: \.self) { option($0) }
+            }
+        }
+        .scrollIndicators(.hidden).scrollBounceBehavior(.basedOnSize)
+        .frame(maxWidth: CGFloat((camera.apertureStops.count + 1) * 58))
+        .frame(height: 48).padding(.horizontal, 6)
+        .background(.ultraThinMaterial, in: Capsule())
+        .disabled(!camera.ready || camera.busy || camera.switchingCamera)
+        .accessibilityIdentifier("recorder.aperture.presets")
+    }
+
+    private func option(_ value: Float?) -> some View {
+        let selected = camera.selectedAperture == value
+        let title = value.map(CameraAperture.label) ?? "Auto"
+        return Button {
+            camera.setAperture(value)
+            UISelectionFeedbackGenerator().selectionChanged()
+        } label: {
+            Text(title).font(.system(size: 13, weight: .semibold)).monospacedDigit()
+                .foregroundStyle(selected ? .yellow : .white)
+                .frame(minWidth: 54, minHeight: 44)
+                .background(selected ? .white.opacity(0.12) : .clear, in: Capsule())
+        }
+        .accessibilityIdentifier("recorder.aperture." + (value.map(CameraAperture.label) ?? "auto"))
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
@@ -1244,13 +1325,53 @@ private struct RecorderFocusSettings: View {
 
 private struct RecorderSettings: View {
     @ObservedObject var camera: CaptureController
+    let project: Project?
     let adjustHorizon: () -> Void
     @AppStorage("zoomTransitionSeconds") private var rampSeconds = 0.0
     @AppStorage("protectRecordingAudio") private var protectRecordingAudio = false
+    @AppStorage(CaptureController.allowAudioPlaybackKey) private var allowAudioPlayback = false
     @AppStorage("fitRecordedFrame") private var fitRecordedFrame = true
     private var keepFraming: Bool { camera.hasActiveTake || camera.state == .paused }
     var body: some View {
         Group {
+            Section("This project") {
+                Text(project?.title ?? "New project")
+                Text("\(recorderClock(project?.capturedDuration ?? 0)) captured").font(.caption).foregroundStyle(.secondary)
+            }
+            Section {
+                Toggle("Allow audio playback", isOn: $allowAudioPlayback)
+                    .disabled(camera.hasActiveTake)
+                    .accessibilityIdentifier("recorder.allowAudioPlayback")
+                    .onChange(of: allowAudioPlayback) { _, _ in camera.refreshAudioPlaybackPreference() }
+            } header: {
+                Text("Audio")
+            } footer: {
+                Text("Keep music and other audio apps playing while you use the camera. Your video records the selected microphone.")
+            }
+            Section {
+                NavigationLink {
+                    List {
+                        Section("Automatically while YouRec is open") {
+                            Text("On your iPhone, open Settings → Focus → Do Not Disturb → Add Schedule → App. Choose YouRec.")
+                            Text("Do Not Disturb then follows the whole app, including the editor. Your Focus settings decide which calls and notifications can come through.")
+                        }
+                        Section("For one take") {
+                            Text("Before you press Record, open Control Center, tap Focus, and turn on Do Not Disturb. Turn it off in Control Center after you stop recording.")
+                        }
+                    }
+                    .navigationTitle("Do Not Disturb")
+                    .navigationBarTitleDisplayMode(.inline)
+                } label: {
+                    Label("Set up Do Not Disturb", systemImage: "moon.fill")
+                }
+                .accessibilityIdentifier("recorder.doNotDisturb")
+                Toggle("Protect recording audio", isOn: $protectRecordingAudio)
+                    .disabled(camera.hasActiveTake).accessibilityIdentifier("recorder.protectAudio")
+            } header: {
+                Text("Interruptions")
+            } footer: {
+                Text("Protect recording audio keeps the microphone running through incoming call banners during a take. Answering a call or receiving a full-screen call still interrupts recording.")
+            }
             Section("Level horizon") {
                 Button(action: adjustHorizon) {
                     HStack {
@@ -1285,12 +1406,6 @@ private struct RecorderSettings: View {
                 .accessibilityIdentifier("recorder.transition").accessibilityLabel("Zoom transition duration")
                 .accessibilityValue(ZoomTransition.durationLabel(rampSeconds))
                 Text("Swipe the time beside the zoom presets up or down to adjust by half a second. Double-tap a zoom preset to reach it in one second. Each camera remembers its own zoom.").font(.caption).foregroundStyle(.secondary)
-            }
-            Section {
-                Toggle("Protect recording audio", isOn: $protectRecordingAudio)
-                    .disabled(camera.hasActiveTake).accessibilityIdentifier("recorder.protectAudio")
-            } header: { Text("Interruptions") } footer: {
-                Text("Keeps audio recording through incoming call banners. Answering a call or receiving a full-screen call interrupts the take. For Do Not Disturb throughout YouRec, choose Settings → Focus → Do Not Disturb → Add Schedule → App → YouRec.")
             }
             Section("Microphone") {
                 ForEach(camera.microphones) { microphone in

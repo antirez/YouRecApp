@@ -385,6 +385,7 @@ enum AudioDiagnostics {
 
 }
 
+#if !targetEnvironment(macCatalyst)
 @MainActor
 enum CaptureDiagnostics {
     /// Real writer/bookmark smoke test. Public taps and both landscape layouts
@@ -1273,6 +1274,8 @@ enum CaptureDiagnostics {
     }
 }
 
+#endif
+
 @MainActor
 enum EditorDiagnostics {
     static func importLongStabilizationFixture(_ fallback: URL, documents: URL, store: ProjectStore) async throws {
@@ -1656,6 +1659,7 @@ enum EditorDiagnostics {
     }
 }
 
+#if !targetEnvironment(macCatalyst)
 extension CaptureDiagnostics {
     static func dual(_ camera: CaptureController, assists: Bool = false) async {
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -1791,4 +1795,5 @@ extension CaptureDiagnostics {
     }
 }
 
+#endif
 #endif

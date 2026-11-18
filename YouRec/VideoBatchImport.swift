@@ -6,7 +6,11 @@ struct VideoBatchImport {
     private(set) var sources: [SourceMedia] = []
 
     init(folder: URL) throws {
-        directory = folder.appendingPathComponent("Processing/AddVideos-" + UUID().uuidString, isDirectory: true)
+        try self.init(stagingAt: folder.appendingPathComponent("Processing/AddVideos-" + UUID().uuidString, isDirectory: true))
+    }
+
+    init(stagingAt directory: URL) throws {
+        self.directory = directory
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     }
 

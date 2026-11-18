@@ -10,3 +10,7 @@ Vision face tracking and render regression tests; it is not bundled with the app
 tone and silence. The four fonts under `Fonts/` contain original geometric test
 glyphs in single-font and collection formats. These fixtures exercise the editor
 and font importer.
+
+`playback-ending.mp4` is a synthetic six-second red movie with one green final
+frame and a silent audio track that ends slightly later. It exercises the
+editor's last-frame display. Both editor movies are included only in debug builds.

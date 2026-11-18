@@ -32,6 +32,13 @@ final class CaptureReadings: ObservableObject {
     @Published private(set) var level: Float = -160
     @Published private(set) var audioArriving = false
     @Published private(set) var audioClipping = false
+    @Published private(set) var aperture: Float = 0
+    #if DEBUG
+    @Published private(set) var apertureProbe = ""
+    func updateApertureProbe(_ text: String) { if apertureProbe != text { apertureProbe = text } }
+    #endif
+
+    func updateAperture(_ value: Float) { if aperture != value { aperture = value } }
 
     func update(zoom: Double, focusLocked: Bool, lensPosition: Float, level: Float, audioArriving: Bool, audioClipping: Bool) {
         if self.zoom != zoom { self.zoom = zoom }
@@ -143,6 +150,7 @@ final class CaptureController: NSObject, ObservableObject, AVCaptureVideoDataOut
     @Published private(set) var cameraID = ""
     @Published private(set) var switchingCamera = false
     @Published private(set) var microphones: [MicrophoneChoice] = []
+    static let allowAudioPlaybackKey = "allowAudioPlayback"
     @Published private(set) var microphonePriority: [MicrophoneChoice] = []
     @Published private(set) var recordingGainDB = 0.0
     private let recordingGain = RecordingGain() // media queue
@@ -157,6 +165,10 @@ final class CaptureController: NSObject, ObservableObject, AVCaptureVideoDataOut
     private var focusHintDismiss: Task<Void, Never>?
     @Published private(set) var autofocusSupported = false
     @Published private(set) var focusAdjustable = false
+    @Published private(set) var apertureStops: [Float] = []
+    @Published private(set) var selectedAperture: Float?
+    var apertureAvailable: Bool { !dualActive && !apertureStops.isEmpty }
+    private var manualAperture: Float? // Capture queue; persist the requested stop, not an in-flight reading.
     private var manualFocus = false // capture-queue intent; one-shot AF can also end in .locked
     private var focusTarget: (id: UUID, deviceID: String, started: TimeInterval)?
 
@@ -720,6 +732,7 @@ final class CaptureController: NSObject, ObservableObject, AVCaptureVideoDataOut
                               CameraChoice(id: "fixture-front-wide", name: widePreview ? "Front ultrawide" : "Front wide", front: true, supportsLandscape: widePreview),
                               CameraChoice(id: "fixture-tele", name: "Rear telephoto", front: false)]
                 $0.cameraID = "fixture-wide"; $0.ready = true; $0.maxZoom = 8
+                $0.configureFixtureAperture(reset: CommandLine.arguments.contains("--reset-aperture-fixture"))
                 $0.singleStabilizationSupported = true; $0.singleStabilizationActive = $0.stabilizationEnabled
                 $0.hdrSupported = true; $0.hdrActive = $0.hdrEnabled; $0.logSupported = false
                 $0.rememberCamera("fixture-wide", front: false)
@@ -972,6 +985,7 @@ final class CaptureController: NSObject, ObservableObject, AVCaptureVideoDataOut
         #if DEBUG && targetEnvironment(simulator)
         if recorderControlFixture {
             dualActive = enabled
+            configureFixtureAperture()
             dualStabilizationSummary = stabilizationEnabled ? "Both cameras stabilized" : ""
             // Like a real dual composite, the fixture canvas is already upright.
             // Matching angles keep its aspect ratio when the take locks framing.
@@ -1063,10 +1077,7 @@ final class CaptureController: NSObject, ObservableObject, AVCaptureVideoDataOut
         configuring = true
         defer { configuring = false }
         do {
-            let audioSession = AVAudioSession.sharedInstance()
-            try audioSession.setCategory(.playAndRecord, mode: .videoRecording, options: [.allowBluetoothHFP])
-            try audioSession.setActive(true)
-            try audioSession.setAllowHapticsAndSystemSoundsDuringRecording(true)
+            try activateRecorderAudio()
             devices = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera, .builtInUltraWideCamera, .builtInTelephotoCamera], mediaType: .video, position: .unspecified).devices
             guard let camera = devices.first(where: { $0.position == .back && $0.deviceType == .builtInWideAngleCamera }) ?? devices.first else { throw ProjectError.invalidMedia }
             let videoInput = try AVCaptureDeviceInput(device: camera)
@@ -1114,12 +1125,26 @@ final class CaptureController: NSObject, ObservableObject, AVCaptureVideoDataOut
         } catch { publish { $0.error = error.localizedDescription } }
     }
 
-    private func resumeSession() throws {
-        refreshFramePreview()
+    private func activateRecorderAudio() throws {
         let audio = AVAudioSession.sharedInstance()
-        try audio.setCategory(.playAndRecord, mode: .videoRecording, options: [.allowBluetoothHFP])
+        var options: AVAudioSession.CategoryOptions = [.allowBluetoothHFP]
+        if UserDefaults.standard.bool(forKey: Self.allowAudioPlaybackKey) { options.insert(.mixWithOthers) }
+        try audio.setCategory(.playAndRecord, mode: .videoRecording, options: options)
         try audio.setActive(true)
         try audio.setAllowHapticsAndSystemSoundsDuringRecording(true)
+    }
+
+    func refreshAudioPlaybackPreference() {
+        queue.async {
+            guard self.configured, self.wantsPreview, !self.captureActive, !self.finalizing else { return }
+            do { try self.activateRecorderAudio() }
+            catch { self.publish { $0.warning = "Could not change audio playback. " + error.localizedDescription } }
+        }
+    }
+
+    private func resumeSession() throws {
+        refreshFramePreview()
+        try activateRecorderAudio()
         if dualEnabled {
             if !dualCapture.isDelivering {
                 meterLock.lock(); dualLastFrame = ProcessInfo.processInfo.systemUptime; meterLock.unlock()
@@ -1531,6 +1556,7 @@ final class CaptureController: NSObject, ObservableObject, AVCaptureVideoDataOut
             fixtureZooms[cameraID] = readings.zoom
             fixtureZoomRamp = nil
             cameraID = id
+            configureFixtureAperture()
             frontLandscapeSupported = choice.supportsLandscape
             frontLandscape = landscape ?? false
             liveEffects.requireFramePreview(needsFramePreview, peaking: focusPeaking)
@@ -1669,6 +1695,7 @@ final class CaptureController: NSObject, ObservableObject, AVCaptureVideoDataOut
         }
         storeCenter(in: &saved)
         saved["locked"] = manualFocus; saved["lens"] = Double(device.lensPosition)
+        saved["aperture"] = manualAperture.map { Double($0) }
         UserDefaults.standard.set(saved, forKey: settingsKey(device))
     }
     private func storeCenter(in saved: inout [String: Any]) {
@@ -1782,6 +1809,11 @@ final class CaptureController: NSObject, ObservableObject, AVCaptureVideoDataOut
                     device.setFocusModeLocked(lensPosition: Float(settings["lens"] as? Double ?? 0.5))
                 } else { device.focusMode = .locked }
             } else if let mode = Self.autoFocusMode(device) { device.focusMode = mode }
+            let apertureStops = Self.supportedApertures(device)
+            let wasManual = manualAperture != nil
+            manualAperture = CameraAperture.savedStop(settings["aperture"] as? Double, in: apertureStops)
+            if !apertureStops.isEmpty || wasManual { Self.applyAperture(manualAperture, to: device) }
+            let aperture = manualAperture
             var supportsLandscape = false
             if #available(iOS 26.0, *), device.position == .front {
                 supportsLandscape = device.formats.contains {
@@ -1792,6 +1824,7 @@ final class CaptureController: NSObject, ObservableObject, AVCaptureVideoDataOut
                 $0.frontLandscape = self.landscapeFrontEnabled
                 $0.bindRotation(to: device)
                 $0.cameraID = device.uniqueID
+                $0.apertureStops = apertureStops; $0.selectedAperture = aperture
                 $0.rememberCamera(device.uniqueID, front: device.position == .front)
                 if #available(iOS 18.0, *) { $0.displayZoomMultiplier = Double(device.displayVideoZoomFactorMultiplier) }
                 else { $0.displayZoomMultiplier = 1 }
@@ -1815,6 +1848,70 @@ final class CaptureController: NSObject, ObservableObject, AVCaptureVideoDataOut
         updateSingleFollow(UserDefaults.standard.bool(forKey: "dualFaceFollow"))
         updateReadings()
     }
+
+    private static func supportedApertures(_ device: AVCaptureDevice) -> [Float] {
+        guard #available(iOS 27.0, macCatalyst 27.0, *), device.isExposureModeSupported(.custom),
+              device.isExposureModeSupported(.continuousAutoExposure) else { return [] }
+        let format = device.activeFormat
+        return CameraAperture.stops(recommended: YRApertureStops(format).map(\.floatValue),
+                                    minimum: format.minLensAperture, maximum: format.maxLensAperture) {
+            YRApertureSupports(format, $0)
+        }
+    }
+
+    // The caller holds the device configuration lock and has checked the active format.
+    private static func applyAperture(_ value: Float?, to device: AVCaptureDevice) {
+        guard #available(iOS 27.0, macCatalyst 27.0, *) else { return }
+        if let value {
+            YRSetAperture(device, value)
+        } else if device.isExposureModeSupported(.continuousAutoExposure) { device.exposureMode = .continuousAutoExposure }
+    }
+
+    func setAperture(_ value: Float?) {
+        #if DEBUG && targetEnvironment(simulator)
+        if recorderControlFixture {
+            guard apertureAvailable, value.map({ apertureStops.contains($0) }) ?? true else { return }
+            var settings = UserDefaults.standard.dictionary(forKey: "camera." + cameraID) ?? [:]
+            settings["aperture"] = value.map { Double($0) }
+            UserDefaults.standard.set(settings, forKey: "camera." + cameraID)
+            configureFixtureAperture()
+            return
+        }
+        #endif
+        let id = cameraID
+        queue.async {
+            guard let device = self.input?.device, device.uniqueID == id, !self.dualEnabled,
+                  !self.changingCamera, !self.finalizing else { return }
+            do {
+                try device.lockForConfiguration()
+                defer { device.unlockForConfiguration() }
+                let stops = Self.supportedApertures(device)
+                guard !stops.isEmpty, value.map({ stops.contains($0) }) ?? true else { return }
+                Self.applyAperture(value, to: device)
+                self.manualAperture = value
+                self.saveCameraSettings()
+                self.publish { camera in
+                    guard camera.cameraID == id else { return }
+                    camera.selectedAperture = value
+                }
+                self.updateReadings()
+            } catch { self.publish { $0.warning = error.localizedDescription } }
+        }
+    }
+
+    #if DEBUG && targetEnvironment(simulator)
+    private func configureFixtureAperture(reset: Bool = false) {
+        apertureStops = CommandLine.arguments.contains("--aperture-fixture") && cameraID == "fixture-wide" && !dualActive
+            ? [1.48, 1.8, 2.8, 4] : []
+        var settings = UserDefaults.standard.dictionary(forKey: "camera." + cameraID) ?? [:]
+        if reset {
+            settings.removeValue(forKey: "aperture")
+            UserDefaults.standard.set(settings, forKey: "camera." + cameraID)
+        }
+        selectedAperture = CameraAperture.savedStop(settings["aperture"] as? Double, in: apertureStops)
+        readings.updateAperture(selectedAperture ?? 1.8)
+    }
+    #endif
 
     func setHDR(_ enabled: Bool) {
         guard !dualActive else { return }
@@ -2721,9 +2818,24 @@ final class CaptureController: NSObject, ObservableObject, AVCaptureVideoDataOut
             }
         }
         let position = device.lensPosition
+        let aperture = device.lensAperture
+        let id = device.uniqueID
+        #if DEBUG
+        var apertureProbe = ""
+        if CommandLine.arguments.contains("--probe-aperture-controls"), #available(iOS 27.0, macCatalyst 27.0, *) {
+            apertureProbe = String(format: "actual=%.3f", aperture)
+                + " apertureAuto=\(device.automaticallyAdjustsLensAperture) shutterAuto=\(device.automaticallyAdjustsExposureDuration) isoAuto=\(device.automaticallyAdjustsISO)"
+        }
+        #endif
         publish {
             $0.readings.update(zoom: Double(currentZoom), focusLocked: locked, lensPosition: position,
                               level: power, audioArriving: arriving, audioClipping: clipping)
+            if $0.cameraID == id {
+                $0.readings.updateAperture(aperture)
+                #if DEBUG
+                $0.readings.updateApertureProbe(apertureProbe)
+                #endif
+            }
         }
     }
     func addBookmark() { movie.bookmark(at: CMClockGetTime(CMClockGetHostTimeClock())) }
@@ -3515,6 +3627,11 @@ struct CameraPreview: UIViewRepresentable {
         if CommandLine.arguments.contains("--probe-lens-controls") {
             let center = CameraFraming.oriented(camera.probePanCenter, angle: angle, mirrored: camera.frontPreviewMirrored)
             view.accessibilityValue = (view.accessibilityValue ?? "") + String(format: " pan=%.4f,%.4f", center.x, center.y) + " stabilized=\(camera.singleStabilizationActive)"
+        }
+        if CommandLine.arguments.contains("--probe-aperture-controls"), #available(iOS 27.0, macCatalyst 27.0, *),
+           let device = AVCaptureDevice(uniqueID: camera.cameraID) {
+            view.accessibilityValue = (view.accessibilityValue ?? "")
+                + " apertureAuto=\(device.automaticallyAdjustsLensAperture)"
         }
         #endif
         if let connection = view.previewLayer.connection, connection.isVideoMirroringSupported {

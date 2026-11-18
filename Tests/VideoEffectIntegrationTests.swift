@@ -4,7 +4,82 @@ import CoreImage
 import ImageIO
 import CryptoKit
 
+func testHDREffectDisplayBrightness() throws {
+    guard #available(macOS 15, iOS 18, *) else { return }
+    let renderer = try MetalEffectRenderer()
+    let width = 256, height = 4
+    let bounds = CGRect(x: 0, y: 0, width: width, height: height)
+    // A transfer-tagged HLG ramp includes well-separated values above diffuse white.
+    let hlg = CGColorSpace(name: CGColorSpace.itur_2100_HLG)!
+    var values = [Float]()
+    for _ in 0..<height {
+        for x in 0..<width {
+            let value = Float(x) / Float(width - 1)
+            values += [value, value, value, 1]
+        }
+    }
+    let input = CIImage(bitmapData: values.withUnsafeBytes { Data($0) }, bytesPerRow: width * 16,
+                        size: bounds.size, format: .RGBAf, colorSpace: hlg)
+    let reference = input.applyingFilter("CIToneMapHeadroom", parameters: ["inputSourceHeadroom": 1000.0 / 203.0, "inputTargetHeadroom": 1.0])
+    let corrected = try renderer.render(input, effects: [VideoEffectSettings(.colorCorrection)], sourceTime: 0, hdr: true)
+    let display = CGColorSpace(name: CGColorSpace.sRGB)!
+    func sample(_ image: CIImage) -> [UInt8] {
+        var bytes = [UInt8](repeating: 0, count: width * height * 4)
+        bytes.withUnsafeMutableBytes {
+            renderer.context.render(image, toBitmap: $0.baseAddress!, rowBytes: width * 4, bounds: bounds,
+                                    format: .RGBA8, colorSpace: display)
+        }
+        return bytes
+    }
+    let expected = sample(reference), actual = sample(corrected)
+    try require(expected[4 * width * 7 / 8] < 240 && expected[4 * (width - 1)] > 250,
+                "The HLG fixture distinguishes bright detail from display white")
+    try require(zip(expected, actual).allSatisfy { abs(Int($0) - Int($1)) <= 2 },
+                "A neutral HDR effect preserves the unfiltered display brightness, including highlight detail")
+}
+
+func testHDREffectExport(root: URL) async throws {
+    guard #available(macOS 15, iOS 18, *) else { return }
+    let source = root.appendingPathComponent("effects-hlg.mp4")
+    var project = Project(title: "HDR brightness regression")
+    project.append(SourceMedia(filename: source.lastPathComponent, duration: 1))
+    var edit = project.edit
+    edit.clips[0].videoEffects = [VideoEffectSettings(.colorCorrection, start: 0, end: 1)]
+    project.commit(edit)
+    let outputFolder = root.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: outputFolder, withIntermediateDirectories: false)
+    defer { try? FileManager.default.removeItem(at: outputFolder) }
+    let file = outputFolder.appendingPathComponent("effects-hlg-export.mp4")
+    _ = try await MediaRenderer.render(project: project, folder: root, destination: file) { _ in }
+    let track = try await AVURLAsset(url: file).loadTracks(withMediaType: .video).first
+    let formats = try await track?.load(.formatDescriptions) ?? []
+    try require(formats.contains { VideoColor.isHDR($0) }, "The neutral effect export retains its HDR encoding")
+    let time = 0.5
+    let original = try VideoEffectSourceReader(url: source, hdr: true).frame(at: time)
+    let expected = original.applyingFilter("CIToneMapHeadroom", parameters: ["inputSourceHeadroom": 1000.0 / 203.0, "inputTargetHeadroom": 1.0])
+    // The neutral creative effect has already mapped these pixels to reference
+    // white. Read their encoded levels without applying a second HDR shoulder.
+    let actual = try VideoEffectSourceReader(url: file, hdr: true).frame(at: time)
+        .applyingFilter("CIToneMapHeadroom", parameters: ["inputSourceHeadroom": 1.0, "inputTargetHeadroom": 1.0])
+    let display = CGColorSpace(name: CGColorSpace.sRGB)!
+    let context = CIContext()
+    func samples(_ image: CIImage) -> [UInt8] {
+        let width = Int(image.extent.width)
+        var data = [UInt8](repeating: 0, count: width * 4)
+        data.withUnsafeMutableBytes {
+            context.render(image, toBitmap: $0.baseAddress!, rowBytes: width * 4,
+                           bounds: CGRect(x: 0, y: image.extent.midY.rounded(.down), width: CGFloat(width), height: 1),
+                           format: .RGBA8, colorSpace: display)
+        }
+        return stride(from: width / 16, to: width, by: width / 16).map { data[$0 * 4] }
+    }
+    let reference = samples(expected), measured = samples(actual)
+    try require(zip(reference, measured).allSatisfy { abs(Int($0) - Int($1)) <= 5 },
+                "Exported HLG ramp follows the live display through shadows, midtones and highlights. Expected \(reference), got \(measured)")
+}
+
 func videoEffectIntegrationTests(root: URL) async throws {
+    try testHDREffectDisplayBrightness()
     try await reviewEffectRegressions(root: root)
     if ProcessInfo.processInfo.environment["YOUREC_MATTING_ROTATION_ONLY"] == "1" {try await rotatedPersonMaskTrackTest(folder:root);return}
     try await videoEffectDepthImportTests()
@@ -366,7 +441,7 @@ func videoEffectIntegrationTests(root: URL) async throws {
         for t in [piece.start,(piece.start+piece.end)/2,piece.end-0.000001] {
             let plan=VideoEffectSamplePlan.make(clip:piece,sourceTime:t,sourceFPS:30,clock:integrated)!
             try require(plan.times[0]>=lastBoundary-0.00001,"Speed-ramp pieces never rewind cadence frames")
-            if t>=1.6 {try require(abs(integrated.cadence.hold(at:t)!.boundary-splitClock.cadence.hold(at:t)!.boundary)<0.00001,"Splitting does not reset the cadence clock")}
+            if t>=1.6 {try require(abs(integrated.hold(at:t)!.boundary-splitClock.hold(at:t)!.boundary)<0.00001,"Splitting does not reset the cadence clock")}
             lastBoundary=plan.times[0]
         }
     }
@@ -485,7 +560,7 @@ private func jitteredCadenceMovieTest(folder:URL,variableRate:Bool=false) async 
     let combined=TimelineClip(sourceID:UUID(),start:0,end:duration,videoEffects:[cadence,step]),combinedClock=VideoEffectSequenceClock(combined)
     // Deliberately visit frames out of order through the same bounded reader.
     for offset in 0..<60 {
-        let frame=(offset*137)%300,t=index.times[frame],hold=combinedClock.cadence.hold(at:t)!
+        let frame=(offset*137)%300,t=index.times[frame],hold=combinedClock.hold(at:t)!
         let ordinal=min(299,index.first(at:hold.boundary)),first=ordinal/3*3
         let plan=VideoEffectSamplePlan.make(clip:combined,sourceTime:t,sourceFPS:30,clock:combinedClock,frames:index)!
         for j in 0..<3 {

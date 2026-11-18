@@ -99,6 +99,7 @@ enum TimelineEditing {
             clip.openingTransition = nil; clip.transition = nil
             if let value = clip.speed { clip.speed?.id = fresh(value.id) }
             if let value = clip.color { clip.color?.id = fresh(value.id) }
+            clip.colorRegions = clip.colorRegions?.map { region in var copy = region; copy.grade.id = fresh(region.grade.id); return copy }
             if let value = clip.crop { clip.crop?.id = fresh(value.id) }
             if let value = clip.mirror { clip.mirror?.id = fresh(value.id) }
             if let value = clip.pauses { clip.pauses?.id = fresh(value.id) }

@@ -82,7 +82,8 @@ final class VideoToolInstruction: NSObject, AVVideoCompositionInstructionProtoco
         struct MatteHistory:Encodable {let id:String;let fingerprint:String}
         struct Identity:Encodable {
             let source:[String];let variant:String;let geometry:[Double]
-            let color:ColorSettings?;let stabilization:[StabilizationSample]?
+            let color:ColorSettings?;let colorRegions:[ColorRegion]?;let stabilization:[StabilizationSample]?
+            let framingRanges: [SourceInterval?]?
             let masks:[[String]];let subjects:[Subjects];let matteHistories:[MatteHistory]
         }
         func file(_ url:URL)throws->[String] {
@@ -90,9 +91,12 @@ final class VideoToolInstruction: NSObject, AVVideoCompositionInstructionProtoco
             return [url.standardizedFileURL.path,String(values.fileSize ?? 0),String(values.contentModificationDate?.timeIntervalSince1970 ?? 0)]
         }
         let maskURLs=effectMasks.map {[$0.metadata,$0.data]+$0.chunks.flatMap {[$0.metadata,$0.data]}} ?? []
+        let framing = rangePicture?.clip ?? clip
+        let ranges = [framing.crop?.activeRange, framing.mirror?.activeRange, framing.stabilization?.activeRange]
         let value=Identity(source:try file(sourceURL),variant:variant,
             geometry:[transform.a,transform.b,transform.c,transform.d,transform.tx,transform.ty,sourceSize.width,sourceSize.height,canvas.width,canvas.height,stabilization?.zoom ?? 1,clip.stabilizationStart],
-            color:clip.color,stabilization:stabilization?.samples,masks:try maskURLs.map(file),
+            color:framing.color,colorRegions:framing.colorRegions,stabilization:stabilization?.samples,
+            framingRanges: ranges.contains(where: { $0 != nil }) ? ranges : nil, masks:try maskURLs.map(file),
             subjects:effectSubjects.map {Subjects(id:$0.key.uuidString,track:$0.value)}.sorted {$0.id<$1.id},matteHistories:effectMatteHistories.map {MatteHistory(id:$0.key.uuidString,fingerprint:$0.value.fingerprint)}.sorted {$0.id<$1.id})
         let encoder=JSONEncoder();encoder.outputFormatting=[.sortedKeys]
         let identity=SHA256.hash(data:try encoder.encode(value)).map {String(format:"%02x",$0)}.joined()
@@ -102,9 +106,44 @@ final class VideoToolInstruction: NSObject, AVVideoCompositionInstructionProtoco
     // snapshot under the lock; export instructions never receive an override.
     private let previewEffectLock=NSLock()
     private var previewEffectOverride:[VideoEffectSettings]?
+    struct RangePicture {
+        let tool: VideoTool
+        let id: UUID
+        let clip: TimelineClip
+        let clocks: TitleMotionRanges
+    }
+    private var rangeOverride: RangePicture?
+    var rangePicture: RangePicture? {
+        get { previewEffectLock.withLock { rangeOverride } }
+        set {
+            previewEffectLock.withLock { rangeOverride = newValue }
+            if let tool = newValue?.tool, [.color, .crop, .mirror, .stabilize, .videoEffects].contains(tool) {
+                invalidateMatteIdentity()
+            }
+        }
+    }
+    private var draftGrades: [ColorRegion]?
+    var previewGrades: [ColorRegion]? {
+        get { previewEffectLock.withLock { draftGrades } }
+        set { previewEffectLock.withLock { draftGrades = newValue } }
+    }
+    func grade(at time: Double) -> ColorSettings? {
+        if let draft = rangePicture, draft.tool == .color { return draft.clip.grade(at: time) }
+        if let regions = previewGrades { return regions.first { $0.start <= time && time < $0.end }?.grade }
+        return clip.grade(at: time)
+    }
     var effectSettings:[VideoEffectSettings] {
         previewEffectLock.lock();defer {previewEffectLock.unlock()}
+        if let draft = rangeOverride, draft.tool == .videoEffects {
+            return draft.clip.videoEffects ?? []
+        }
         return previewEffectOverride ?? clip.videoEffects ?? []
+    }
+    func effects(at time: Double) -> [VideoEffectSettings] {
+        if let draft = rangePicture, draft.tool == .videoEffects, draft.clip.effectWindows != nil {
+            return draft.clip.resolvingEffects(at: time).videoEffects ?? []
+        }
+        return effectSettings
     }
     func previewEffects(_ effects:[VideoEffectSettings]) {
         previewEffectLock.lock();previewEffectOverride=effects;previewEffectLock.unlock()
@@ -113,11 +152,22 @@ final class VideoToolInstruction: NSObject, AVVideoCompositionInstructionProtoco
         let text: TextOverlay
         let bitmap: CGImage
         let ranges: TitleMotionRanges
+        var scope: [EditInterval]? = nil
     }
     private var draftTitle: PreviewTitle?
     var previewTitle: PreviewTitle? {
         get { previewEffectLock.withLock { draftTitle } }
         set { previewEffectLock.withLock { draftTitle = newValue } }
+    }
+    struct PreviewImage {
+        let overlay: ImageOverlay
+        let bitmap: CGImage
+        let scope: [EditInterval]?
+    }
+    private var draftImage: PreviewImage?
+    var previewImage: PreviewImage? {
+        get { previewEffectLock.withLock { draftImage } }
+        set { previewEffectLock.withLock { draftImage = newValue } }
     }
     var videoEffectsEnabled=true
     var overlaysEnabled = true
@@ -140,7 +190,7 @@ final class VideoToolInstruction: NSObject, AVVideoCompositionInstructionProtoco
     func preparedImage(_ raw:CIImage,at sampleTime:Double,motionTime:Double?=nil,analysis:Bool=false)->(CIImage,CGAffineTransform) {
         let bounds=CGRect(origin:.zero,size:canvas)
         var image=raw
-        let grade = clip.color ?? ColorSettings()
+        let grade = grade(at: motionTime ?? sampleTime) ?? ColorSettings()
         func graded(_ value: ColorSettings) -> CIImage { ColorLUT.apply(value, to: raw, hdr: hdr, folder: effectFolder, sourceLog: sourceLog) }
         if let motion = grade.motion {
             let f = motion.fraction(at: motionTime ?? sampleTime)
@@ -151,11 +201,25 @@ final class VideoToolInstruction: NSObject, AVVideoCompositionInstructionProtoco
             }
         } else { image = graded(grade) }
         var framing = transform
-        if let cropSource, let crop = clip.crop, let motion = crop.motion {
-            framing = cropSource.orientation.concatenating(crop.applying(motion.pose(at:motionTime ?? sampleTime)).transform(source:cropSource.size, canvas:canvas))
-            if let mirror = clip.mirror { framing = framing.concatenating(mirror.transform(canvas:canvas)) }
+        let framingTime = motionTime ?? sampleTime
+        let framingClip = rangePicture?.clip.resolvingEffects(at: framingTime) ?? clip
+        if let cropSource {
+            framing = cropSource.orientation
+            if let crop = framingClip.crop, crop.activeRange?.contains(framingTime) != false {
+                let pose = crop.motion.map { crop.applying($0.pose(at: framingTime)) } ?? crop
+                framing = framing.concatenating(pose.transform(source: cropSource.size, canvas: canvas))
+            } else {
+                let size = cropSource.size, scale = min(canvas.width / size.width, canvas.height / size.height)
+                framing = framing.concatenating(CGAffineTransform(scaleX: scale, y: scale))
+                    .concatenating(CGAffineTransform(translationX: (canvas.width - size.width * scale) / 2,
+                                                     y: (canvas.height - size.height * scale) / 2))
+            }
+            if let mirror = framingClip.mirror, mirror.activeRange?.contains(framingTime) != false {
+                framing = framing.concatenating(mirror.transform(canvas: canvas))
+            }
         }
-        let correction=stabilization?.transform(at:sampleTime-clip.stabilizationStart) ?? .identity
+        let correction = framingClip.stabilization == nil || framingClip.stabilization?.activeRange?.contains(framingTime) == false ? .identity
+            : stabilization?.transform(at:sampleTime-clip.stabilizationStart) ?? .identity
         var matrix=CGAffineTransform(a:1,b:0,c:0,d:-1,tx:0,ty:sourceSize.height)
             .concatenating(correction).concatenating(framing)
             .concatenating(CGAffineTransform(a:1,b:0,c:0,d:-1,tx:0,ty:canvas.height))
@@ -322,7 +386,7 @@ final class VideoToolCompositor: NSObject, AVVideoCompositing, @unchecked Sendab
         func processed(_ raw: CIImage, at sampleTime: Double) throws -> CIImage {
             let clock = instruction.motionTime(at:request.compositionTime.seconds,source:sampleTime)
             var (image,matrix)=instruction.preparedImage(try nightPicture.render(raw,instruction:instruction,time:sampleTime),at:sampleTime,motionTime:clock)
-            var effects = instruction.effectSettings.filter { $0.kind != .stepPrinting && $0.kind != .nightFix }
+            var effects = instruction.effects(at: clock).filter { $0.kind != .stepPrinting && $0.kind != .nightFix }
             if instruction.clip.frozenFrame != nil {
                 for index in effects.indices where effects[index].motion != nil {
                     let pose = effects[index].motion!.pose(at:clock)
@@ -345,13 +409,13 @@ final class VideoToolCompositor: NSObject, AVVideoCompositing, @unchecked Sendab
                         let beforeFirst=selected>time+0.0000001
                         let sample=try reader.sample(at:beforeFirst ? time : selected,firstAtOrAfter:!beforeFirst)
                         let (picture,matrix)=instruction.preparedImage(try self.nightPicture.render(sample.image,instruction:instruction,time:time),at:time)
-                        let contexts=try self.effectsInputs!.frameContexts(image:picture,effects:prefix,time:time,folder:instruction.effectFolder,palettes:instruction.effectPalettes,subjects:instruction.effectSubjects,masks:instruction.effectMasks,maskSource:instruction.maskSource,rawSource:sample.image,cancelled:isCancelled,depth:instruction.effectDepth,depthStream:"\(instruction.trackID)|\(instruction.clip.id)",maskTransform:matrix,sourceSize:instruction.sourceSize,analysisTime:beforeFirst ? time : selected,hdr:instruction.sourceHDR,plateColor:instruction.clip.color,plateColorHDR:instruction.hdr,temporalHistories:histories,disableMatteCuts:Set(instruction.effectMatteHistories.filter {$0.value.replay(at:selected)}.keys),currentMatteCuts:Set(instruction.effectMatteHistories.filter {$0.value.replay(at:selected) && !$0.value.accepted(at:selected)}.keys),provisional:instruction.effectAnalysisPending)
+                        let contexts=try self.effectsInputs!.frameContexts(image:picture,effects:prefix,time:time,folder:instruction.effectFolder,palettes:instruction.effectPalettes,subjects:instruction.effectSubjects,masks:instruction.effectMasks,maskSource:instruction.maskSource,rawSource:sample.image,cancelled:isCancelled,depth:instruction.effectDepth,depthStream:"\(instruction.trackID)|\(instruction.clip.id)",maskTransform:matrix,sourceSize:instruction.sourceSize,analysisTime:beforeFirst ? time : selected,hdr:instruction.sourceHDR,plateColor:instruction.grade(at:time),plateColorHDR:instruction.hdr,temporalHistories:histories,disableMatteCuts:Set(instruction.effectMatteHistories.filter {$0.value.replay(at:selected)}.keys),currentMatteCuts:Set(instruction.effectMatteHistories.filter {$0.value.replay(at:selected) && !$0.value.accepted(at:selected)}.keys),provisional:instruction.effectAnalysisPending)
                         return .init(image:picture,contexts:contexts)
                     },lease:{self.frameLeases.append($0)})
                 }
                 let frozenHistories:[UUID:[VideoEffectMatteCache.Frame]]=instruction.clip.frozenFrame==nil ? [:] : Dictionary(uniqueKeysWithValues:effects.filter(\.usesTemporalMatte).map {($0.id,[])})
                 var frames = try effectsInputs!.frameContexts(image: image, effects: effects, time: effectTime,
-                    folder: instruction.effectFolder, palettes: instruction.effectPalettes,subjects:instruction.effectSubjects, masks:instruction.effectMasks,maskSource:instruction.maskSource,rawSource:raw,cancelled:isCancelled, depth:instruction.effectDepth,depthStream:"\(instruction.trackID)|\(instruction.clip.id)", maskTransform: matrix, sourceSize: instruction.sourceSize,analysisTime:sampleTime,hdr:instruction.sourceHDR,plateColor:instruction.clip.color,plateColorHDR:instruction.hdr,temporalHistories:frozenHistories,provisional:instruction.effectAnalysisPending)
+                    folder: instruction.effectFolder, palettes: instruction.effectPalettes,subjects:instruction.effectSubjects, masks:instruction.effectMasks,maskSource:instruction.maskSource,rawSource:raw,cancelled:isCancelled, depth:instruction.effectDepth,depthStream:"\(instruction.trackID)|\(instruction.clip.id)", maskTransform: matrix, sourceSize: instruction.sourceSize,analysisTime:sampleTime,hdr:instruction.sourceHDR,plateColor:instruction.grade(at:clock),plateColorHDR:instruction.hdr,temporalHistories:frozenHistories,provisional:instruction.effectAnalysisPending)
                 if let frozen = instruction.clip.frozenFrame {
                     for id in frames.keys { frames[id]?.holdTime = frozen.offset + max(0, request.compositionTime.seconds-instruction.timeRange.start.seconds) }
                     // A freeze introduces no new source frames. Its explicit
@@ -420,23 +484,43 @@ enum VideoOverlayRenderer {
         let sourceTime = instruction.sourceTime(at: time)
         var image = background
         let motionTime = instruction.motionTime(at:time, source:sourceTime)
-        for (overlay, bitmap) in instruction.images where sourceTime >= overlay.start - 0.00001 && sourceTime < overlay.end - 0.00001 && seen.insert(overlay.id).inserted {
-            let overlay = overlay.motion.map { overlay.applying($0.pose(at:motionTime)) } ?? overlay
+        let draft = instruction.rangePicture
+        let scopedClip = draft?.clip.resolvingEffects(at: motionTime)
+        func drawImage(_ timed: ImageOverlay, _ bitmap: CGImage) {
+            guard sourceTime >= timed.start - 0.00001, sourceTime < timed.end - 0.00001, seen.insert(timed.id).inserted else { return }
+            let overlay = timed.motion.map { timed.applying($0.pose(at:motionTime)) } ?? timed
             let size = CGSize(width: bitmap.width, height: bitmap.height), rect = overlay.rect(image: size, canvas: canvas)
             let picture = CIImage(cgImage: bitmap).transformed(by: CGAffineTransform(scaleX: rect.width / size.width, y: rect.height / size.height))
                 .transformed(by: CGAffineTransform(translationX: rect.minX, y: rect.minY))
             image = ImageOverlayRenderer.composite(picture, opacity: overlay.opacity, over: image).cropped(to: bounds)
         }
+        for (saved, bitmap) in instruction.images {
+            if let draft, draft.tool == .image, saved.id == draft.id {
+                if let value = scopedClip?.images?.first(where: { $0.id == saved.id }) { drawImage(value, bitmap) }
+            } else { drawImage(saved, bitmap) }
+        }
+        if let draft = instruction.previewImage,
+           draft.scope?.contains(where: { $0.start.seconds <= time && time < $0.end.seconds }) != false {
+            drawImage(draft.overlay, draft.bitmap)
+        }
         func draw(_ text: TextOverlay, _ bitmap: CGImage, ranges: TitleMotionRanges) {
             guard sourceTime >= text.start - 0.00001, sourceTime < text.end - 0.00001, seen.insert(text.id).inserted else { return }
             let global = ranges.range(for:text,at:time)
-            let range = global ?? (text.start...text.end)
-            let clock = global == nil ? sourceTime : time
+            let range = text.playbackClock.map { 0...$0.duration } ?? global ?? (text.start...text.end)
+            let clock = text.playbackClock?.elapsed(at: motionTime) ?? (global == nil ? sourceTime : time)
             guard let frame = text.drawFrame(bitmap, canvas: canvas, time: clock, range: range) else { return }
             image = frame.composite(over: image, canvas: canvas, displayBlend:true)
         }
-        for (text, bitmap) in instruction.textImages { draw(text, bitmap, ranges: instruction.titleRanges) }
-        if let draft = instruction.previewTitle { draw(draft.text, draft.bitmap, ranges: draft.ranges) }
+        for (text, bitmap) in instruction.textImages {
+            if let draft, draft.tool == .text, text.id == draft.id {
+                guard let title = scopedClip?.texts?.first(where: { $0.id == text.id }) else { continue }
+                draw(title, bitmap, ranges: draft.clocks)
+            } else { draw(text, bitmap, ranges: instruction.titleRanges) }
+        }
+        if let draft = instruction.previewTitle,
+           draft.scope?.contains(where: { $0.start.seconds <= time && time < $0.end.seconds }) != false {
+            draw(draft.text, draft.bitmap, ranges: draft.ranges)
+        }
         return image
     }
 }
@@ -530,8 +614,14 @@ enum ColorLUT {
 }
 
 enum TextRasterizer {
+    static func labelHeadlineLayout(_ text: TextOverlay, canvas: CGSize, folder: URL?) -> LabelHeadlineLayout? {
+        guard let group = text.labelHeadline else { return nil }
+        return LabelHeadlineLayout(group, headline: text.text, fontSize: max(8, min(canvas.width, canvas.height) * text.size),
+                                   width: canvas.width * 0.94, folder: folder)
+    }
     static func image(_ text: TextOverlay, canvas: CGSize, folder: URL? = nil) -> CGImage? {
-        guard !text.text.isEmpty, canvas.width > 0, canvas.height > 0 else { return nil }
+        guard text.hasText, canvas.width > 0, canvas.height > 0 else { return nil }
+        if let layout = labelHeadlineLayout(text, canvas: canvas, folder: folder) { return layout.image(fitting: canvas) }
         let fontSize = max(8, min(canvas.width, canvas.height) * text.size)
         if let design = text.appearance {
             let layout = StyledTextLayout(text: text.text, design: design, fontSize: fontSize, maxWidth: canvas.width * 0.94, folder: folder)
