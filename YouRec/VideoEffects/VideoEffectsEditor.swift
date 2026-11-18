@@ -22,7 +22,8 @@ struct InspectorHelpSheet: View {
                 }.frame(maxWidth: 560, alignment: .leading).padding(24).frame(maxWidth: .infinity, alignment: .leading)
             }.navigationTitle(topic.title).navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.frame(minHeight: 44).accessibilityIdentifier("inspectorHelp.done") } }
-        }.preferredColorScheme(.dark).presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
+        }.preferredColorScheme(.dark).tint(YouRecStyle.accent)
+            .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
     }
 }
 struct EffectHelpButton: View {
@@ -31,11 +32,12 @@ struct EffectHelpButton: View {
     var body: some View {
         Button { open(InspectorHelp(effect: effect)) } label: {
             Image(systemName: "questionmark.circle").font(.body).foregroundStyle(.secondary).frame(width: 44, height: 44).contentShape(Rectangle())
+                .recorderGlass(in: Circle(), interactive: true, fallback: Color.clear)
         }.buttonStyle(.plain).accessibilityLabel("About " + effect.descriptor.displayName).accessibilityIdentifier("effectHelp." + effect.rawValue)
     }
 }
 
-enum VideoEffectPage:Equatable {
+enum VideoEffectPage:Hashable {
     case applied,library,section(VideoEffectLibrarySection),inspector
     var identity:String {switch self {case .applied:return "applied";case .library:return "library";case .section(let section):return section.id;case .inspector:return "inspector"}}
 }
@@ -72,9 +74,10 @@ struct VideoEffectNavigationBar:View {
             Spacer(minLength:0)
             if page == .applied || page == .inspector {
                 Button(action:add) {Label("Add",systemImage:"plus").font(.subheadline.weight(.semibold)).frame(minWidth:54,minHeight:44)}
+                    .tint(Color.primary)
                     .accessibilityLabel("Add effect").accessibilityIdentifier(prefix+".browse")
             }
-        }.padding(.horizontal,12).padding(.vertical,2)
+        }.recorderButtonStyle().tint(YouRecStyle.accent).padding(.horizontal,12).padding(.vertical,6)
     }
 }
 
@@ -86,29 +89,32 @@ struct VideoEffectLibrary:View {
     let add:(VideoEffectID)->Void
     private var prefix:String {live ? "liveEffects" : "videoEffects"}
     var body:some View {
-        VStack(alignment:.leading,spacing:12) {
-            if let section {
-                Text(section.summary).font(.subheadline).foregroundStyle(.secondary)
-                ForEach(section.effects(live:live),id:\.id) {effect in
-                    Button {add(effect.id)} label: {
-                        HStack(spacing:12) {
-                            Image(systemName:section.symbol).font(.title3).foregroundStyle(section.tint).frame(width:28)
-                            VStack(alignment:.leading,spacing:4) {
-                                Text(effect.displayName).font(.headline)
-                                Text(effect.id.summary).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
-                            }
-                            Spacer(minLength:0);Image(systemName:"plus.circle").foregroundStyle(section.tint)
-                        }.padding(12).frame(maxWidth:.infinity,minHeight:68,alignment:.leading)
-                            .background(.white.opacity(0.045),in:RoundedRectangle(cornerRadius:12))
-                    }.buttonStyle(.plain).accessibilityIdentifier(prefix+".add."+effect.id.rawValue)
-                }
-                if live && section == .time {Text("Freeze Frame and Step Printing are available in the editor.").font(.caption).foregroundStyle(.secondary)}
-            } else {
-                if typeSize.isAccessibilitySize {categoryRows}
-                else {
-                    ViewThatFits(in:.horizontal) {
-                        categoryGrid.frame(minWidth:340)
-                        categoryRows
+        RecorderGlassContainer {
+            VStack(alignment:.leading,spacing:12) {
+                if let section {
+                    Text(section.summary).font(.subheadline).foregroundStyle(.secondary)
+                    ForEach(section.effects(live:live),id:\.id) {effect in
+                        Button {add(effect.id)} label: {
+                            HStack(spacing:12) {
+                                Image(systemName:section.symbol).font(.title3).foregroundStyle(section.tint).frame(width:28)
+                                VStack(alignment:.leading,spacing:4) {
+                                    Text(effect.displayName).font(.headline)
+                                    Text(effect.id.summary).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
+                                }
+                                Spacer(minLength:0);Image(systemName:"plus.circle").foregroundStyle(.secondary)
+                            }.padding(12).frame(maxWidth:.infinity,minHeight:68,alignment:.leading)
+                                .contentShape(Rectangle())
+                                .recorderGlass(in: RoundedRectangle(cornerRadius: 18), interactive: true, fallback: Color.white.opacity(0.045))
+                        }.buttonStyle(.plain).accessibilityIdentifier(prefix+".add."+effect.id.rawValue)
+                    }
+                    if live && section == .time {Text("Freeze Frame and Step Printing are available in the editor.").font(.caption).foregroundStyle(.secondary)}
+                } else {
+                    if typeSize.isAccessibilitySize {categoryRows}
+                    else {
+                        ViewThatFits(in:.horizontal) {
+                            categoryGrid.frame(minWidth:340)
+                            categoryRows
+                        }
                     }
                 }
             }
@@ -126,7 +132,8 @@ struct VideoEffectLibrary:View {
                         Text(group.title).font(.subheadline.weight(.semibold)).fixedSize(horizontal:false,vertical:true)
                         Text(countLabel(group)).font(.caption).foregroundStyle(.secondary)
                     }.padding(12).frame(maxWidth:.infinity,minHeight:92,alignment:.topLeading)
-                        .background(group.tint.opacity(0.08),in:RoundedRectangle(cornerRadius:12))
+                        .contentShape(Rectangle())
+                        .recorderGlass(in: RoundedRectangle(cornerRadius: 18), interactive: true, fallback: group.tint.opacity(0.08))
                 }.buttonStyle(.plain).accessibilityIdentifier(prefix+".section."+group.id)
             }
         }
@@ -143,7 +150,8 @@ struct VideoEffectLibrary:View {
                         }
                         Spacer(minLength:0);Image(systemName:"chevron.right").font(.caption).foregroundStyle(.secondary)
                     }.padding(.horizontal,12).padding(.vertical,8).frame(maxWidth:.infinity,minHeight:56,alignment:.leading)
-                        .background(group.tint.opacity(0.08),in:RoundedRectangle(cornerRadius:12))
+                        .contentShape(Rectangle())
+                        .recorderGlass(in: RoundedRectangle(cornerRadius: 18), interactive: true, fallback: group.tint.opacity(0.08))
                 }.buttonStyle(.plain).accessibilityIdentifier(prefix+".section."+group.id)
             }
         }
@@ -165,7 +173,7 @@ struct ChromaScreenControl:View {
                 Button("Green") {choose(EffectRGB(0,1,0))}.frame(minWidth:60,minHeight:44)
                 Button("Blue") {choose(EffectRGB(0,0,1))}.frame(minWidth:60,minHeight:44)
                 Button(action:pick) {Label("Sample",systemImage:"eyedropper").frame(minHeight:44)}.accessibilityLabel("Sample green or blue screen").accessibilityIdentifier("effects.sampleScreen")
-            }.buttonStyle(.bordered)
+            }.recorderButtonStyle()
             if !ChromaScreen.accepts(color) {Text("This saved color is not a green or blue screen. Choose Green, Blue, or sample your screen.").font(.caption).foregroundStyle(.orange)}
         }
     }
@@ -225,7 +233,9 @@ struct VideoEffectNumberChoices:View {
                 Button {choose(value)} label: {
                     Text(value.formatted(.number.precision(.fractionLength(0...1))))
                         .frame(maxWidth:.infinity,minHeight:44)
-                        .background(selected == value ? .white.opacity(0.2) : .white.opacity(0.05),in:RoundedRectangle(cornerRadius:9))
+                        .foregroundStyle(selected == value ? YouRecStyle.accent : .primary)
+                        .recorderGlass(in: Capsule(), tint: selected == value ? YouRecStyle.accent.opacity(0.2) : nil,
+                                       interactive: true, fallback: Color.white.opacity(selected == value ? 0.2 : 0.05))
                 }.accessibilityLabel("\(title) \(value.formatted())").accessibilityAddTraits(selected == value ? .isSelected : [])
             }
         }
@@ -258,7 +268,9 @@ extension EffectFamily {
     var hasNightFix: Bool { state.clips.contains { $0.offlineVideoEffects.contains(where: \.needsNightFixFusion) } }
     @Published private(set) var sampleStopped = false
     func stopSample() {
+        deferredTrimRefresh?.cancel()
         sampleStopped = true; revision = UUID()
+        playAfterSeek = false
         job?.cancel(); job = nil
         pendingSeek = nil; seekingItem = nil; player.currentItem?.cancelPendingSeeks()
         refinementJob?.cancel(); refinementJob = nil
@@ -277,7 +289,7 @@ extension EffectFamily {
     }
     private var previewEndpoint: EffectEndpoint?
     private var correctionLast: EffectEndpoint = .a
-    var correctionRange: ClosedRange<Double> { request.videoPreviewRange(in:state,ids:ids) }
+    var correctionRange: ClosedRange<Double> { selectionRange }
     var correctionDuration: Double { correctionRange.upperBound - correctionRange.lowerBound }
     func selectCorrection(_ e: EffectEndpoint) {
         guard let selected, current?.kind == .colorCorrection else { return }
@@ -358,15 +370,101 @@ extension EffectFamily {
     private var scrubbing = false
     private var pendingSeek: (time: CMTime, exact: Bool)?
     private var seekingItem: AVPlayerItem?
+    private var playAfterSeek = false
 
     private var status: NSKeyValueObservation?
     private var revision = UUID()
     private let awakeReason = "video-effects-" + UUID().uuidString
     var duration: Double { state.duration }
     private(set) var sampleRange: ClosedRange<Double>?
-    var previewRange: ClosedRange<Double> { sampleRange ?? request.videoPreviewRange(in: state, ids: ids) }
+    private var inspectingEffect: UUID?
+    private var selectionRange: ClosedRange<Double>
+    // Keep temporarily excluded portions in the draft so extending a trim
+    // restores each clip's own parameters and keyframes.
+    private struct TrimmedRecipe {
+        let effect: VideoEffectSettings
+        let index: Int
+    }
+    private var trimmedEffects: [UUID: [UUID: TrimmedRecipe]] = [:]
+    private var trimmedRanges: [UUID: ClosedRange<Double>] = [:]
+    private var deferredTrimRefresh: Task<Void, Never>?
+    var previewRange: ClosedRange<Double> { sampleRange ?? selectionRange }
+    var rangeTiming: EditorRangeTiming? {
+        guard request.scopedEffect == nil, let effect = current, effect.kind.descriptor.family != .time else { return nil }
+        let cached = trimmedEffects[effect.id] ?? [:]
+        let items = state.timeline.video.filter { item in
+            ids.contains(item.id) && (cached[item.id] != nil || item.content.videoEffects?.contains(where: { $0.id == effect.id }) == true)
+        }
+        // A hold has just one source timestamp; selecting part of it in Tools
+        // first splits its playback duration without changing the frozen image.
+        guard items.allSatisfy({ $0.content.frozenFrame == nil }),
+              let first = items.map(\.start).min(), let last = items.map(\.end).max(), last > first else { return nil }
+        return EditorRangeTiming(range: trimmedRanges[effect.id] ?? selectionRange, bounds: first.seconds...last.seconds)
+    }
+    func trim(_ edge: EditorRangeTiming.Edge, to time: Double, previewEdge: Bool) {
+        guard let effect = current, var timing = rangeTiming else { return }
+        timing.set(edge, to: time)
+        var stored = trimmedEffects[effect.id] ?? [:]
+        var edit = state
+        for i in edit.timeline.video.indices where ids.contains(edit.timeline.video[i].id) {
+            let item = edit.timeline.video[i], clip = item.content
+            var effects = clip.videoEffects ?? []
+            let index = effects.firstIndex { $0.id == effect.id }
+            guard var value = index.map({ effects[$0] }) ?? stored[item.id]?.effect else { continue }
+            if let index { stored[item.id] = TrimmedRecipe(effect: value, index: index) }
+            let first = max(item.start.seconds, timing.range.lowerBound)
+            let end = min(item.end.seconds, timing.range.upperBound)
+            if first < end {
+                let sourceStart = clip.sourceTime(at: first - item.start.seconds)
+                let sourceEnd = clip.sourceTime(at: end - item.start.seconds)
+                guard sourceEnd > sourceStart else { continue }
+                value.trimSourceRange(sourceStart...sourceEnd)
+                if var motion = value.motion {
+                    motion.duration = timing.duration
+                    value.motion = motion.anchored(to: clip, offset: item.start.seconds - timing.range.lowerBound)
+                }
+                if let index { effects[index] = value }
+                else { effects.insert(value, at: min(stored[item.id]?.index ?? effects.count, effects.count)) }
+            } else if let index { effects.remove(at: index) }
+            edit.timeline.video[i].content.videoEffects = effects.isEmpty ? nil : effects
+        }
+        trimmedEffects[effect.id] = stored; trimmedRanges[effect.id] = timing.range
+        playAfterSeek = false; player.pause(); playing = false
+        state = edit
+        let target = previewEdge ? timing.previewTime(for: edge) : min(timing.previewTime(for: .end), max(timing.range.lowerBound, position))
+        sampleAnchor = target
+        updateSampleRange()
+        previewCache.removeAll(); preparedPreview = nil
+        refinementJob?.cancel(); refiningPreview = false
+        if let item = player.currentItem {
+            bound(item)
+            if !bypass, let composition = item.videoComposition?.mutableCopy() as? AVMutableVideoComposition {
+                let clips = Dictionary(uniqueKeysWithValues: edit.timeline.video.filter { ids.contains($0.id) }.map { ($0.id, $0.content.videoEffects ?? []) })
+                for layer in composition.instructions.flatMap(\.toolLayers) {
+                    if let effects = clips[layer.clip.id] { layer.previewEffects(effects) }
+                }
+                item.videoComposition = composition
+            }
+        }
+        seek(target)
+        // Refresh source analysis only after trimming settles. The existing
+        // composition previews every drag update immediately.
+        deferredTrimRefresh?.cancel()
+        if busy || player.currentItem == nil || sampleRange != nil || effect.requiresOfflineAnalysis || effect.kind == .nightFix {
+            deferredTrimRefresh = Task {
+                do { try await Task.sleep(for: .milliseconds(240)); rebuild(delay: false) } catch {}
+            }
+        }
+    }
+    func focusPreview(on id: UUID?) {
+        guard inspectingEffect != id else { return }
+        inspectingEffect = id
+        if selectionRange != request.videoPreviewRange(in: state, ids: ids, inspecting: id) { rebuild(delay: false) }
+    }
     private func updateSampleRange() {
-        let selection = request.videoPreviewRange(in: state, ids: ids)
+        let selection = (inspectingEffect ?? request.effectID).flatMap { trimmedRanges[$0] }
+            ?? request.videoPreviewRange(in: state, ids: ids, inspecting: inspectingEffect)
+        selectionRange = selection
         let scope = EffectPreviewWindow(selection, timeline: state.timeline)
         let slow = current?.kind != .colorCorrection && state.timeline.video.contains { item in
             scope.analysisClip(item.content)?.offlineVideoEffects.isEmpty == false
@@ -385,7 +483,7 @@ extension EffectFamily {
                 previewDiagnostics: true, bypassVideoEffects: bypass, effectPreparation: preparation)
         }
     }
-    var previewSeekRange:ClosedRange<Double> {previewRange.lowerBound...max(previewRange.lowerBound+0.001,previewRange.upperBound-1.0/30)}
+    var previewSeekRange:ClosedRange<Double> {previewRange.lowerBound...max(previewRange.lowerBound,previewRange.upperBound-TimelineEditing.frame)}
     private func boundedPosition(_ time:Double)->Double {min(previewSeekRange.upperBound,max(previewSeekRange.lowerBound,time))}
     private func bound(_ item:AVPlayerItem) {
         item.reversePlaybackEndTime=CMTime(seconds:previewRange.lowerBound,preferredTimescale:60000)
@@ -394,10 +492,13 @@ extension EffectFamily {
     var placement: TimelinePlacement? { state.layout.placement(at: min(position, max(0, duration-0.001))) }
     var sourceTime: Double { placement.map { $0.clip.sourceTime(at: position-$0.start) } ?? 0 }
     var active: [VideoEffectSettings] {
-        VideoEffectSettings.ordered(placement?.clip.videoEffects ?? []).filter { sourceTime >= $0.start && sourceTime < $0.end }
+        guard let placement else { return [] }
+        let clip = placement.clip.resolvingEffects(at: placement.clip.gradeTime(at: position - placement.start))
+        return VideoEffectSettings.ordered(clip.videoEffects ?? []).filter { sourceTime >= $0.start && sourceTime < $0.end }
     }
     var current: VideoEffectSettings? {
-        active.first { $0.id == selected } ?? state.clips.flatMap { $0.videoEffects ?? [] }.first { $0.id == selected }
+        active.first { $0.id == selected } ?? state.clips.lazy.compactMap { clip in clip.videoEffects?.first { $0.id == self.selected } }.first
+            ?? selected.flatMap { trimmedEffects[$0]?.values.first?.effect }
     }
     private var depthScope:[TimelineClip] {
         guard let selected else {return state.clips.filter {ids.contains($0.id)}}
@@ -427,23 +528,33 @@ extension EffectFamily {
         self.project = project; self.folder = folder; self.request = request
         let scoped = request.videoScope(in: project.edit)
         state = scoped.0; ids = scoped.1; selected = request.effectID
+        selectionRange = request.videoPreviewRange(in: scoped.0, ids: scoped.1)
         self.position = min(max(request.range.lowerBound, position), max(request.range.lowerBound, request.range.upperBound - 1.0/30))
         endpointPlaybackEnd = EffectPreviewEndObserver(player:player) { [weak self] in
-            guard let self, self.correctionEndpoint != nil else { return }
-            self.playing = false; self.returnToCorrection()
+            guard let self, !self.scrubbing, self.player.currentTime().seconds >= self.previewSeekRange.upperBound - 0.001 else { return }
+            self.finishPlayback()
         }
-        observer = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 15), queue: .main) { [weak self] time in
+        observer = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 15), queue: .main) { [weak self] _ in
             Task { @MainActor in
                 guard let self, !self.scrubbing, self.seekingItem == nil, self.pendingSeek == nil else { return }
                 self.playing = self.player.rate > 0
-                if self.playing && time.seconds.isFinite { self.position = self.boundedPosition(time.seconds) }
-                if time.seconds >= self.previewRange.upperBound - 0.02 { self.player.pause(); self.playing = false; self.returnToCorrection() }
+                let time = self.player.currentTime().seconds
+                if self.playing && time.isFinite {
+                    self.position = self.boundedPosition(time)
+                    if time >= self.previewRange.upperBound - 0.02 { self.finishPlayback() }
+                }
             }
         }
     }
+    private func finishPlayback() {
+        player.pause(); playing = false
+        if correctionEndpoint != nil { returnToCorrection() } else { seek(previewSeekRange.upperBound) }
+    }
     deinit { if let observer { player.removeTimeObserver(observer) }; job?.cancel();refinementJob?.cancel() }
     func stop() {
+        deferredTrimRefresh?.cancel()
         revision = UUID()
+        playAfterSeek = false
         job?.cancel(); refinementJob?.cancel(); preparedPreview = nil
         pendingSeek = nil; seekingItem = nil; scrubbing = false
         status = nil; player.pause(); player.currentItem?.cancelPendingSeeks()
@@ -573,6 +684,7 @@ extension EffectFamily {
         rebuild()
     }
     func remove() {
+        if let selected { trimmedEffects[selected] = nil; trimmedRanges[selected] = nil }
         state.clips.removeAll { clip in ids.contains(clip.id) && clip.frozenFrame != nil && clip.videoEffects?.contains { $0.id == selected && $0.kind == .freezeFrame } == true }
         for index in state.clips.indices where ids.contains(state.clips[index].id) {
             state.clips[index].videoEffects?.removeAll { $0.id == selected }
@@ -582,7 +694,7 @@ extension EffectFamily {
     }
     func scrub(_ active: Bool) {
         scrubbing = active
-        if active { player.pause(); playing = false }
+        if active { playAfterSeek = false; player.pause(); playing = false }
         else { seek(position) }
     }
     func seek(_ value: Double, following selected: EffectEndpoint? = nil) {
@@ -597,20 +709,35 @@ extension EffectFamily {
         guard !busy, seekingItem == nil, let target = pendingSeek,
               let item = player.currentItem, item.status == .readyToPlay else { return }
         seekingItem = item; pendingSeek = nil
-        let tolerance = target.exact ? CMTime.zero : CMTime(seconds: 0.08, preferredTimescale: 60000)
-        player.seek(to: target.time, toleranceBefore: tolerance, toleranceAfter: tolerance) { [weak self, weak item] _ in
+        let slack = target.exact ? 0.0 : 0.08
+        let before = min(slack, max(0, target.time.seconds - previewSeekRange.lowerBound))
+        let after = min(slack, max(0, previewSeekRange.upperBound - target.time.seconds))
+        player.seek(to: target.time, toleranceBefore: CMTime(seconds: before, preferredTimescale: 60000),
+                    toleranceAfter: CMTime(seconds: after, preferredTimescale: 60000)) { [weak self, weak item] completed in
             Task { @MainActor in
                 guard let self, let item, self.seekingItem === item else { return }
                 self.seekingItem = nil
-                self.performSeek()
+                if self.pendingSeek != nil { self.performSeek() }
+                else if self.playAfterSeek {
+                    self.playAfterSeek = false
+                    if completed, self.player.currentItem === item {
+                        self.player.playImmediately(atRate: 1); self.playing = true
+                    }
+                }
                 self.installPreparedPreview()
             }
         }
     }
     func togglePlay() {
         if positioningEffectID != nil {finishPosition();return}
-        if playing { player.pause(); playing = false; returnToCorrection() }
-        else { if correctionEndpoint != nil || position >= previewRange.upperBound-0.05 || position < previewRange.lowerBound { seek(previewRange.lowerBound) }; player.play(); playing = true }
+        // Touching Play ends scrubbing even if the system slider omitted its final editing callback.
+        scrubbing = false
+        if playing || playAfterSeek { playAfterSeek = false; player.pause(); playing = false; returnToCorrection(); return }
+        if correctionEndpoint != nil || position >= previewRange.upperBound - 0.05 || position < previewRange.lowerBound {
+            playAfterSeek = true
+            seek(previewRange.lowerBound)
+        } else if seekingItem != nil || pendingSeek != nil { playAfterSeek = true }
+        else { player.playImmediately(atRate: 1); playing = true }
     }
     private func retimeCapturedCrash(clip:Int,effect:Int,previous:VideoEffectSettings) {
         guard let effects=state.clips[clip].videoEffects else {return}
@@ -618,22 +745,34 @@ extension EffectFamily {
         state.clips[clip].videoEffects![effect].retimeCapturedCrash(after:previous,limit:min(state.clips[clip].end,limit))
     }
     func rebuild(delay: Bool = true) {
+        deferredTrimRefresh?.cancel(); deferredTrimRefresh = nil
         updateSampleRange()
         refinementJob?.cancel();preparedPreview=nil;refiningPreview=false;accuratePreviewReady=false;refinementError=nil
         pendingSeek = nil; seekingItem = nil; job?.cancel(); let token = UUID(); revision = token
-        let resume = playing; player.pause(); playing = false; busy = true; error = nil
+        let resume = playing || playAfterSeek; playAfterSeek = false; player.pause(); playing = false; busy = true; error = nil
         let position = boundedPosition(position),cacheState=state,cacheMode=bypass,cacheable=pickingColor==nil && positioningEffectID==nil
         if previewCache.values.contains(where:{$0.0 != state}) { previewCache.removeAll() }
-        var candidate = project, edit = state
+        var candidate = project, edit = request.previewState(state, in: project.edit)
+        func renderedEffect(_ id: UUID, in effects: [VideoEffectSettings]) -> UUID {
+            if let scoped = request.scopedEffect, scoped.region.effectID == id, effects.contains(where: { $0.id == scoped.renderedID }) {
+                return scoped.renderedID
+            }
+            return id
+        }
         if let selected,pickingColor != nil {
-            for index in edit.clips.indices where edit.clips[index].videoEffects?.contains(where:{$0.id==selected})==true {
-                edit.clips[index].videoEffects=VideoEffectAnalysis.prefix(edit.clips[index].videoEffects ?? [],before:selected)
+            for index in edit.clips.indices {
+                let effects = edit.clips[index].videoEffects ?? []
+                let id = renderedEffect(selected, in: effects)
+                guard effects.contains(where: { $0.id == id }) else { continue }
+                edit.clips[index].videoEffects=VideoEffectAnalysis.prefix(effects,before:id)
                 edit.clips[index].texts=nil;edit.clips[index].images=nil
             }
         }
-        if let id=positioningEffectID {
+        if let target=positioningEffectID {
             for index in edit.clips.indices {
-                guard let effect=edit.clips[index].videoEffects?.first(where:{$0.id==id}) else {continue}
+                let effects = edit.clips[index].videoEffects ?? []
+                let id = renderedEffect(target, in: effects)
+                guard let effect=effects.first(where:{$0.id==id}) else {continue}
                 var framing=effect;framing.enabled=true
                 edit.clips[index].videoEffects=VideoEffectAnalysis.prefix(edit.clips[index].videoEffects ?? [],before:id)+[framing]
                 edit.clips[index].texts=nil;edit.clips[index].images=nil
@@ -726,7 +865,7 @@ extension EffectFamily {
         refinementJob = Task {
             do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
             guard revision == token, state == edited, !bypass else { return }
-            var candidate = project; candidate.commit(edited)
+            var candidate = project; candidate.commit(request.previewState(edited, in: project.edit))
             prepareAccuratePreview(candidate: candidate, state: edited, mode: false, token: token)
         }
     }
@@ -789,7 +928,12 @@ extension EffectFamily {
             for layer in instruction.toolLayers {
                 guard var effect = changed[layer.clip.id] else { continue }
                 if positioningEffectID == id { effect.enabled = true }
-                layer.previewEffects(layer.effectSettings.map { $0.id == id ? effect : $0 })
+                let updatedID = request.scopedEffect?.renderedID
+                layer.previewEffects(layer.effectSettings.map { current in
+                    guard current.id == id || current.id == updatedID else { return current }
+                    var next = effect; next.id = current.id
+                    return next
+                })
             }
         }
         // Apple QA1966: a new composition instance redraws a paused frame.
@@ -933,11 +1077,11 @@ struct VideoEffectsEditor: View {
                 if wide {
                     HStack(spacing: 0) {
                         preview.frame(maxWidth: .infinity, maxHeight: .infinity)
-                        controls.frame(width: min(340, geometry.size.width*0.36))
+                        controls(width: min(340, geometry.size.width*0.36)).frame(width: min(340, geometry.size.width*0.36))
                     }
                 } else {
                     preview.frame(height: max(180, geometry.size.height * (inspectedSplit == nil ? 0.40 : 0.53)))
-                    controls
+                    controls(width: geometry.size.width)
                 }
             }.background(Color(white: 0.035))
         }.preferredColorScheme(.dark)
@@ -946,24 +1090,29 @@ struct VideoEffectsEditor: View {
                 if model.busy { try? await Task.sleep(for:.milliseconds(300));if !Task.isCancelled && model.busy { showSpinner=true } }
             }
             .sheet(item: $helpTopic) { InspectorHelpSheet(topic: $0) }
-            .task { page = model.active.isEmpty ? .library : .applied; model.rebuild(delay: false) }
+            .onChange(of: page) { _, page in model.focusPreview(on: page == .inspector ? model.selected : nil) }
+            .task { page = model.request.scopedEffect != nil ? .inspector : (model.active.isEmpty ? .library : .applied); model.rebuild(delay: false) }
             .onDisappear { model.stop() }
             .photosPicker(isPresented: $showPhotoPicker, selection: $photo, matching: mediaParameter?.id == "cleanPlate" || model.current?.choice("background",at:model.sourceTime)=="Image" ? .images : .videos)
             .onChange(of: photo) { _, item in if let item, let parameter = mediaParameter { Task { await model.importMedia(item, parameter: parameter); photo = nil } } }
             .confirmationDialog("Remove this effect?", isPresented: $confirmRemove, titleVisibility: .visible) {
-                Button("Remove effect", role: .destructive) { model.remove();page = model.active.isEmpty ? .library : .applied }
+                Button("Remove effect", role: .destructive) {
+                    model.remove()
+                    if model.request.scopedEffect != nil { apply(model.state) }
+                    else { page = model.active.isEmpty ? .library : .applied }
+                }
             }
     }
     private var header: some View {
         HStack(spacing: 12) {
-            Button("Cancel", action: cancel).frame(minWidth: 54, minHeight: 44)
+            Button("Cancel", action: cancel).editorDecisionButton(primary: false).frame(minWidth: 54, minHeight: 44)
             Spacer(minLength: 0)
             VStack(spacing: 2) {
                 Text("Video effects").font(.headline)
                 Text(model.request.scopeTitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 0)
-            Button("Apply") { model.finishPosition();model.stop(); var edit=model.state;for c in edit.clips.indices { edit.clips[c].videoEffects=edit.clips[c].videoEffects?.map(\.recordingResult) };apply(edit) }.fontWeight(.semibold).frame(minWidth: 54, minHeight: 44)
+            Button("Apply") { model.finishPosition();model.stop(); var edit=model.state;for c in edit.clips.indices { edit.clips[c].videoEffects=edit.clips[c].videoEffects?.map(\.recordingResult) };apply(edit) }.fontWeight(.semibold).editorDecisionButton(primary: true).frame(minWidth: 54, minHeight: 44)
                 .disabled((model.busy && model.sampleRange == nil) || model.error != nil)
                 .accessibilityIdentifier("videoEffects.apply")
         }.padding(.horizontal, 12)
@@ -1021,11 +1170,13 @@ struct VideoEffectsEditor: View {
             Text(editorTime(model.position-model.previewRange.lowerBound)+" / "+editorTime(model.previewRange.upperBound-model.previewRange.lowerBound)).font(.caption.monospacedDigit()).fixedSize()
         }.padding(.trailing, 12)
     }
-    private var controls: some View {
+    private func controls(width: CGFloat) -> some View {
         VStack(spacing: 0) {
-            VideoEffectNavigationBar(page:page,count:model.active.count,prefix:"videoEffects",back:goBack,add:{model.cancelColorPick();page = .library})
-                .disabled(model.positioningEffectID != nil)
-            Divider()
+            if model.request.scopedEffect == nil {
+                VideoEffectNavigationBar(page:page,count:model.active.count,prefix:"videoEffects",back:goBack,add:{model.cancelColorPick();page = .library})
+                    .disabled(model.positioningEffectID != nil)
+                Divider()
+            }
             if model.sampleRange != nil || model.refiningPreview || model.accuratePreviewReady {
                 HStack(spacing:8) {
                     if model.refiningPreview {ProgressView().controlSize(.small)}
@@ -1045,7 +1196,7 @@ struct VideoEffectsEditor: View {
             if page == .applied {
                 appliedEffects.padding(.horizontal,16).padding(.top,12)
             } else {
-            ScrollView {
+            DurationInspectorScroll {
                 VStack(alignment: .leading, spacing: 16) {
                     if let error = model.error { Label(error, systemImage: "exclamationmark.triangle").font(.subheadline).foregroundStyle(.orange)
                         Button("Retry") { model.rebuild(delay: false) } }
@@ -1059,7 +1210,7 @@ struct VideoEffectsEditor: View {
                     case .library:library(nil)
                     case .section(let section):library(section)
                     case .inspector:
-                        if let effect=model.current {settings(effect)} else {appliedEffects}
+                        if let effect=model.current {settings(effect, width: width)} else {appliedEffects}
                     }}
                 }.padding(16).padding(.bottom,16)
             }.id(page == .inspector ? "inspector-"+(model.selected?.uuidString ?? "") : page.identity).accessibilityIdentifier("videoEffects.controls")
@@ -1123,7 +1274,7 @@ struct VideoEffectsEditor: View {
             }
         }
     }
-    private func settings(_ effect: VideoEffectSettings) -> some View {
+    private func settings(_ effect: VideoEffectSettings, width: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 18) {
             ViewThatFits(in:.horizontal) {
                 HStack {Text(effect.kind.descriptor.displayName).font(.title3.weight(.semibold));EffectHelpButton(effect: effect.kind) { helpTopic = $0 };Spacer();effectActions(effect).fixedSize(horizontal:true,vertical:false)}
@@ -1183,6 +1334,10 @@ struct VideoEffectsEditor: View {
             }
             if effect.kind == .dollyZoom { Text(model.hasDepth ? "Uses imported depth to separate the subject." : "Uses person separation when imported depth is unavailable.").font(.caption).foregroundStyle(.secondary) }
             if effect.kind == .widescreen { Text(model.depthNote).font(.caption).foregroundStyle(.secondary) }
+            if let timing = model.rangeTiming {
+                EditorRangeDuration(timing: timing, width: width - 32, name: effect.kind.descriptor.displayName,
+                                    identifier: "videoEffects.range", change: model.trim)
+            }
             Button(role: .destructive) { confirmRemove = true } label: { Label(effect.kind == .freezeFrame ? "Remove hold" : "Remove effect", systemImage: "trash").frame(minHeight: 44) }
         }.tint(effect.kind.librarySection.tint)
     }

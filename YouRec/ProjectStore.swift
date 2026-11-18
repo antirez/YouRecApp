@@ -34,7 +34,6 @@ final class ProjectStore: ObservableObject {
     @Published var operationLabel = ""
     @Published var archiveURL: URL?
     private var operation: Task<Void, Never>?
-    private var photoTransfer: Progress?
     let disk: ProjectDisk
     private let selectionKey:String
     var selected: Project? { projects.first { $0.id == selectedID } }
@@ -47,7 +46,7 @@ final class ProjectStore: ObservableObject {
         return folder
     }()
 
-    init() {
+    init(projectDirectory: URL? = nil) {
         _ = Self.recoveryWorkspace
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         #if DEBUG
@@ -61,8 +60,18 @@ final class ProjectStore: ObservableObject {
         let isolated=false
         let editorFixture = false
         #endif
-        selectionKey=recorderFixture ? "selectedRecorderUIProject" : retentionFixture ? "selectedRetentionUIProject" : isolated ? "selectedDepthUIProject" : editorFixture ? "selectedEditorUIProject" : "selectedProject"
-        var storeBase = documents
+        #if DEBUG && targetEnvironment(simulator)
+        let showcase = recorderFixture && CommandLine.arguments.contains("--liquid-glass-showcase")
+        #else
+        let showcase = false
+        #endif
+        selectionKey=showcase ? "selectedRecorderShowcaseProject" : recorderFixture ? "selectedRecorderUIProject" : retentionFixture ? "selectedRetentionUIProject" : isolated ? "selectedDepthUIProject" : editorFixture ? "selectedEditorUIProject" : "selectedProject"
+        var storeBase = showcase ? documents.appendingPathComponent("RecorderShowcase") : documents
+        #if targetEnvironment(macCatalyst)
+        if !editorFixture && !retentionFixture && !isolated && !recorderFixture, let projectDirectory {
+            storeBase = projectDirectory
+        }
+        #endif
         #if DEBUG
         if editorFixture, let value = ProcessInfo.processInfo.environment["YOUREC_RECOVERY_TEST_RUN"], let run = UUID(uuidString: value) {
             storeBase = documents.appendingPathComponent("RecoveryUITestSessions/" + run.uuidString)
@@ -160,9 +169,11 @@ final class ProjectStore: ObservableObject {
         } catch { self.error = error.localizedDescription }
     }
 
+    private var newProjectTitle: String {
+        Date().formatted(.dateTime.month(.abbreviated).day()) + " · " + Date().formatted(date: .omitted, time: .shortened)
+    }
     @discardableResult func create() -> Project? {
-        let title = Date().formatted(.dateTime.month(.abbreviated).day()) + " · " + Date().formatted(date: .omitted, time: .shortened)
-        let project = Project(title: title)
+        let project = Project(title: newProjectTitle)
         do { try disk.save(project); projects.insert(project, at: 0); select(project.id); return project }
         catch { self.error = error.localizedDescription; return nil }
     }
@@ -277,12 +288,26 @@ final class ProjectStore: ObservableObject {
             deletedProjects.removeAll { $0.id == project.id }; projects.append(try disk.read(disk.folder(project.id).appendingPathComponent("project.json"), summary: true)); sort(); select(project.id)
         } catch { self.error = error.localizedDescription }
     }
-    func eraseDeleted(_ project: Project) {
+    func eraseDeleted(_ ids: [UUID]) {
         guard !importing else { return }
-        do {
-            try disk.eraseDeleted(project.id)
-            deletedProjects.removeAll { $0.id == project.id }; deletionRecords[project.id] = nil
-        } catch { self.error = error.localizedDescription }
+        let targets = Set(ids).intersection(deletedProjects.map(\.id))
+        var removed = Set<UUID>()
+        var queued: [URL] = []
+        var firstFailure: Error?
+        for id in targets {
+            do {
+                queued.append(try disk.queueForPermanentDeletion(id))
+                removed.insert(id)
+            } catch { if firstFailure == nil { firstFailure = error } }
+        }
+        deletedProjects.removeAll { removed.contains($0.id) }
+        deletionRecords = deletionRecords.filter { !removed.contains($0.key) }
+        // The rename commits each deletion. Large media folders can be reclaimed
+        // off the main thread, and finishPendingDeletions resumes after a crash.
+        Task.detached(priority: .utility) { [queued] in
+            for folder in queued { try? FileManager.default.removeItem(at: folder) }
+        }
+        if let firstFailure { error = "Couldn’t delete every selected project. " + firstFailure.localizedDescription }
     }
     private func refreshDeletionRecords(now: Date = Date()) {
         var records: [UUID: ProjectDeletion] = [:]
@@ -398,33 +423,40 @@ final class ProjectStore: ObservableObject {
         }
     }
 
-    func insertVideos(_ items: [PhotosPickerItem], into id: UUID, at position: Double, site: VideoInsertionSite? = nil,
+    func insertVideos(_ items: [NSItemProvider], into id: UUID, at position: Double, site: VideoInsertionSite? = nil,
                       completion: @escaping (Result<Double, Error>) -> Void) {
-        guard !importing, !items.isEmpty, let project = projects.first(where: { $0.id == id }) else {
+        insertMedia(count: items.count, origin: "Photos", into: id, at: position, site: site, load: { index in
+            try await ImportedPhotoMedia.load(items[index])
+        }, completion: completion)
+    }
+
+    func insertFiles(_ urls: [URL], into id: UUID, at position: Double, site: VideoInsertionSite?,
+                     completion: @escaping (Result<Double, Error>) -> Void) {
+        insertMedia(count: urls.count, origin: "Files", into: id, at: position, site: site, load: { index in
+            let url = urls[index]
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            let type = try url.resourceValues(forKeys: [.contentTypeKey]).contentType
+            guard let type, type.conforms(to: .movie) || type.conforms(to: .image) else { throw ProjectError.invalidMedia }
+            return try await ImportedPhotoMedia.copy(url, isPhoto: type.conforms(to: .image))
+        }, completion: completion)
+    }
+
+    private func insertMedia(count: Int, origin: String, into id: UUID, at position: Double, site: VideoInsertionSite?,
+                             load: @escaping (Int) async throws -> ImportedPhotoMedia,
+                             completion: @escaping (Result<Double, Error>) -> Void) {
+        guard !importing, count > 0, let project = projects.first(where: { $0.id == id }) else {
             completion(.failure(ProjectError.invalidDocument)); return
         }
         importing = true; operationProgress = 0
-        operationLabel = "Loading 1 of \(items.count) from Photos…"
+        operationLabel = "Loading 1 of \(count) from \(origin)…"
         operation = Task {
-            var preparingIndex: Int?
             let result: Result<Double, Error>
             do {
                 let batchFolder = folder(project)
                 var batch = try VideoBatchImport(folder: batchFolder)
                 defer { batch.discard() }
-                for (i, item) in items.enumerated() {
-                    preparingIndex = i
-                    try Task.checkCancellation()
-                    let count = "\(i + 1) of \(items.count)"
-                    operationLabel = "Loading " + count + " from Photos…"
-                    let media = try await loadSelectedMedia(item)
-                    defer { try? FileManager.default.removeItem(at: media.url) }
-                    operationLabel = media.isPhoto ? "Creating photo clip " + count + "…" : "Checking video " + count + "…"
-                    operationProgress = (Double(i) + 0.5) / Double(items.count + 1)
-                    try await batch.stage(privateCopy: media.url, originalName: media.originalName, isPhoto: media.isPhoto)
-                    operationProgress = Double(i + 1) / Double(items.count + 1)
-                }
-                preparingIndex = nil
+                try await stageMedia(count: count, origin: origin, in: &batch, load: load)
                 operationLabel = "Inserting clips…"
                 guard let projectIndex = projects.firstIndex(where: { $0.id == id }) else { throw ProjectError.invalidDocument }
                 let current = try hydrated(unsavedDrafts[id] ?? projects[projectIndex])
@@ -433,26 +465,64 @@ final class ProjectStore: ObservableObject {
                 operationProgress = 1
                 result = .success(saved.edit.timeline.video.first { $0.content.sourceID == batch.sources.first?.id }?.start.seconds ?? position)
             } catch {
-                if Task.isCancelled { result = .failure(CancellationError()) }
-                else {
-                    let message = preparingIndex.map { "Couldn’t add item \($0 + 1) of \(items.count)." } ?? "Couldn’t insert the clips."
-                    result = .failure(NSError(domain: "YouRec.VideoImport", code: 1,
-                                              userInfo: [NSLocalizedDescriptionKey: message + " " + error.localizedDescription]))
-                }
+                result = .failure(Task.isCancelled ? CancellationError() : error)
             }
             operation = nil; importing = false
             completion(result)
         }
     }
 
-    private func loadSelectedMedia(_ item: PhotosPickerItem) async throws -> ImportedPhotoMedia {
-        try Task.checkCancellation()
-        defer { photoTransfer = nil }
-        let media: ImportedPhotoMedia? = try await withCheckedThrowingContinuation { continuation in
-            photoTransfer = item.loadTransferable(type: ImportedPhotoMedia.self) { continuation.resume(with: $0) }
+    func newProjectFromPhotos(_ items: [NSItemProvider], completed: @escaping () -> Void) {
+        guard !items.isEmpty, !importing else { return }
+        let project = Project(title: newProjectTitle)
+        importing = true; operationProgress = 0
+        operationLabel = "Loading 1 of \(items.count) from Photos…"
+        operation = Task {
+            defer { importing = false; operation = nil }
+            do {
+                // Only publish the directory once every original and the initial timeline are saved.
+                let staged = ProjectArchive.stagingDisk(in: disk)
+                var batch = try VideoBatchImport(stagingAt: staged.folder(project.id))
+                defer { batch.discard() }
+                try await stageMedia(count: items.count, origin: "Photos", in: &batch) { index in
+                    try await ImportedPhotoMedia.load(items[index])
+                }
+                operationLabel = "Creating project…"
+                var candidate = project
+                candidate.sources = batch.sources
+                let clips = batch.sources.map { TimelineClip(sourceID: $0.id, start: 0, end: $0.duration) }
+                let photos = Set(batch.sources.filter { $0.isStillPhoto == true }.map(\.id))
+                candidate.history = [EditState(timeline: TrackTimeline(clips: clips, pictureOnlySources: photos))]
+                try candidate.validate()
+                let saved = try ProjectArchive.publish(candidate, from: staged, into: disk)
+                projects.insert(saved, at: 0); sort()
+                operationProgress = 1
+                if select(saved.id) { completed() }
+            } catch {
+                if !Task.isCancelled { self.error = error.localizedDescription }
+            }
         }
-        guard let media else { throw ProjectError.invalidMedia }
-        return media
+    }
+
+    private func stageMedia(count: Int, origin: String, in batch: inout VideoBatchImport,
+                            load: (Int) async throws -> ImportedPhotoMedia) async throws {
+        for index in 0..<count {
+            try Task.checkCancellation()
+            let itemNumber = "\(index + 1) of \(count)"
+            do {
+                operationLabel = "Loading " + itemNumber + " from " + origin + "…"
+                let media = try await load(index)
+                defer { try? FileManager.default.removeItem(at: media.url) }
+                operationLabel = media.isPhoto ? "Creating photo clip " + itemNumber + "…" : "Checking video " + itemNumber + "…"
+                operationProgress = (Double(index) + 0.5) / Double(count + 1)
+                try await batch.stage(privateCopy: media.url, originalName: media.originalName, isPhoto: media.isPhoto)
+                operationProgress = Double(index + 1) / Double(count + 1)
+            } catch {
+                if Task.isCancelled { throw CancellationError() }
+                throw NSError(domain: "YouRec.VideoImport", code: 1, userInfo: [NSLocalizedDescriptionKey:
+                    "Couldn’t add item " + itemNumber + ". " + error.localizedDescription])
+            }
+        }
     }
 
     func insertAudio(_ url: URL, into id: UUID, at position: Double) async -> Bool {
@@ -584,15 +654,16 @@ final class ProjectStore: ObservableObject {
         await recoverUnindexedRecordings()
     }
 
-    func beginImport(_ url: URL) {
+    func beginImport(_ url: URL, completed: @escaping () -> Void) {
         guard !importing else { return }
         importing = true
         operation = Task {
-            if url.pathExtension.lowercased() == "zip" { await importArchive(url) }
-            else { await importVideo(url) }
+            defer { operation = nil }
+            let opened = url.pathExtension.lowercased() == "zip" ? await importArchive(url) : await importVideo(url)
+            if opened { completed() }
         }
     }
-    func cancelOperation() { operation?.cancel(); photoTransfer?.cancel() }
+    func cancelOperation() { operation?.cancel() }
     func dismissArchive() {
         if let archiveURL { try? FileManager.default.removeItem(at: archiveURL.deletingLastPathComponent()) }
         archiveURL = nil
@@ -644,7 +715,7 @@ final class ProjectStore: ObservableObject {
             }
         }
     }
-    private func importArchive(_ url: URL) async {
+    private func importArchive(_ url: URL) async -> Bool {
         importing = true; operationProgress = 0; operationLabel = "Restoring project archive…"
         defer { importing = false }
         let access = url.startAccessingSecurityScopedResource()
@@ -660,8 +731,15 @@ final class ProjectStore: ObservableObject {
                 Task { @MainActor [weak self] in self?.operationProgress = 0.2 + value * 0.8 }
             }
             projects.insert(project, at: 0); select(project.id); sort()
-            if !missingSources(project).isEmpty { error = "The project was restored, but some original takes are missing or damaged. Use Repair media to reconnect those originals. All editing history has been kept." }
-        } catch is CancellationError {} catch { if !Task.isCancelled { self.error = error.localizedDescription } }
+            if !missingSources(project).isEmpty {
+                error = "The project was restored, but some original takes are missing or damaged. Use Repair media to reconnect those originals. All editing history has been kept."
+                return false
+            }
+            return selectedID == project.id
+        } catch {
+            if !Task.isCancelled { self.error = error.localizedDescription }
+            return false
+        }
     }
     func beginRelink(_ url: URL, source: SourceMedia, project: Project, allowUnverified: Bool = false) {
         guard !importing else { return }
@@ -701,7 +779,7 @@ final class ProjectStore: ObservableObject {
             } catch { if !Task.isCancelled { self.error = error.localizedDescription } }
         }
     }
-    func importVideo(_ url: URL) async {
+    @discardableResult func importVideo(_ url: URL) async -> Bool {
         importing = true; operationProgress = 0; operationLabel = "Copying original video…"
         defer { importing = false }
         let access = url.startAccessingSecurityScopedResource()
@@ -721,14 +799,16 @@ final class ProjectStore: ObservableObject {
             let duration = try await asset.load(.duration).seconds
             guard duration.isFinite, duration > 0, !(try await asset.loadTracks(withMediaType: .video)).isEmpty else { throw ProjectError.invalidMedia }
             let hash = try await SourceMediaCache.shared.fingerprint(destination)
+            try Task.checkCancellation()
             project.append(SourceMedia(filename: destination.lastPathComponent, duration: duration, sha256: hash))
             try disk.save(project)
             try? FileManager.default.removeItem(at: directory.appendingPathComponent(".yourec-importing"))
-            projects.insert(project, at: 0); select(project.id); sort()
+            projects.insert(project, at: 0); sort(); return select(project.id)
         } catch {
             // Only this import's new directory is removed; its original is untouched.
             try? FileManager.default.removeItem(at: directory)
             if !Task.isCancelled { self.error = "Import failed: " + error.localizedDescription }
+            return false
         }
     }
 }

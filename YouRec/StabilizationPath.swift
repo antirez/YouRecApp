@@ -27,6 +27,7 @@ struct StabilizationSettings: Codable, Equatable, Sendable {
     var id: UUID?
     // Preserve the analyzed take range through splits and ripple cuts. Adjacent
     // pieces inherit the same path/crop, with no new analysis or framing jump.
+    var activeRange: SourceInterval?
     var referenceStart: Double?
     var referenceEnd: Double?
 }
@@ -35,7 +36,7 @@ extension TimelineClip {
     var stabilizationStart: Double { min(start, stabilization?.referenceStart ?? start) }
     var stabilizationEnd: Double { max(end, stabilization?.referenceEnd ?? end) }
     func stabilizing(_ level: StabilizationLevel) -> StabilizationSettings {
-        StabilizationSettings(level: level, referenceStart: stabilizationStart, referenceEnd: stabilizationEnd)
+        StabilizationSettings(level: level, activeRange: stabilization?.activeRange, referenceStart: stabilizationStart, referenceEnd: stabilizationEnd)
     }
 }
 

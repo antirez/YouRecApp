@@ -75,7 +75,7 @@ enum VideoEffectBackgroundAudio {
                                 envelope.volume *= max(0,1-from/hold)
                                 envelope.endVolume=pow(10,-18.0/20)*max(0,1-(from+output)/hold)
                             }
-                            items.append(Item(asset:asset,track:track,source:CMTimeRange(start:TransitionRenderer.time(begin-origin),end:TransitionRenderer.time(end-origin)),start:start,duration:output,envelope:envelope,identity:file+effect.id.uuidString+"-\(cycle)"))
+                            items.append(Item(asset:asset,track:track,source:CMTimeRange(start:TransitionRenderer.time(begin-origin),end:TransitionRenderer.time(end-origin)),start:start,duration:output,envelope:envelope,identity:file+effect.analysisID.uuidString+"-\(cycle)"))
                         }
                     }
                 }

@@ -43,10 +43,14 @@ struct EffectPreviewWindow {
 
 extension TimelineClip {
     var offlineVideoEffects: [VideoEffectSettings] {
-        (videoEffects ?? []).filter {
-            guard $0.requiresOfflineAnalysis else { return false }
-            if let hold = frozenFrame { return $0.start <= hold.sourceTime && hold.sourceTime < $0.end }
-            return $0.start < end && $0.end > start
+        (videoEffects ?? []).filter { effect in
+            guard effect.requiresOfflineAnalysis else { return false }
+            if let windows = effectWindows?[effect.id] {
+                let lower = gradeTime(at: 0), upper = gradeTime(at: duration)
+                guard windows.contains(where: { $0.start < upper && $0.end > lower }) else { return false }
+            }
+            if let hold = frozenFrame { return effect.start <= hold.sourceTime && hold.sourceTime < effect.end }
+            return effect.start < end && effect.end > start
         }
     }
 }

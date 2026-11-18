@@ -48,6 +48,7 @@ struct TimelineClip: Codable, Identifiable, Equatable {
     var stabilization: StabilizationSettings?
     var speed: SpeedSettings?
     var color: ColorSettings?
+    var colorRegions: [ColorRegion]?
     var texts: [TextOverlay]?
     var pauses: PauseSettings?
     var crop: CropSettings?
@@ -57,6 +58,10 @@ struct TimelineClip: Codable, Identifiable, Equatable {
     var transition: ClipTransition?
     var videoEffects: [VideoEffectSettings]?
     var frozenFrame: FrozenFrameSegment?
+    // Windows are in source time, so they travel with footage through cuts and moves.
+    // A recipe keeps its original animation clock even when its middle is omitted.
+    var effectWindows: [UUID: [SourceInterval]]?
+    var framingVariants: [FramingVariant]?
     var duration: Double { frozenFrame?.duration ?? effectPlaybackSpans.reduce(0) { $0 + $1.duration } }
 }
 
@@ -227,7 +232,7 @@ struct DeferredProjectHistory {
 }
 
 struct Project: Codable, Identifiable {
-    static let latestReadableSchema = 12
+    static let latestReadableSchema = 16
     private enum CodingKeys: String, CodingKey {
         case automaticCanvasVersion, exportSettings, schemaVersion, id, title, createdAt, updatedAt, sources, history, historyCursor, recordingHistoryVersion, recordingInsertion, recordingInsertionStep, recordingSite, snapshots, snapshotFiles, captureLedger
     }
@@ -282,11 +287,12 @@ struct Project: Codable, Identifiable {
         return try TakeReceipt.Placement(time: recordingInsertion, site: recordingSite?.site,
                                          revision: RecoveryFile.hash(snapshots[historyCursor].data()) + ".json", captureCount: captureLedger.count)
     }
-    var edit: EditState { materialized(snapshots[historyCursor]) }
+    var currentSnapshot: EditSnapshot { snapshots[historyCursor] }
+    var edit: EditState { materialized(currentSnapshot) }
     var imageFiles: [String] { Array(Set(history.flatMap { $0.clips.flatMap { ($0.images ?? []).map(\.filename) } })).sorted() }
     var effectFiles: [String] {
         let effects = sources.flatMap { $0.videoEffects ?? [] } + history.flatMap { $0.clips.flatMap { $0.videoEffects ?? [] } }
-        let luts = history.flatMap { $0.clips.flatMap { ($0.color?.lutAssets ?? []).map(\.filename) } }
+        let luts = history.flatMap { $0.clips.flatMap { $0.gradeAssets.map(\.filename) } }
         return Array(Set(effects.flatMap(\.mediaFiles) + luts)).sorted()
     }
     var fontFiles: [String] {
@@ -294,7 +300,7 @@ struct Project: Codable, Identifiable {
         for snapshot in snapshots { files.formUnion(snapshot.state.importedFontFiles) }
         for capture in captureLedger {
             for text in capture.clip.texts ?? [] {
-                if let face = text.appearance?.face, let ref = ImportedFontFace.Reference(face) { files.insert(ref.filename) }
+                files.formUnion(text.fontFaces.compactMap { ImportedFontFace.Reference($0)?.filename })
             }
         }
         return files.sorted()
@@ -323,6 +329,27 @@ struct Project: Codable, Identifiable {
                 || (clip.videoEffects ?? []).contains { $0.motion != nil }
         }) || state.timeline.placements.contains(where:{ $0.videos.values.contains { $0.motion != nil } }) { schemaVersion = max(schemaVersion,12) }
         if state.timeline.subtitles != nil { schemaVersion = max(schemaVersion, 8) }
+        if state.timeline.video.contains(where: { $0.content.colorRegions != nil }) { schemaVersion = max(schemaVersion, 13) }
+        if state.timeline.video.contains(where: { $0.content.texts?.contains(where: { $0.labelHeadline != nil }) == true }) {
+            schemaVersion = max(schemaVersion, 14)
+        }
+        if state.timeline.video.contains(where: { item in
+            item.content.crop?.activeRange != nil || item.content.mirror?.activeRange != nil || item.content.stabilization?.activeRange != nil
+        }) { schemaVersion = max(schemaVersion, 15) }
+        func hasScopedFragments(_ ids: [UUID], members: Set<UUID>?) -> Bool {
+            guard let members, ids.count > 1 else { return false }
+            var seen = Set<UUID>()
+            return ids.contains { members.contains($0) && !seen.insert($0).inserted }
+        }
+        if state.timeline.video.contains(where: { item in
+            item.content.effectWindows != nil || item.content.framingVariants != nil ||
+                item.content.texts?.contains(where: { $0.playbackClock != nil }) == true ||
+                hasScopedFragments(item.content.colorRegions?.map(\.grade.id) ?? [], members: item.spanningEffects)
+        }) || state.timeline.audio.contains(where: { item in
+            item.spanningEffects != nil && hasScopedFragments(item.enhancements.map(\.id) + item.censors.map(\.id), members: item.spanningEffects)
+        }) {
+            schemaVersion = max(schemaVersion, 16)
+        }
         // An older reader would pick the first timeline picture and silently reframe the movie.
         if state.canvasReference != nil { schemaVersion = max(schemaVersion, 10) }
         if state.timeline.audio.contains(where: { $0.fadeIn != nil || $0.fadeOut != nil }) { schemaVersion = max(schemaVersion, 11) }
@@ -474,47 +501,58 @@ struct Project: Codable, Identifiable {
             guard state.duration.isFinite, state.duration <= 604800 else { throw ProjectError.invalidDocument }
             guard Set(state.clips.map(\.id)).count == state.clips.count,
                   Set(state.effects.map(\.id)).count == state.effects.count else { throw ProjectError.invalidDocument }
-            for clip in state.clips {
-                guard let source = sources.first(where: { $0.id == clip.sourceID }),
-                      clip.start.isFinite, clip.end.isFinite, clip.start >= 0,
-                      clip.end > clip.start, clip.end <= source.duration + 0.001
-                else { throw ProjectError.invalidDocument }
-                guard clip.rate.isFinite, (0.125...6).contains(clip.rate), clip.duration > 0, (clip.speed.map { $0.rate.isFinite && (0.25...4).contains($0.rate) } ?? true) else { throw ProjectError.invalidDocument }
-                if let frozen = clip.frozenFrame {
-                    guard frozen.valid, frozen.sourceTime >= clip.start, frozen.sourceTime < clip.end,
-                          clip.videoEffects?.contains(where: { $0.kind == .freezeFrame }) == true else { throw ProjectError.invalidDocument }
-                }
-                guard [clip.openingTransition, clip.transition].compactMap({ $0 }).allSatisfy(\.valid) else { throw ProjectError.invalidDocument }
-                guard (clip.videoEffects ?? []).allSatisfy(\.valid),
-                      Set((clip.videoEffects ?? []).map(\.id)).count == (clip.videoEffects ?? []).count else { throw ProjectError.invalidDocument }
-                if let color = clip.color { guard color.valid, color.motion?.valid(for:color.pose, accepts:{ color.applying($0).valid }) ?? true else { throw ProjectError.invalidDocument } }
-                if let crop = clip.crop { guard crop.motion?.valid(for:crop.pose,accepts:{ (0...1).contains($0["x"]) && (0...1).contains($0["y"]) && (1...8).contains($0["zoom"]) && (-180...180).contains($0["rotation"]) }) ?? true, crop.x.isFinite, crop.y.isFinite, crop.zoom.isFinite, crop.rotation.isFinite, (-180...180).contains(crop.rotation),
-                    (0...1).contains(crop.x), (0...1).contains(crop.y), (1...8).contains(crop.zoom) else { throw ProjectError.invalidDocument } }
-                if let pauses = clip.pauses {
-                    guard pauses.thresholdDB.isFinite, (-80...0).contains(pauses.thresholdDB),
-                          pauses.minimum.isFinite, (0.1...10).contains(pauses.minimum),
-                          pauses.before.isFinite, (0...2).contains(pauses.before), pauses.after.isFinite, (0...2).contains(pauses.after),
-                          pauses.cuts.allSatisfy({ $0.start.isFinite && $0.end.isFinite && $0.start >= 0 && $0.end > $0.start && $0.end <= source.duration + 0.001 }) else { throw ProjectError.invalidDocument }
-                    guard (pauses.candidates ?? []).allSatisfy({ $0.raw.start.isFinite && $0.raw.end.isFinite && $0.raw.start >= 0 && $0.raw.end > $0.raw.start && $0.raw.end <= source.duration + 0.001 }) else { throw ProjectError.invalidDocument }
-                    if let analyzed = pauses.analyzed { guard analyzed.start.isFinite, analyzed.end.isFinite, analyzed.start >= 0, analyzed.end > analyzed.start, analyzed.end <= source.duration + 0.001 else { throw ProjectError.invalidDocument } }
-                }
-                guard Set((clip.texts ?? []).map(\.id)).count == (clip.texts ?? []).count else { throw ProjectError.invalidDocument }
-                guard Set((clip.images ?? []).map(\.id)).count == (clip.images ?? []).count else { throw ProjectError.invalidDocument }
-                for image in clip.images ?? [] {
-                    guard image.start.isFinite, image.end.isFinite, image.start >= 0, image.end > image.start, image.end <= source.duration + 0.001,
-                          image.x.isFinite, image.y.isFinite, (0...1).contains(image.x), (0...1).contains(image.y),
-                          image.motion?.valid(for:image.pose,accepts:{ (0...1).contains($0["x"]) && (0...1).contains($0["y"]) && (0.03...3).contains($0["width"]) && (0...1).contains($0["opacity"]) }) ?? true, image.width.isFinite, (0.03...3).contains(image.width), image.opacity.isFinite, (0...1).contains(image.opacity) else { throw ProjectError.invalidDocument }
-                }
-                for text in clip.texts ?? [] {
-                    guard text.start.isFinite, text.end.isFinite, text.start >= 0, text.end > text.start, text.end <= source.duration + 0.001,
-                          text.appearance?.valid != false, text.motion?.valid != false, text.text.count <= 500, text.x.isFinite, text.y.isFinite, (0...1).contains(text.x), (0...1).contains(text.y),
-                          text.size.isFinite, (0.02...0.3).contains(text.size) else { throw ProjectError.invalidDocument }
-                }
-                if let stabilization = clip.stabilization {
-                    guard stabilization.version == 1 else { throw ProjectError.invalidDocument }
-                    if let start = stabilization.referenceStart, let end = stabilization.referenceEnd {
-                        guard start.isFinite, end.isFinite, start >= 0, end > start, end <= source.duration + 0.001 else { throw ProjectError.invalidDocument }
-                    } else if stabilization.referenceStart != nil || stabilization.referenceEnd != nil { throw ProjectError.invalidDocument }
+            for stored in state.clips {
+                guard stored.validEffectWindows else { throw ProjectError.invalidDocument }
+                // Validate alternate framing with exactly the same rules as the primary recipe.
+                for clip in [stored] + (stored.framingVariants ?? []).map({ stored.promoting($0) }) {
+                    guard let source = sources.first(where: { $0.id == clip.sourceID }),
+                          clip.start.isFinite, clip.end.isFinite, clip.start >= 0,
+                          clip.end > clip.start, clip.end <= source.duration + 0.001
+                    else { throw ProjectError.invalidDocument }
+                    guard clip.rate.isFinite, (0.125...6).contains(clip.rate), clip.duration > 0, (clip.speed.map { $0.rate.isFinite && (0.25...4).contains($0.rate) } ?? true) else { throw ProjectError.invalidDocument }
+                    if let frozen = clip.frozenFrame {
+                        guard frozen.valid, frozen.sourceTime >= clip.start, frozen.sourceTime < clip.end,
+                              clip.videoEffects?.contains(where: { $0.kind == .freezeFrame }) == true else { throw ProjectError.invalidDocument }
+                    }
+                    guard [clip.openingTransition, clip.transition].compactMap({ $0 }).allSatisfy(\.valid) else { throw ProjectError.invalidDocument }
+                    guard (clip.videoEffects ?? []).allSatisfy(\.valid),
+                          Set((clip.videoEffects ?? []).map(\.id)).count == (clip.videoEffects ?? []).count else { throw ProjectError.invalidDocument }
+                    if let color = clip.color { guard color.valid, color.motion?.valid(for:color.pose, accepts:{ color.applying($0).valid }) ?? true else { throw ProjectError.invalidDocument } }
+                    if let regions = clip.colorRegions {
+                        guard clip.color == nil, regions.allSatisfy(\.valid),
+                              zip(regions, regions.dropFirst()).allSatisfy({ $0.end <= $1.start }) else { throw ProjectError.invalidDocument }
+                    }
+                    if let crop = clip.crop { guard crop.motion?.valid(for:crop.pose,accepts:{ (0...1).contains($0["x"]) && (0...1).contains($0["y"]) && (1...8).contains($0["zoom"]) && (-180...180).contains($0["rotation"]) }) ?? true, crop.x.isFinite, crop.y.isFinite, crop.zoom.isFinite, crop.rotation.isFinite, (-180...180).contains(crop.rotation),
+                        (0...1).contains(crop.x), (0...1).contains(crop.y), (1...8).contains(crop.zoom) else { throw ProjectError.invalidDocument } }
+                    if let pauses = clip.pauses {
+                        guard pauses.thresholdDB.isFinite, (-80...0).contains(pauses.thresholdDB),
+                              pauses.minimum.isFinite, (0.1...10).contains(pauses.minimum),
+                              pauses.before.isFinite, (0...2).contains(pauses.before), pauses.after.isFinite, (0...2).contains(pauses.after),
+                              pauses.cuts.allSatisfy({ $0.start.isFinite && $0.end.isFinite && $0.start >= 0 && $0.end > $0.start && $0.end <= source.duration + 0.001 }) else { throw ProjectError.invalidDocument }
+                        guard (pauses.candidates ?? []).allSatisfy({ $0.raw.start.isFinite && $0.raw.end.isFinite && $0.raw.start >= 0 && $0.raw.end > $0.raw.start && $0.raw.end <= source.duration + 0.001 }) else { throw ProjectError.invalidDocument }
+                        if let analyzed = pauses.analyzed { guard analyzed.start.isFinite, analyzed.end.isFinite, analyzed.start >= 0, analyzed.end > analyzed.start, analyzed.end <= source.duration + 0.001 else { throw ProjectError.invalidDocument } }
+                    }
+                    guard Set((clip.texts ?? []).map(\.id)).count == (clip.texts ?? []).count else { throw ProjectError.invalidDocument }
+                    guard Set((clip.images ?? []).map(\.id)).count == (clip.images ?? []).count else { throw ProjectError.invalidDocument }
+                    for image in clip.images ?? [] {
+                        guard image.start.isFinite, image.end.isFinite, image.start >= 0, image.end > image.start, image.end <= source.duration + 0.001,
+                              image.x.isFinite, image.y.isFinite, (0...1).contains(image.x), (0...1).contains(image.y),
+                              image.motion?.valid(for:image.pose,accepts:{ (0...1).contains($0["x"]) && (0...1).contains($0["y"]) && (0.03...3).contains($0["width"]) && (0...1).contains($0["opacity"]) }) ?? true, image.width.isFinite, (0.03...3).contains(image.width), image.opacity.isFinite, (0...1).contains(image.opacity) else { throw ProjectError.invalidDocument }
+                    }
+                    for text in clip.texts ?? [] {
+                        guard text.start.isFinite, text.end.isFinite, text.start >= 0, text.end > text.start, text.end <= source.duration + 0.001,
+                              text.playbackClock?.valid != false, text.appearance?.valid != false, text.labelHeadline?.valid != false, text.motion?.valid != false, text.text.count <= 500, text.x.isFinite, text.y.isFinite, (0...1).contains(text.x), (0...1).contains(text.y),
+                              text.size.isFinite, (0.02...0.3).contains(text.size) else { throw ProjectError.invalidDocument }
+                    }
+                    for range in [clip.crop?.activeRange, clip.mirror?.activeRange, clip.stabilization?.activeRange].compactMap({ $0 }) {
+                        guard range.start.isFinite, range.end.isFinite, range.start >= 0, range.end > range.start else { throw ProjectError.invalidDocument }
+                    }
+                    if let stabilization = clip.stabilization {
+                        guard stabilization.version == 1 else { throw ProjectError.invalidDocument }
+                        if let start = stabilization.referenceStart, let end = stabilization.referenceEnd {
+                            guard start.isFinite, end.isFinite, start >= 0, end > start, end <= source.duration + 0.001 else { throw ProjectError.invalidDocument }
+                        } else if stabilization.referenceStart != nil || stabilization.referenceEnd != nil { throw ProjectError.invalidDocument }
+                    }
                 }
             }
             guard state.effects.allSatisfy({ $0.implementationVersion > 0 && $0.amount.isFinite &&
@@ -670,7 +708,7 @@ struct ExportSettings: Codable, Equatable, Sendable {
 }
 
 struct ExportReceipt: Codable, Identifiable {
-    var schemaVersion = 1
+    var schemaVersion = 2
     var id = UUID()
     var createdAt = Date()
     let filename: String
@@ -685,13 +723,20 @@ struct ExportReceipt: Codable, Identifiable {
     var framesPerSecond = 30
     var settings: ExportSettings?
     var codec: ExportSettings.Codec?
-    // Measured from this export's final mix, not whole cached source recordings.
-    // Older exports without a measurement make no claim about audio headroom.
+    // From version 2, the peak is measured only where the edit can raise
+    // levels or mix sounds together. A straight recording needs no scan.
     var audioPeak: Float?
     var audioWarning: String? {
-        guard let peak = audioPeak, peak.isFinite, peak > 1.0001 else { return nil }
-        let excess = max(0.1, ceil(20 * log10(Double(peak)) * 10) / 10)
-        return String(format: "Peaks are %.1f dB above full scale. Lower Volume in the editor and export again.", excess)
+        // A small decode/resample overshoot isn't a useful export warning.
+        guard let peak = audioPeak, peak.isFinite, peak >= Float(pow(10.0, 0.5 / 20)) else { return nil }
+        let excess = 20 * log10(Double(peak))
+        if schemaVersion < 2 {
+            // Old receipts only stored a whole-movie maximum. Attribute it
+            // to the edit only when the entire timeline was potentially boosted.
+            let whole = EditInterval(.zero, edit.timeline.duration)
+            guard edit.timeline.audioLevelCheckRanges(usedSources: sources, backgroundAudio: []) == [whole] else { return nil }
+        }
+        return String(format: "The edited audio peaks %.1f dB above full scale. Lower the volume of the affected clips and export again.", excess)
     }
 }
 
@@ -805,12 +850,16 @@ struct ProjectDisk {
         try eraseDeleted(confirmed.id)
         return true
     }
-    func eraseDeleted(_ id: UUID) throws {
+    func queueForPermanentDeletion(_ id: UUID) throws -> URL {
         let original = deletedRoot.appendingPathComponent(id.uuidString, isDirectory: true)
         let pending = deletedRoot.appendingPathComponent(".purging-" + UUID().uuidString, isDirectory: true)
         // This rename is the permanent-deletion commit. Only confirmed removals
         // enter this queue; a crash after any child unlink can safely resume.
         try FileManager.default.moveItem(at: original, to: pending)
+        return pending
+    }
+    func eraseDeleted(_ id: UUID) throws {
+        let pending = try queueForPermanentDeletion(id)
         try? FileManager.default.removeItem(at: pending)
     }
     func finishPendingDeletions() {

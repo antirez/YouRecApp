@@ -2,6 +2,7 @@ import Foundation
 
 func trackTimelineTests() throws {
     try reviewRegressionTests()
+    try filmstripReuseTests()
     try timelineNavigationTests()
     try transitionPresentationTests()
     try overlapInteractionTests()
@@ -327,7 +328,10 @@ private func placementCropTests() throws {
 
 private func moveCompanionTests() throws {
     let source = SourceMedia(filename: "companions.mov", duration: 18)
-    let clips = (0..<5).map { i in TimelineClip(sourceID: source.id, start: Double(3 * i), end: Double(3 * i + 3)) }
+    let clips = (0..<5).map { (index: Int) -> TimelineClip in
+        let start = Double(index * 3)
+        return TimelineClip(sourceID: source.id, start: start, end: start + 3)
+    }
     var timeline = TrackTimeline(clips: clips)
     let seed = timeline.selection(of: clips[1].id)
     let later = timeline.selection(ids: Set(clips.suffix(2).map(\.id)))
@@ -384,7 +388,10 @@ private func moveCompanionTests() throws {
 
 private func multiSelectionTests() throws {
     let source = SourceMedia(filename: "multi.mp4", duration: 12)
-    let clips = (0..<3).map { TimelineClip(sourceID: source.id, start: Double($0 * 4), end: Double(($0 + 1) * 4)) }
+    let clips = (0..<3).map { (index: Int) -> TimelineClip in
+        let start = Double(index * 4)
+        return TimelineClip(sourceID: source.id, start: start, end: start + 4)
+    }
     let original = TrackTimeline(clips: clips)
     let all = original.entireSelection()
     var chosen = original.selection(of: clips[0].id).ids
@@ -457,6 +464,32 @@ private func multiSelectionTests() throws {
     try require(!plan.needsIntersection, "Horizontal aggregation makes 3 video sections match one equal-length audio section")
     let joinedPartition = try partitioned.joining(plan.selection)
     try require(joinedPartition.timeline.links[0].members.count == 4, "One link can glue differently partitioned AV")
+    func linkLayout(_ timeline: TrackTimeline, moving: TimelineSelection? = nil) -> TimelineLinkLayout {
+        TimelineLinkLayout(lanes: timelineLanes(timeline, moving: moving), links: timeline.links)
+    }
+    let glued = linkLayout(together.timeline), separate = linkLayout(original), pictureOnly = linkLayout(v.timeline)
+    try require(glued.edges[clips[1].id]?.previous == clips[0].id && glued.edges[clips[1].id]?.next == clips[2].id
+        && glued.edges[original.audio[1].id]?.next == original.audio[2].id, "Glued picture and sound share internal cuts")
+    try require(glued.edges.values.allSatisfy(\.outlinedGroup) && separate.edges.values.allSatisfy { !$0.outlinedGroup },
+        "The quiet group outline marks horizontal glue even without a selection")
+    try require(separate.edges[clips[1].id]?.previous == nil && separate.bridges.count == 3
+        && glued.bridges.map(\.interval) == [EditInterval(0...12)], "Only explicitly glued groups share outside borders")
+    try require(pictureOnly.bridges.isEmpty && pictureOnly.edges[clips[1].id]?.next == clips[2].id
+        && pictureOnly.edges[original.audio[1].id] == nil && linkLayout(detached).edges.isEmpty, "Unlinked sound stays independent")
+    let mixed = linkLayout(joinedPartition.timeline)
+    try require(mixed.bridges.map(\.interval) == [EditInterval(0...12)] &&
+        joinedPartition.timeline.video.allSatisfy { mixed.edges[$0.id]?.joinsBelow == true } &&
+        mixed.edges[joinedPartition.timeline.audio[0].id]?.joinsAbove == true, "Unequal partitions outline the same joined span")
+    var gapped = together.timeline
+    gapped.video[2].start = gapped.video[2].start + EditTime(ticks: 1)
+    try require(linkLayout(gapped).edges[clips[1].id]?.next == nil && linkLayout(gapped).edges[clips[2].id]?.joinsBelow == false,
+        "A one-tick gap and unmatched tail never acquire a shared outline")
+    let lifted = linkLayout(together.timeline, moving: TimelineSelection(video: [clips[1].id]))
+    try require(lifted.edges[clips[1].id]?.previous == nil && lifted.edges[clips[1].id]?.joinsBelow == false,
+        "Lifting an item into a separate lane cannot join through an intervening row")
+    let cutEdges = linkLayout(splitGroup)
+    try require(cutEdges.bridges.count == 2 && cutEdges.bridges.allSatisfy { $0.interval.end == EditTime(6) || $0.interval.start == EditTime(6) },
+        "Splitting a group exposes an ordinary cut between the two new groups")
     // Same length is not enough: a shifted audio range requires confirmation.
     var mismatch = TrackTimeline(clips: [TimelineClip(sourceID: source.id, start: 0, end: 8)])
     mismatch.unlink(mismatch.entireSelection())
@@ -510,6 +543,13 @@ private func multiSelectionTests() throws {
     let transitioned = try withTransition.timeline.joining(withTransition.timeline.entireSelection())
     try require(transitioned.timeline.transitions == withTransition.timeline.transitions && transitioned.timeline.video == withTransition.timeline.video, "Sequential parts joined by an explicit transition can be glued without losing its handles")
     try transitioned.timeline.validate(sources: [source])
+    let folded = linkLayout(transitioned.timeline)
+    try require(folded.edges[clips[0].id]?.next == clips[1].id && folded.bridges.count == 1,
+        "A real transition keeps its folded visual join and shared picture/sound outline")
+    let soundOnly = linkLayout(a.timeline)
+    try require(soundOnly.bridges.isEmpty && soundOnly.edges[detached.audio[1].id]?.previous == detached.audio[0].id
+        && soundOnly.edges[clips[1].id] == nil, "Joined audio gets a seam without attaching the picture above")
+
     var transitionIntersection = withTransition.timeline
     transitionIntersection.unlink(transitionIntersection.entireSelection())
     // A detached sound ending inside the crossfade must not make Link split
@@ -536,7 +576,10 @@ private func multiSelectionTests() throws {
 /// overwrite edit, and every intersecting item must remain visible/hit-testable.
 private func overlapInteractionTests() throws {
     let source = SourceMedia(filename: "source.mp4", duration: 12)
-    let clips = (0..<3).map { TimelineClip(sourceID: source.id, start: Double($0 * 4), end: Double(($0 + 1) * 4)) }
+    let clips = (0..<3).map { (index: Int) -> TimelineClip in
+        let start = Double(index * 4)
+        return TimelineClip(sourceID: source.id, start: start, end: start + 4)
+    }
     let original = TrackTimeline(clips: clips)
     func lanesAreDisjoint(_ timeline: TrackTimeline) throws {
         let lanes = timelineLanes(timeline)
@@ -809,7 +852,10 @@ func timelineNavigationTests() throws {
 
 private func reviewRegressionTests() throws {
     let source = SourceMedia(filename: "source.mp4", duration: 20)
-    let clips = (0..<3).map { TimelineClip(sourceID: source.id, start: Double($0 * 4), end: Double(($0 + 1) * 4)) }
+    let clips = (0..<3).map { (index: Int) -> TimelineClip in
+        let start = Double(index * 4)
+        return TimelineClip(sourceID: source.id, start: start, end: start + 4)
+    }
     var overlapped = TrackTimeline(clips: clips)
     overlapped.move(overlapped.selection(of: clips[1].id), by: EditTime(-3))
     var fast = EditState(timeline: overlapped)
@@ -974,4 +1020,80 @@ private func reviewRegressionTests() throws {
         try require(extended.audio[0].enhancements[0].interval == EditInterval(left ? 1.5...6.1 : 0.5...5.1), "Extend keeps the enhancement span exact")
     }
     print("PASS: review regressions for overlap retiming, linked/reordered transitions, retained range selection, effect navigation and interval mute")
+}
+
+private func filmstripReuseTests() throws {
+    let source = UUID(), clip = TimelineClip(sourceID: source, start: 0, end: 30)
+    var edit = EditState(clips: [clip])
+    func key(_ edit: EditState, _ t: Double, lane: Int = 0) -> String {
+        FilmstripPlan(edit.timeline).sample(lane: edit.timeline.video[lane].id, at: EditTime(t), generation: UUID()).key
+    }
+    let unchanged = key(edit, 14)
+    edit.timeline.video[0].content.colorRegions = [ColorRegion(start: 10, end: 20, grade: ColorSettings(look: .mono))]
+    let grade = key(edit, 14)
+    try require(grade != unchanged && key(edit, 4) == key(EditState(clips: [clip]), 4), "Only LUT frames get a new render identity")
+    let split = TimelineEditing.split(edit, at: 12)
+    try require(key(split, 14, lane: 1) == grade, "Split IDs do not discard graded source frames")
+    let rippled = TimelineEditing.removing(4...8, from: edit)
+    try require(key(rippled, 10, lane: 1) == grade, "A ripple carries the look and exact source frame to its new position")
+    var stacked = edit
+    stacked.timeline.video.append(VideoTimelineItem(occurrenceID: UUID(), start: EditTime(12),
+        content: TimelineClip(sourceID: UUID(), start: 0, end: 5), layer: 2))
+    let composite = key(stacked, 14)
+    try require(composite != grade && composite == key(stacked, 14, lane: 1), "Both overlapping lanes share the exact same composite")
+    let stackedSplit = TimelineEditing.split(stacked, at: 4)
+    try require(key(stackedSplit, 14, lane: 1) == composite, "A cut outside the overlap preserves its composite")
+    let top = stacked.timeline.video[1].id
+    var placement = VideoPlacement(); placement.width = 0.5
+    stacked.timeline.placements = [VideoPlacementRegion(participants: Set(stacked.timeline.video.map(\.id)), videos: [top: placement])]
+    try require(key(stacked, 14) != composite, "Changing Placement redraws that overlap")
+    try require(key(stacked, 4) == key(edit, 4), "An overlap elsewhere leaves plain frames reusable")
+    var captioned = edit
+    captioned.timeline.installSubtitles([SubtitleWord(text: "Speaking", start: 13, end: 15)], range: 13...15, language: "Auto")
+    let caption = key(captioned, 14)
+    let shifted = TimelineEditing.removing(4...8, from: captioned)
+    try require(caption != grade && key(shifted, 10, lane: 1) == caption, "A caption stays attached to the picture through a ripple")
+    let cue = captioned.timeline.subtitleCues[0]
+    captioned.timeline.correctSubtitle(cue, text: "Corrected")
+    try require(key(captioned, 14) != caption && key(captioned, 4) == key(edit, 4), "A caption correction only affects captioned tiles")
+    var refined = edit
+    refined.timeline.video[0].content.videoEffects = [VideoEffectSettings(.autoBackground, start: 10, end: 20)]
+    try require(key(refined, 14) != key(refined, 14), "A refined matte must not inherit the provisional render")
+    try require(key(refined, 4) == key(edit, 4), "A matte in another part of the clip must not invalidate this frame")
+    refined.timeline.video[0].content.stabilization = StabilizationSettings(level: .strong, activeRange: SourceInterval(start: 2, end: 6))
+    try require(key(refined, 4) != key(refined, 4) && key(refined, 24) == key(edit, 24), "Only the stabilized interval needs a refined picture")
+    let grid = FilmstripGrid(tileWidth: 120, pointsPerSecond: 30, fps: 30)
+    try require(grid.sample(start: 1.01, end: 1.02, center: true, duration: 30) == EditTime(1), "A sub-frame tile never samples the clip after it")
+    let edges = (1..<1000).map { Double($0) / 100 }
+    let bounded = grid.boundaries(from: 0, to: 10, edges: edges[...], pointsPerSecond: 12)
+    try require(bounded.first == 0 && bounded.last == 10 && bounded.count <= 11, "Tiny effects cannot queue hundreds of decodes in one tile")
+    var fractional = EditState(clips: [TimelineClip(sourceID: source, start: 0, end: 3.000003)])
+    let before = key(fractional, 1)
+    fractional.timeline.video[0].content.colorRegions = [ColorRegion(start: 1, end: 2, grade: ColorSettings(look: .mono))]
+    try require(key(fractional, 1) != before && key(fractional, 2) == key(EditState(clips: [clip]), 2), "The LUT uses the compositor's source clock at both edges")
+    let right = split.timeline.video[1]
+    try require(grid.slot(at: 15, origin: (right.start - right.localOrigin).seconds) == grid.slot(at: 15, origin: 0),
+                "Splitting preserves the thumbnail grid inside the right piece")
+
+    let clips = (0..<120).map { index in
+        var clip = TimelineClip(sourceID: UUID(), start: 10, end: 20)
+        if index.isMultiple(of: 4) { clip.color = ColorSettings(look: .mono) }
+        return clip
+    }
+    let long = EditState(clips: clips)
+    let original = FilmstripPlan(long.timeline)
+    let short = TimelineEditing.removing(365...370, from: long)
+    let after = FilmstripPlan(short.timeline, reusing: original)
+    var matches = 0
+    for item in long.timeline.video {
+        for offset in [1.0, 5.0, 9.0] {
+            let t = item.start + EditTime(offset)
+            guard t < EditTime(365) || t >= EditTime(370) else { continue }
+            let shifted = t < EditTime(365) ? t : t - EditTime(5)
+            let a = original.sample(lane: item.id, at: t, generation: UUID())
+            let b = after.sample(lane: item.id, at: shifted, generation: UUID())
+            if a.key == b.key { matches += 1 }
+        }
+    }
+    try require(matches == 358, "A ripple in a 20-minute timeline preserves every surviving sampled thumbnail")
 }

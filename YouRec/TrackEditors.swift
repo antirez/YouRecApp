@@ -32,13 +32,15 @@ struct FullEditorPreview: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            PlayerSurface(player: editor.player, inspectionZoom: true, onPlaybackTap: { editor.togglePlay(); scheduleControls() }, identifier: "fullPreview.preview")
+            EditorFramePreview(player: editor.player, identifier: "fullPreview.preview") {
+                editor.togglePlay(); scheduleControls()
+            }
             if controls {
                 VStack {
                     HStack {
                         Menu { ForEach([1.0, 1.5, 2, 2.5, 3], id: \.self) { speed in Button("\(speed.formatted())×") { editor.setPlaybackSpeed(speed) } } } label: { Text("\(editor.playbackSpeed.formatted())×").frame(width: 52, height: 44) }
                         Spacer()
-                        Button("Done", action: close).frame(minWidth: 60, minHeight: 44)
+                        Button("Done", action: close).editorDecisionButton(primary: true).frame(minWidth: 60, minHeight: 44)
                     }.padding(.horizontal).background(.black.opacity(0.55))
                     Spacer()
                     VStack(spacing: 4) {
@@ -159,6 +161,9 @@ struct AudioToolEditor: View {
     let cancel: () -> Void
     let apply: (EditState) -> Void
     @StateObject private var preview = EditorController()
+    @StateObject private var trimPreview = RangeFramePreview()
+    @State private var timing: EditorRangeTiming
+    @State private var trimFrame: Double?
     @State private var effects: [AudioEffect]
     @State private var volume: Double
     @State private var volumeChosen = false
@@ -189,6 +194,9 @@ struct AudioToolEditor: View {
     init(project: Project, folder: URL, request: ToolRequest, position: Double, initialPlayer: AVPlayer? = nil, cancel: @escaping () -> Void, apply: @escaping (EditState) -> Void) {
         self.project = project; self.folder = folder; self.request = request; self.position = position; self.initialPlayer = initialPlayer; self.cancel = cancel; self.apply = apply
         var targets = request.targets ?? project.edit.timeline.entireSelection(range: EditInterval(request.range)); targets.video = []
+        let audioIntervals = project.edit.timeline.audio.filter { targets.audio.contains($0.id) }.map(\.interval)
+        let bounds = (audioIntervals.map(\.start).min()?.seconds ?? request.range.lowerBound)...(audioIntervals.map(\.end).max()?.seconds ?? request.range.upperBound)
+        _timing = State(initialValue: EditorRangeTiming(range: request.range, bounds: bounds))
         if request.tool == .volume {
             let scoped = project.edit.timeline.scoped(targets)
             var state = project.edit; state.timeline = scoped.timeline
@@ -210,7 +218,7 @@ struct AudioToolEditor: View {
         }
         fadeTargets = endpoints
         let items = base.timeline.audio.filter { selectionIDs.contains($0.id) }
-        let chains = items.flatMap { item in item.enhancements.filter { region in targets.range.map { $0.intersection(EditInterval(item.start + region.interval.start, item.start + region.interval.end)) != nil } ?? true }.map(\.effects) }
+        let chains = items.flatMap { item in item.enhancements.filter { region in (request.effectID == nil || region.id == request.effectID) && (targets.range.map { $0.intersection(EditInterval(item.start + region.interval.start, item.start + region.interval.end)) != nil } ?? true) }.map(\.effects) }
         _effects = State(initialValue: chains.first ?? [])
         mixedVolume = AudioGainGrid.common(items) == nil
         volumeBounds = (items.map(\.volumeDB).min() ?? 0)...(items.map(\.volumeDB).max() ?? 0)
@@ -229,11 +237,16 @@ struct AudioToolEditor: View {
                 if let target = fadeTargets[edge] { state.timeline.audio[target.index].setFade(edge, seconds: seconds) }
             }
         }
-        else { state.timeline.enhance(bypassed ? [] : effects, selection: target, effectID: request.effectID ?? enhancementID) }
+        else {
+            if request.effectID != nil && timing.range != request.range { state = state.removingTool(request) }
+            var selection = target
+            selection.range = EditInterval(timing.range)
+            state.timeline.enhance(bypassed ? [] : effects, selection: selection, effectID: request.effectID ?? enhancementID)
+        }
         return state
     }
     private var listeningRange: ClosedRange<Double> {
-        if request.tool == .enhanceAudio { return AudioPreviewWindow.listeningRange(at: position, selection: request.range) }
+        if request.tool == .enhanceAudio { return AudioPreviewWindow.listeningRange(at: trimFrame ?? position, selection: timing.range) }
         if let edge = listeningEdge, let target = fadeTargets[edge] {
             let item = base.timeline.audio[target.index], length = (fadeEdits[edge] ?? item.fadeSeconds(edge)) + 1
             return edge == .fadeIn ? item.start.seconds...min(item.end.seconds, item.start.seconds + length)
@@ -241,7 +254,7 @@ struct AudioToolEditor: View {
         }
         return request.range
     }
-    private var displayedPosition: Double { loadedPreview ? preview.playhead : min(listeningRange.upperBound, max(listeningRange.lowerBound, position)) }
+    private var displayedPosition: Double { loadedPreview && !dirty ? preview.playhead : trimFrame ?? min(listeningRange.upperBound, max(listeningRange.lowerBound, position)) }
     var body: some View {
         NavigationStack {
             GeometryReader { geometry in
@@ -249,7 +262,7 @@ struct AudioToolEditor: View {
                 let layout = compact ? AnyLayout(HStackLayout(spacing: 0)) : AnyLayout(VStackLayout(spacing: 0))
                 layout {
                     VStack(spacing: 4) {
-                        PlayerSurface(player: loadedPreview ? preview.player : initialPlayer ?? preview.player, inspectionZoom: true, onPlaybackTap: playPreview).frame(minHeight: 120)
+                        PlayerSurface(player: trimFrame != nil && dirty ? trimPreview.player : loadedPreview ? preview.player : initialPlayer ?? preview.player, inspectionZoom: true, onPlaybackTap: playPreview).frame(minHeight: 120)
                         HStack {
                             Text(editorTime(max(0,displayedPosition-listeningRange.lowerBound))+" / "+editorTime(listeningRange.upperBound-listeningRange.lowerBound)).font(.caption.monospacedDigit()).accessibilityIdentifier("audioTool.position").accessibilityValue(String(format:"%.2f to %.2f; at %.2f",listeningRange.lowerBound,listeningRange.upperBound,displayedPosition)); Spacer()
                             if request.tool == .enhanceAudio {
@@ -258,9 +271,10 @@ struct AudioToolEditor: View {
                             Button(action: playPreview) { Label(preparing && request.tool == .enhanceAudio ? "Cancel preview" : preview.playing ? "Pause" : "Play preview", systemImage: preparing && request.tool == .enhanceAudio ? "xmark" : preview.playing ? "pause.fill" : "play.fill").frame(minHeight: 44) }.disabled(preparing && request.tool == .volume)
                         }.padding(.horizontal, 12)
                     }.frame(maxWidth: .infinity, maxHeight: .infinity)
-                    ScrollView {
+                    DurationInspectorScroll {
                         VStack(alignment: .leading, spacing: request.tool == .volume ? 10 : 16) {
-                            Text(request.scopeTitle).font(.subheadline.weight(.semibold)).accessibilityIdentifier("audioTool.scope")
+                            Text(request.tool == .enhanceAudio && timing.range != request.range ? "Selected audio · " + editorTime(timing.range.lowerBound) + "–" + editorTime(timing.range.upperBound) : request.scopeTitle)
+                                .font(.subheadline.weight(.semibold)).accessibilityIdentifier("audioTool.scope")
                             #if DEBUG
                             if CommandLine.arguments.contains("--gain-preview-probe") {
                                 TimelineView(.periodic(from: .now, by: 0.2)) { _ in
@@ -308,6 +322,14 @@ struct AudioToolEditor: View {
                                 }
                             } else {
                                 if mixed { Text("This selection contains different chains. Apply replaces them only in this selection.").font(.caption).foregroundStyle(.secondary) }
+                                let width = compact ? geometry.size.width * 0.55 : geometry.size.width
+                                if request.scopedEffect == nil { EditorRangeDuration(timing: timing, width: width - 32, name: "Enhance audio", identifier: "enhance") { edge, time, _ in
+                                    invalidatePreview()
+                                    timing.set(edge, to: time)
+                                    let frame = timing.previewTime(for: edge)
+                                    trimFrame = frame; originalEnergies = nil
+                                    trimPreview.show(frame, from: initialPlayer?.currentItem)
+                                } }
                                 Menu { ForEach(EffectKind.allCases) { kind in Button(kind.title) { changeEffects(effects + [.make(kind)]) } } } label: { Label("Add filter", systemImage: "plus").frame(minHeight: 44) }
                                 AudioChainControls(effects: effects, busy: false, compact: compact, change: changeEffects)
                                 Text("Play previews up to 5 seconds before and after your playhead, within this selection. Apply uses the full selection.").font(.caption).foregroundStyle(.secondary)
@@ -340,9 +362,7 @@ struct AudioToolEditor: View {
                     }.disabled(target.audio.isEmpty) }
                     if request.tool == .enhanceAudio {
                         ToolbarItem(placement: .bottomBar) { Button("Remove", role: .destructive) {
-                            var edited = base
-                            edited.timeline.enhance([], selection: target)
-                            apply(edited)
+                            apply(request.effectID == nil ? state(bypassed: true) : base.removingTool(request))
                         } }
                     }
                 }
@@ -400,14 +420,14 @@ struct AudioToolEditor: View {
         let anchor = request.tool == .enhanceAudio || listeningEdge != nil ? range.lowerBound : loadedPreview ? preview.playhead : position
         preview.pause(); preview.previewRange = range
         preview.seekAfterEdit(min(range.upperBound, max(range.lowerBound, anchor)), duration: base.duration)
-        var candidate = project; candidate.history = [state(bypassed: bypass)]; candidate.historyCursor = 0
+        var candidate = project; candidate.history = [request.previewState(state(bypassed: bypass), in: project.edit)]; candidate.historyCursor = 0
         await preview.load(candidate, folder: folder, includeTimelineDetails: false, audioPreviewRange: request.tool == .enhanceAudio ? range : nil)
         guard !Task.isCancelled, token == revision, preview.error == nil else { return }
         do {
             if request.tool == .enhanceAudio {
                 if !bypass && effects.contains(where: \.enabled) && AudioPreviewLevels.allowsMatching(effects), let item = preview.player.currentItem {
                     if originalEnergies == nil {
-                        var original = project; original.history = [state(bypassed: true)]; original.historyCursor = 0
+                        var original = project; original.history = [request.previewState(state(bypassed: true), in: project.edit)]; original.historyCursor = 0
                         let prepared = try await SourceMediaCache.shared.prepared(project: original, folder: folder, effectPreparation: .cached, audioPreviewRange: range) { _ in }
                         originalEnergies = try await AudioPreviewLevels.energies(asset: prepared.media.composition, mix: prepared.media.audioMix, range: range)
                     }
@@ -927,7 +947,7 @@ private final class PlacementCropHandleView: UIView {
     private var elements: [PlacementCropEdge: CropEdgeAccessibilityElement] = [:]
     override init(frame: CGRect) {
         super.init(frame: frame); backgroundColor = .clear; isAccessibilityElement = false
-        let pan = PlacementEdgePanRecognizer(target: self, action: #selector(panned(_:)))
+        let pan = TouchDownPanRecognizer(target: self, action: #selector(panned(_:)))
         pan.maximumNumberOfTouches = 1; addGestureRecognizer(pan)
         for edge in PlacementCropEdge.allCases {
             let element = CropEdgeAccessibilityElement(accessibilityContainer: self)
@@ -977,7 +997,7 @@ private final class PlacementCropHandleView: UIView {
             element.accessibilityValue = "\(Int(((value?.edgeCrop ?? PlacementEdgeCrop())[edge] * 100).rounded()))% cropped"
         }
     }
-    @objc private func panned(_ gesture: PlacementEdgePanRecognizer) {
+    @objc private func panned(_ gesture: TouchDownPanRecognizer) {
         guard let touchDown = gesture.touchDown else { return }
         let location = gesture.location(in: self)
         let translation = CGPoint(x: location.x - touchDown.x, y: location.y - touchDown.y)
@@ -1014,10 +1034,8 @@ private final class PlacementCropHandleView: UIView {
         }
     }
 }
-/// UIKit's pan translation excludes the recognition slop on some OS versions.
-/// Keep the real touch-down location so an edge tracks the finger exactly,
-/// including when its narrow inward hit target is crossed before recognition.
-private final class PlacementEdgePanRecognizer: UIPanGestureRecognizer {
+/// Keep the initial touch in view coordinates, including the motion before UIKit recognizes a pan.
+final class TouchDownPanRecognizer: UIPanGestureRecognizer {
     private(set) var touchDown: CGPoint?
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
         if touchDown == nil, let touch = touches.first { touchDown = touch.location(in: view) }

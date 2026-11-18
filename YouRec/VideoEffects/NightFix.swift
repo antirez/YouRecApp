@@ -338,7 +338,7 @@ final class NightFixPicture {
     private var readers:[URL:VideoEffectSourceReader]=[:]
     func render(_ raw:CIImage,instruction:VideoToolInstruction,time:Double)throws->CIImage {
         guard instruction.videoEffectsEnabled else {return raw}
-        let effects=instruction.effectSettings.filter {$0.kind == .nightFix && $0.isActive(at:time)}
+        let effects=instruction.effects(at: time).filter {$0.kind == .nightFix && $0.isActive(at:time)}
         guard let effect=effects.first else {return raw}
         if gpu==nil {gpu=try NightFixGPU()}
         let fused:CIImage

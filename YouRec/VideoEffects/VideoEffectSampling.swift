@@ -87,14 +87,34 @@ actor VideoEffectFrameAnalysis {
 // Pauses and split points cannot reset the source-domain phase.
 struct VideoEffectSequenceClock {
     let lower:Double,upper:Double
-    let cadence:VideoEffectCadenceClock
+    private let cadence:VideoEffectCadenceClock
+    private let scopedCadences: [(end: Double, clock: VideoEffectCadenceClock)]
     init(_ clip:TimelineClip) {
         lower=clip.start;upper=clip.end
         var extended=clip;extended.pauses=nil
         let effects=(clip.videoEffects ?? []).filter {$0.enabled && [.superEight,.undercranking].contains($0.kind)}
         extended.start=min(clip.start,effects.map(\.start).min() ?? clip.start)
         extended.end=max(clip.end,effects.map(\.end).max() ?? clip.end)
-        cadence=VideoEffectCadenceClock(effects:effects,rates:extended.effectPlaybackSpans.map {($0.start,$0.end,$0.rate)})
+        let rates = extended.effectPlaybackSpans.map { ($0.start, $0.end, $0.rate) }
+        cadence=VideoEffectCadenceClock(effects:effects,rates:rates)
+        let windows = clip.effectWindows?.filter { id, _ in effects.contains { $0.id == id } } ?? [:]
+        if windows.isEmpty { scopedCadences = []; return }
+        let edges = Set(windows.values.joined().flatMap { [$0.start, $0.end] }.filter { $0 > clip.start && $0 < clip.end }).sorted()
+        let bounds = [clip.start] + edges + [clip.end]
+        scopedCadences = zip(bounds, bounds.dropFirst()).map { a, b in
+            let visible = effects.filter { effect in windows[effect.id]?.contains { $0.contains((a + b) / 2) } ?? true }
+            // Keep the original phase on both sides of a hole in the look.
+            return (b, VideoEffectCadenceClock(effects: visible, rates: rates))
+        }
+    }
+    func hold(at sourceTime: Double) -> VideoEffectCadenceClock.Hold? {
+        guard !scopedCadences.isEmpty else { return cadence.hold(at: sourceTime) }
+        var low = 0, high = scopedCadences.count
+        while low < high {
+            let mid = (low + high) / 2
+            if scopedCadences[mid].end <= sourceTime { low = mid + 1 } else { high = mid }
+        }
+        return low < scopedCadences.count ? scopedCadences[low].clock.hold(at: sourceTime) : nil
     }
 }
 
@@ -107,7 +127,7 @@ struct VideoEffectSamplePlan {
         if let frozen = clip.frozenFrame { return VideoEffectSamplePlan(times: [frozen.sourceTime], smear: 0) }
         let effects = (clip.videoEffects ?? []).filter { $0.enabled && sourceTime >= $0.start && sourceTime < $0.end }
         var sample = sourceTime, changed = false
-        if let hold=clock.cadence.hold(at:sourceTime) {
+        if let hold=clock.hold(at:sourceTime) {
             sample=hold.boundary
             changed=true
         }

@@ -155,12 +155,72 @@ enum AudioGainMix {
     }
 }
 
+extension TrackTimeline {
+    /// Only measure places where the edit can increase the original level.
+    /// A cut, fade, muted part or picture-only edit cannot do that on its own.
+    func audioLevelCheckRanges(usedSources: [SourceMedia], backgroundAudio: [EditInterval]) -> [EditInterval] {
+        let stills = Set(usedSources.filter { $0.isStillPhoto == true }.map(\.id))
+        var sounding = backgroundAudio, check: [EditInterval] = []
+        for item in audio where !item.muted && !stills.contains(item.sourceID) {
+            var time = item.start
+            for run in item.mapping.runs {
+                let end = time + run.duration
+                defer { time = end }
+                guard !run.silent, !run.isHold, end > time else { continue }
+                let span = EditInterval(time, end)
+                sounding.append(span)
+                if item.volumeDB > 0 || abs(EditTime(run.sourceEnd - run.sourceStart).ticks - run.duration.ticks) > 1 {
+                    check.append(span)
+                }
+                for region in item.enhancements where region.effects.contains(where: \.canRaisePeak) {
+                    let active = EditInterval(item.start + region.interval.start, item.start + region.interval.end)
+                    if let part = active.intersection(span) { check.append(part) }
+                }
+            }
+        }
+        var lastEnd = EditTime.zero
+        for span in sounding.sorted(by: { $0.start < $1.start }) {
+            if span.start < lastEnd { check.append(EditInterval(span.start, min(span.end, lastEnd))) }
+            lastEnd = max(lastEnd, span.end)
+        }
+        return Self.union(check)
+    }
+}
+
+private extension AudioEffect {
+    var canRaisePeak: Bool {
+        guard enabled else { return false }
+        switch kind {
+        case .gain: return amount > 0
+        case .equalizer, .voiceIsolation, .studioVoice, .studioRestoration: return amount != 0
+        case .highPass, .unavailable: return true
+        }
+    }
+}
+
 enum ExportAudioLevel {
+    /// The background builder registered these envelopes only for sound it
+    /// actually inserted, including changes of media or sound at keyframes.
+    static func checkRanges(project: Project, mix: AVAudioMix?) -> [EditInterval] {
+        let background = (mix?.inputParameters ?? []).flatMap { parameter in
+            (AudioGainMix.envelopes(parameter) ?? []).filter { $0.owner == nil }.map { EditInterval(EditTime($0.start), EditTime($0.end)) }
+        }
+        return project.edit.timeline.audioLevelCheckRanges(usedSources: project.sources, backgroundAudio: background)
+    }
     /// Measure the final project mix, before lossy encoding: selected source
     /// ranges, enhancement regions, mute/gain, transitions and summed overlaps.
-    /// Cached source peaks cannot describe this signal. Read in bounded chunks;
-    /// don't write another temporary audio file or retain a whole recording.
-    static func peak(asset: AVAsset, mix: AVAudioMix?, duration: Double, progress: @escaping @Sendable (Double) -> Void = { _ in }) async throws -> Float {
+    /// A single continuous read preserves filter and time-pitch history. Ignore
+    /// samples outside the requested ranges, including peaks elsewhere in the take.
+    static func peak(asset: AVAsset, mix: AVAudioMix?, duration: Double, ranges: [EditInterval]? = nil,
+                     progress: @escaping @Sendable (Double) -> Void = { _ in }) async throws -> Float {
+        let sampleRate: Int64 = 48_000
+        func firstFrame(_ time: EditTime) -> Int64 {
+            (time.ticks * sampleRate + EditTime.scale - 1) / EditTime.scale
+        }
+        let whole = EditInterval(.zero, EditTime(duration))
+        let spans = TrackTimeline.union((ranges ?? [whole]).compactMap { $0.intersection(whole) })
+            .map { firstFrame($0.start)..<firstFrame($0.end) }
+        guard !spans.isEmpty else { progress(1); return 0 }
         let tracks = try await asset.loadTracks(withMediaType: .audio)
         guard !tracks.isEmpty, duration > 0 else { progress(1); return 0 }
         let reader = try AVAssetReader(asset: asset)
@@ -173,25 +233,39 @@ enum ExportAudioLevel {
         reader.timeRange = CMTimeRange(start: .zero, duration: CMTime(seconds: duration, preferredTimescale: 48_000))
         guard reader.startReading() else { throw reader.error ?? ProjectError.invalidMedia }
         defer { reader.cancelReading() }
-        var peak: Float = 0, samples = [Float](), reported = 0.0
+        var peak: Float = 0, samples = [Float](), reported = 0.0, spanIndex = 0
         while let buffer = output.copyNextSampleBuffer() {
             try Task.checkCancellation()
             if CMSampleBufferGetNumSamples(buffer) == 0 { continue }
+            let pts = buffer.presentationTimeStamp
+            guard pts.isNumeric else { throw ProjectError.invalidMedia }
+            let first = CMTimeConvertScale(pts, timescale: CMTimeScale(sampleRate), method: .roundHalfAwayFromZero).value
+            let end = first + Int64(CMSampleBufferGetNumSamples(buffer))
+            while spanIndex < spans.count && spans[spanIndex].upperBound <= first { spanIndex += 1 }
+            if spanIndex == spans.count { break }
+            let current = min(1, max(0, pts.seconds / duration))
+            if current - reported >= 0.02 { reported = current; progress(current) }
+            if spans[spanIndex].lowerBound >= end { continue }
             guard let block = CMSampleBufferGetDataBuffer(buffer) else { throw ProjectError.invalidMedia }
             let size = CMBlockBufferGetDataLength(block)
-            guard size % MemoryLayout<Float>.size == 0 else { throw ProjectError.invalidMedia }
+            guard size == Int(end - first) * 2 * MemoryLayout<Float>.size else { throw ProjectError.invalidMedia }
             samples = Array(repeating: 0, count: size / MemoryLayout<Float>.size)
             let status = samples.withUnsafeMutableBytes { CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: size, destination: $0.baseAddress!) }
             guard status == noErr else { throw ProjectError.invalidMedia }
-            for sample in samples {
-                guard sample.isFinite else { throw ProjectError.invalidMedia }
-                peak = max(peak, abs(sample))
+            while spanIndex < spans.count, spans[spanIndex].lowerBound < end {
+                let span = spans[spanIndex]
+                let lo = Int(max(span.lowerBound, first) - first) * 2
+                let hi = Int(min(span.upperBound, end) - first) * 2
+                for sample in samples[lo..<hi] {
+                    guard sample.isFinite else { throw ProjectError.invalidMedia }
+                    peak = max(peak, abs(sample))
+                }
+                if span.upperBound > end { break }
+                spanIndex += 1
             }
-            let current = min(1, max(0, buffer.presentationTimeStamp.seconds / duration))
-            if current - reported >= 0.02 { reported = current; progress(current) }
         }
         try Task.checkCancellation()
-        guard reader.status == .completed else { throw reader.error ?? ProjectError.invalidMedia }
+        guard reader.status == .completed || (spanIndex == spans.count && reader.status == .reading) else { throw reader.error ?? ProjectError.invalidMedia }
         progress(1); return peak
     }
 }

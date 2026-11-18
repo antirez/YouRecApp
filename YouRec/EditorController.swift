@@ -8,9 +8,53 @@ struct SourceThumbnail {
     let image: UIImage
 }
 
+extension AVPlayerItem {
+    /// A timeline boundary can equal the exclusive out point. Its picture is
+    /// the last included sample, or the last output frame of a composition.
+    func pictureTime(at time: CMTime, before end: CMTime) -> CMTime {
+        let lastInstant = end - CMTime(value: 1, timescale: max(60_000, end.timescale))
+        let instant = max(.zero, min(time, lastInstant))
+        guard let step = videoComposition?.frameDuration, step.isNumeric, step.value > 0 else { return instant }
+        let ticks = instant.convertScale(step.timescale, method: .roundTowardNegativeInfinity).value
+        return CMTime(value: ticks - ticks % step.value, timescale: step.timescale)
+    }
+}
+
+private extension AVComposition {
+    /// Native playback has no fixed output frame rate. Locate the source
+    /// sample covering the out point, accounting for trim, retiming, movie
+    /// edit lists, and audio packets that extend past the last video sample.
+    func lastSourcePicture(at probe: CMTime) async -> CMTime {
+        guard let video = try? await loadTracks(withMediaType: .video).first,
+              let segment = try? await video.loadSegment(forTrackTime: probe) as? AVCompositionTrackSegment,
+              !segment.isEmpty, let url = segment.sourceURL else { return probe }
+        let edit = segment.timeMapping
+        guard edit.target.containsTime(probe),
+              let track = try? await AVURLAsset(url: url).loadTrack(withTrackID: segment.sourceTrackID),
+              let available = try? await track.load(.timeRange) else { return probe }
+        let tick = CMTime(value: 1, timescale: max(60_000, available.end.timescale))
+        let requested = CMTimeMapTimeFromRangeToRange(probe, fromRange: edit.target, toRange: edit.source)
+        let inside = min(requested, available.end - tick)
+        guard available.containsTime(inside), inside >= edit.source.start else { return probe }
+        var sourceTime = inside
+        if let fileEdit = try? await track.loadSegment(forTrackTime: inside), !fileEdit.isEmpty {
+            let file = fileEdit.timeMapping
+            let pts = CMTimeMapTimeFromRangeToRange(inside, fromRange: file.target, toRange: file.source)
+            if let sample = track.makeSampleCursor(presentationTimeStamp: pts) {
+                let start = CMTimeMapTimeFromRangeToRange(sample.presentationTimeStamp, fromRange: file.source, toRange: file.target)
+                if start.isNumeric { sourceTime = min(inside, max(edit.source.start, file.target.start, start)) }
+            }
+        }
+        return CMTimeMapTimeFromRangeToRange(sourceTime, fromRange: edit.source, toRange: edit.target)
+    }
+}
+
 @MainActor
 final class EditorController: ObservableObject {
-    let player = AVPlayer()
+    private(set) var player = AVPlayer()
+    /// A replacement player for a cut may have frame zero ready before the
+    /// seek to the editing position has rendered. Nil is ordinary playback.
+    @Published private(set) var cutFrameReady: Bool?
     // Inspector-only bounds. The main editor leaves these nil.
     var previewRange:ClosedRange<Double>? {didSet {boundPreview(player.currentItem)}}
     private var playbackRange:ClosedRange<Double> {
@@ -51,6 +95,15 @@ final class EditorController: ObservableObject {
     @Published var playbackSpeed = 1.0
     @Published var playing = false {didSet {if !playing {installPreparedEffects()}}}
     @Published var loading = false {didSet {if !loading {installPreparedEffects()}}}
+    private struct CutRefresh {
+        let revision: Date
+        let canScrubPreviousItem: Bool
+    }
+    @Published private var cutRefresh: CutRefresh?
+    // Weak identity follows Undo branches without retaining discarded edits.
+    private let cutSteps = NSHashTable<EditSnapshot>(options: [.weakMemory, .objectPointerPersonality])
+    var editingBlocked: Bool { loading && cutRefresh == nil }
+    private var updatingCutPreview: Bool { cutRefresh != nil }
     @Published var loadingLabel = "Preparing preview"
     @Published var nightProgress=0.0
     @Published var preparingNightFix=false
@@ -121,7 +174,8 @@ final class EditorController: ObservableObject {
         effectJob?.cancel(); effectJob = nil; preparedEffects = nil
         refiningEffects = false; accurateEffectsReady = false; preparingNightFix = false; effectRefinementError = nil
         application = nil; applicationPaused = false; preparingStabilization = false; endApplicationTime()
-        loadedEdit = nil; loading = false; videoProgress = nil
+        if cutRefresh == nil { loadedEdit = nil }
+        loading = false; videoProgress = nil
     }
     private var applicationTime: UIBackgroundTaskIdentifier = .invalid
     private var crossedBackground = false
@@ -195,6 +249,8 @@ final class EditorController: ObservableObject {
     private let awakeReason = "editor-" + UUID().uuidString
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
     private var pendingSeek: (CMTime, Bool)?
+    private var lastPicture: (end: CMTime, time: CMTime)?
+    private var findingLastPicture: Task<Void, Never>?
     private var itemStatus: NSKeyValueObservation?
     private var auditionReturn = 0.0
     private var cacheLease: SourceCacheLease?
@@ -204,20 +260,31 @@ final class EditorController: ObservableObject {
     init() {
         playbackFailure = NotificationCenter.default.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: nil, queue: .main) { [weak self] note in
             Task { @MainActor in
-                guard let self, let item = note.object as? AVPlayerItem, item === self.player.currentItem else { return }
+                guard let self, !self.updatingCutPreview, let item = note.object as? AVPlayerItem, item === self.player.currentItem else { return }
                 self.pause()
                 self.error = "The video preview could not be displayed. " + ((note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error)?.localizedDescription ?? "Please reopen the project.")
             }
         }
         playbackEnded = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: nil, queue: .main) { [weak self] note in
             Task { @MainActor in
-                guard let self, let item = note.object as? AVPlayerItem, item === self.player.currentItem else { return }
-                self.pause(); self.restoreAudition()
+                guard let self, !self.updatingCutPreview, let item = note.object as? AVPlayerItem, item === self.player.currentItem,
+                      !self.scrubbing, !self.seekInFlight, self.pendingSeek == nil, !self.resumeAfterSeek else { return }
+                if self.auditioning || self.listenReturn != nil {
+                    self.restoreAudition()
+                } else if let range = self.previewRange {
+                    guard self.player.currentTime().seconds >= range.upperBound - 0.001 else { return }
+                    self.seekPaused(max(range.lowerBound, range.upperBound - TimelineEditing.frame))
+                } else if item.duration.isNumeric, item.currentTime().seconds >= item.duration.seconds - 0.001 {
+                    self.seekPaused(self.duration)
+                }
             }
         }
-        observer = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 30), queue: .main) { [weak self] time in
+        observePlaybackTime()
+    }
+    private func observePlaybackTime() {
+        observer = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 30), queue: .main) { [weak self, weak player] time in
             MainActor.assumeIsolated {
-                guard let self else { return }
+                guard let self, self.player === player, self.cutRefresh == nil else { return }
                 let advancing = self.player.rate != 0
                 let wantsPlayback = advancing || self.resumeAfterSeek
                 if self.playing != wantsPlayback { self.playing = wantsPlayback }
@@ -232,6 +299,7 @@ final class EditorController: ObservableObject {
         preparingMedia?.cancel(); preparingMedia = nil
         endApplicationTime(); application = nil; applicationPaused = false; preparingStabilization = false
         latestProject = nil
+        cutRefresh = nil
         effectJob?.cancel();preparedEffects=nil;refiningEffects=false;accurateEffectsReady=false
         generation = UUID(); playbackRevision = UUID(); loading = false
         restoreAudition(); pause(); install(nil); job?.cancel(); loadedClips = nil; loadedEdit = nil
@@ -306,29 +374,40 @@ final class EditorController: ObservableObject {
         if playing { playAtSelectedSpeed() }
     }
     private func playAtSelectedSpeed() { player.playImmediately(atRate: Float(auditioning || listenReturn != nil ? 1 : playbackSpeed)); playing = true }
-    private func install(_ item: AVPlayerItem?, main: Bool = true) {
+    private func install(_ item: AVPlayerItem?, main: Bool = true, afterCut: Bool = false) {
         AudioGainMix.audition(nil, selection: TimelineSelection(), on: player.currentItem)
         AudioGainMix.audition(nil, selection: TimelineSelection(), on: item)
         if main { mainPlaybackItem = item }; baseGainMix = AudioGainMix.sourceMix(of: item); headroom = nil; headroomMessage = "Checking headroom…"; gainRevision = UUID()
+        findingLastPicture?.cancel(); findingLastPicture = nil; lastPicture = nil
         itemStatus = nil; pendingSeek = nil; seekInFlight = false; resumeAfterSeek = false
         item?.audioTimePitchAlgorithm = .spectral
         boundPreview(item)
+        if afterCut, let item, player.currentItem != nil {
+            // The preview layer still owns the paused outgoing player. Its
+            // picture survives while the new timeline decodes independently.
+            player.pause()
+            if let observer { player.removeTimeObserver(observer) }
+            player = AVPlayer()
+            observePlaybackTime()
+            item.seekingWaitsForVideoCompositionRendering = true
+            cutFrameReady = false
+        } else { cutFrameReady = nil }
         player.replaceCurrentItem(with: item)
         applyListeningGain()
         itemStatus = item?.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
             Task { @MainActor in
                 guard let self, self.player.currentItem === item else { return }
                 if item.status == .readyToPlay { self.performSeek() }
-                else if item.status == .failed { self.pause(); self.error = item.error?.localizedDescription ?? "This video cannot be played." }
+                else if item.status == .failed { self.cutFrameReady = nil; self.pause(); self.error = item.error?.localizedDescription ?? "This video cannot be played." }
             }
         }
     }
-    func seek(_ time: Double) {
-        let resume = !scrubbing && (playing || player.rate > 0 || resumeAfterSeek)
+    func seek(_ time: Double, frameAccurate: Bool = false) {
+        let resume = cutRefresh == nil && !scrubbing && (playing || player.rate > 0 || resumeAfterSeek)
         restoreAudition()
         if resume { resumeAfterSeek = true }
         playhead = min(playbackRange.upperBound, max(playbackRange.lowerBound, time))
-        queueSeek(playhead, exact: !scrubbing)
+        queueSeek(playhead, exact: frameAccurate || !scrubbing)
     }
     /// Inspectors keep their still feedback until the queued exact seek finishes.
     func seekAndWait(_ time: Double) async -> Bool {
@@ -348,6 +427,26 @@ final class EditorController: ObservableObject {
         self.duration = duration
         seek(time)
     }
+    /// The timeline model is already saved. Keep its controls available while
+    /// preparing the new item. Only a pure split can scrub the outgoing movie.
+    func beginCutRefresh(from previous: Project, to saved: Project, splitOnly: Bool = false, history: Bool = false) {
+        if history {
+            let step = previous.historyCursor > saved.historyCursor ? previous.currentSnapshot : saved.currentSnapshot
+            guard cutSteps.contains(step) else { return }
+        } else {
+            cutSteps.add(saved.currentSnapshot)
+        }
+        guard latestProject?.id == saved.id, originalItem != nil || loadedEdit?.duration == 0 else { return }
+        generation = UUID()
+        let samePicture = splitOnly && (cutRefresh?.canScrubPreviousItem ?? (loadedEdit == previous.edit))
+        cutRefresh = CutRefresh(revision: saved.updatedAt, canScrubPreviousItem: samePicture)
+        loading = true
+    }
+    private func finishCutRefresh() {
+        guard cutRefresh != nil else { return }
+        cutRefresh = nil
+        seek(playhead) // Also honors a Play tap queued against this edit.
+    }
     func setScrubbing(_ active: Bool) {
         guard active != scrubbing else { return }
         if active {
@@ -358,6 +457,7 @@ final class EditorController: ObservableObject {
         }
     }
     private func queueSeek(_ time: Double, exact: Bool) {
+        guard cutRefresh?.canScrubPreviousItem != false else { return }
         pendingSeek = (TrackRenderer.time(EditTime(time)), exact)
         performSeek()
     }
@@ -365,15 +465,47 @@ final class EditorController: ObservableObject {
     // the next decode starts only once the current decode has finished.
     private func performSeek() {
         guard !seekInFlight, let pending = pendingSeek, let item = player.currentItem, item.status == .readyToPlay else { return }
+        let timelineEnd = TrackRenderer.time(EditTime(duration))
+        let end = item.duration.isNumeric ? min(item.duration, timelineEnd) : timelineEnd
+        let atEnd = end > .zero && pending.0 >= end
+        var target = pending.0
+        if atEnd {
+            target = item.pictureTime(at: end, before: end)
+            if item.videoComposition == nil, let composition = item.asset as? AVComposition {
+                if let lastPicture, lastPicture.end == end { target = lastPicture.time }
+                else {
+                    guard findingLastPicture == nil else { return }
+                    let probe = target
+                    findingLastPicture = Task { [weak self] in
+                        let time = await composition.lastSourcePicture(at: probe)
+                        guard !Task.isCancelled, let self, self.player.currentItem === item else { return }
+                        self.lastPicture = (end, time)
+                        self.findingLastPicture = nil
+                        self.performSeek() // Honor the newest request if the user has scrubbed away.
+                    }
+                    return
+                }
+            }
+        }
         pendingSeek = nil; seekInFlight = true
-        let tolerance = pending.1 ? CMTime.zero : CMTime(seconds: 0.08, preferredTimescale: 60000)
-        player.seek(to: pending.0, toleranceBefore: tolerance, toleranceAfter: tolerance) { [weak self, weak item] _ in
+        let tolerance = pending.1 || atEnd ? CMTime.zero : CMTime(seconds: 0.08, preferredTimescale: 60000)
+        player.seek(to: target, toleranceBefore: tolerance, toleranceAfter: tolerance) { [weak self, weak item] finished in
             Task { @MainActor in
-                guard let self, self.player.currentItem === item else { return }
+                guard let self, let item, self.player.currentItem === item else { return }
                 self.seekInFlight = false
                 if self.pendingSeek != nil { self.performSeek() }
-                else if self.resumeAfterSeek { self.resumeAfterSeek = false; self.playAtSelectedSpeed() }
-                else {self.installPreparedEffects()}
+                else {
+                    if self.cutFrameReady == false {
+                        guard finished else {
+                            if item.status == .readyToPlay { self.queueSeek(self.playhead, exact: true) }
+                            return
+                        }
+                        item.seekingWaitsForVideoCompositionRendering = false
+                        self.cutFrameReady = true
+                    }
+                    if self.resumeAfterSeek { self.resumeAfterSeek = false; self.playAtSelectedSpeed() }
+                    else { self.installPreparedEffects() }
+                }
             }
         }
     }
@@ -385,6 +517,12 @@ final class EditorController: ObservableObject {
         if let target = navigation.destination(from: anchor, forward: forward, effectsOnly: effectsOnly) { seek(target) }
     }
     func togglePlay() {
+        if cutRefresh != nil {
+            if playing { pause(); return }
+            if playhead >= playbackRange.upperBound - 0.05 { playhead = playbackRange.lowerBound }
+            playing = true
+            return
+        }
         if playing || resumeAfterSeek { pause(); restoreAudition(); return }
         guard let item = player.currentItem else { return }
         restoreAudition(); auditionEnd = nil
@@ -434,10 +572,10 @@ final class EditorController: ObservableObject {
         auditionItem = nil; auditionLease = nil
         playhead = anchor; queueSeek(anchor, exact: true)
     }
-    func auditionRemoval(_ range: ClosedRange<Double>, project: Project, folder: URL, selection: TimelineSelection? = nil) {
+    func auditionRemoval(_ range: ClosedRange<Double>, project: Project, folder: URL, selection: TimelineSelection? = nil, returnTo: Double? = nil) {
         guard !loading else { return }
         restoreAudition(); pause(); auditionPreparing = true
-        let anchor = playhead
+        let anchor = returnTo ?? playhead
         let token = auditionToken, timelineToken = generation
         auditionJob = Task {
             defer { if token == auditionToken { auditionPreparing = false } }
@@ -475,6 +613,10 @@ final class EditorController: ObservableObject {
             cancelObsoleteEffectWork()
             navigation = TimelineNavigation(project.edit)
         }
+        if let refresh = cutRefresh, refresh.revision != project.updatedAt || latestProject?.id != project.id {
+            cutRefresh = nil
+            pause()
+        }
         latestProject = project; refreshExports(folder)
         func renderingState(_ edit: EditState?) -> EditState? { guard var edit else { return nil }; edit.timeline.bookmarks = []; return edit }
         let changed = renderingState(loadedEdit) != renderingState(project.edit)
@@ -485,24 +627,27 @@ final class EditorController: ObservableObject {
             }
         }
         duration = project.edit.duration
+        if !changed, updatingCutPreview { finishCutRefresh(); loading = false }
         let pictureSources = Set(project.edit.timeline.video.map { $0.content.sourceID })
         let allSources = pictureSources.union(project.edit.timeline.audio.map(\.sourceID))
         guard changed || !pictureSources.isSubset(of: completedThumbnails) else { return }
         let token = changed ? UUID() : generation; generation = token
         if changed {
-            restoreAudition(); pause(); loading = true
+            if !updatingCutPreview { restoreAudition(); pause() }
+            loading = true
             effectJob?.cancel(); preparedEffects = nil; refiningEffects = false; accurateEffectsReady = false; effectRefinementError = nil
         }
-        defer { if generation == token { preparingMedia = nil; loading = false; videoProgress = nil } }
+        defer { if generation == token { cutRefresh = nil; preparingMedia = nil; loading = false; videoProgress = nil } }
         do {
             if changed {
                 let receipt = includeTimelineDetails ? EffectApplicationReceipt.pending(for: project, in: folder) : nil
+                if receipt != nil, updatingCutPreview { cutRefresh = nil; pause() }
                 startApplication(receipt)
                 if receipt != nil && UIApplication.shared.applicationState != .active {
                     suspendApplication(); return
                 }
                 if project.edit.duration <= 0 {
-                    install(nil); originalItem = nil; processedItem = nil; cacheLease = nil; playhead = 0; loadedEdit = project.edit; return
+                    pause(); install(nil); originalItem = nil; processedItem = nil; cacheLease = nil; playhead = 0; loadedEdit = project.edit; return
                 }
                 let hasEnhancement = project.edit.timeline.audio.contains { $0.enhancements.contains { $0.effects.contains(where: \.enabled) } }
                 if let receipt { loadingLabel = "Applying " + receipt.title }
@@ -514,11 +659,18 @@ final class EditorController: ObservableObject {
                     (receipt == nil && project.edit.clips.contains { $0.stabilization != nil }))
                 preparingStabilization = stabilizing
                 videoProgress = nil
+                let reportProgress = !updatingCutPreview
                 let worker = Task {
-                    try await VideoEffectPreparation.$applyingSavedEdit.withValue(receipt != nil) {
+                    #if DEBUG
+                    if originalItem != nil, CommandLine.arguments.contains("--slow-cut-preview-fixture") {
+                        try await Task.sleep(for: .seconds(8))
+                    }
+                    #endif
+                    return try await VideoEffectPreparation.$applyingSavedEdit.withValue(receipt != nil) {
                         if stabilizing {
                             return try await SourceMediaCache.shared.preparedTimeline(project: project, folder: folder, canvasSize: nil,
                                 framesPerSecond: 30, effectPreparation: .cached) { step, value in
+                                guard reportProgress else { return }
                                 Task { @MainActor [weak self] in
                                     guard let self, generation == token, loading else { return }
                                     if step == .audioEffects { loadingLabel = "Preparing audio"; videoProgress = nil }
@@ -528,6 +680,7 @@ final class EditorController: ObservableObject {
                             }
                         }
                         return try await SourceMediaCache.shared.prepared(project: project, folder: folder, effectPreparation: .cached, audioPreviewRange: audioPreviewRange) { value in
+                            guard reportProgress else { return }
                             Task { @MainActor [weak self] in if self?.generation == token { self?.videoProgress = value } }
                         }
                     }
@@ -547,12 +700,13 @@ final class EditorController: ObservableObject {
                 processedPreview = hasEnhancement; previewStale = false; canUseProcessed = false
                 enhancementComparisonGains = prepared.listeningGains
                 listeningGains = (1, 1); player.volume = 1
-                install(item); loadedEdit = project.edit; loadedClips = project.edit.clips; loadedEffects = project.edit.effects
+                install(item, afterCut: updatingCutPreview); loadedEdit = project.edit; loadedClips = project.edit.clips; loadedEffects = project.edit.effects
                 loadedOutputSize = project.edit.outputSize
                 // The stabilized picture is installed. Another effect can still
                 // be refining on this revision, with its own progress in the editor.
                 preparingStabilization = false
-                seek(min(playhead, duration)); loading = false; notice = nil
+                if updatingCutPreview { finishCutRefresh() } else { seek(min(playhead, duration)) }
+                loading = false; notice = nil
                 if media.effectAnalysisPending && audioPreviewRange == nil {
                     if application != nil && UIApplication.shared.applicationState != .active { suspendApplication(); return }
                     refineEffects(project, folder: folder)
@@ -564,22 +718,29 @@ final class EditorController: ObservableObject {
                 for region in item.enhancements {
                     let key = TrackRenderer.audioKey(source: source.id, effects: region.effects)
                     if let url = waveformRegions[key], processedWaveforms[key] == nil {
-                        let wave = try await SourceMediaCache.shared.waveform(source: source, folder: folder, processed: url)
-                        try Task.checkCancellation(); guard generation == token else { return }; processedWaveforms[key] = wave
+                        let wave = try? await SourceMediaCache.shared.waveform(source: source, folder: folder, processed: url)
+                        try Task.checkCancellation(); guard generation == token else { return }
+                        if let wave { processedWaveforms[key] = wave }
                     }
                 }
             }
             let budget = max(1, min(120, 360 / max(1, pictureSources.count)))
-            thumbnails = thumbnails.filter { pictureSources.contains($0.key) }
-            waveforms = waveforms.filter { allSources.contains($0.key) }; completedThumbnails.formIntersection(pictureSources)
+            if thumbnails.keys.contains(where: { !pictureSources.contains($0) }) {
+                thumbnails = thumbnails.filter { pictureSources.contains($0.key) }
+            }
+            if waveforms.keys.contains(where: { !allSources.contains($0) }) {
+                waveforms = waveforms.filter { allSources.contains($0.key) }
+            }
+            completedThumbnails.formIntersection(pictureSources)
             for source in project.sources where allSources.contains(source.id) {
                 if waveforms[source.id] == nil {
-                    let wave = try await SourceMediaCache.shared.waveform(source: source, folder: folder)
-                    try Task.checkCancellation(); guard generation == token else { return }; waveforms[source.id] = wave
+                    let wave = try? await SourceMediaCache.shared.waveform(source: source, folder: folder)
+                    try Task.checkCancellation(); guard generation == token else { return }
+                    if let wave { waveforms[source.id] = wave }
                 }
                 if pictureSources.contains(source.id), !completedThumbnails.contains(source.id) {
                     let sourceURL = folder.appendingPathComponent(source.filename)
-                    let logReader = try await LogThumbnailSource.make(url: sourceURL)
+                    let logReader = try? await LogThumbnailSource.make(url: sourceURL)
                     let generator = AVAssetImageGenerator(asset: AVURLAsset(url: sourceURL))
                     generator.appliesPreferredTrackTransform = true; generator.maximumSize = CGSize(width: 160, height: 160)
                     generator.requestedTimeToleranceBefore = CMTime(seconds: 0.2, preferredTimescale: 600)
@@ -588,18 +749,32 @@ final class EditorController: ObservableObject {
                     let step = max(1, source.duration / Double(budget))
                     for time in stride(from: 0.0, to: source.duration, by: step) {
                         try Task.checkCancellation()
+                        // Source overviews are a fallback for the filmstrip. A missing
+                        // sample must never invalidate the installed, playable edit.
                         let image: CGImage
-                        if let logReader { image = try await logReader.image(at: time, maximumSize: CGSize(width: 160, height: 160)) }
-                        else { image = try await generator.image(at: CMTime(seconds: time, preferredTimescale: 600)).image }
+                        do {
+                            #if DEBUG
+                            if time == 0 && CommandLine.arguments.contains("--interrupt-filmstrip-requests") { throw ProjectError.invalidMedia }
+                            #endif
+                            if let logReader { image = try await logReader.image(at: time, maximumSize: CGSize(width: 160, height: 160)) }
+                            else { image = try await generator.image(at: CMTime(seconds: time, preferredTimescale: 600)).image }
+                        } catch {
+                            try Task.checkCancellation(); guard generation == token else { return }
+                            continue
+                        }
+                        try Task.checkCancellation()
                         guard generation == token else { return }
                         images.append(SourceThumbnail(time: time, image: UIImage(cgImage: image)))
                         if images.count == 1 || images.count.isMultiple(of: 8) { thumbnails[source.id] = images }
                     }
-                    thumbnails[source.id] = images; completedThumbnails.insert(source.id)
+                    if !images.isEmpty {
+                        thumbnails[source.id] = images; completedThumbnails.insert(source.id)
+                    }
                 }
             }
         } catch is CancellationError {} catch {
-            if generation == token, !interruptedApplication() {
+            if !Task.isCancelled, generation == token, !interruptedApplication() {
+                if updatingCutPreview { pause(); install(nil); originalItem = nil; processedItem = nil; cacheLease = nil }
                 loadedEdit = nil; endApplicationTime()
                 if application != nil { effectRefinementError = error.localizedDescription }
                 else { self.error = error.localizedDescription }; notice = nil

@@ -45,7 +45,7 @@ struct CreditsView: View {
                         }
                     }.navigationTitle("Fonts")
                 }
-                Text("All seven font families are distributed under the SIL Open Font License 1.1. Select a family to read its copyright and license.")
+                Text("The bundled title fonts are distributed under the SIL Open Font License 1.1. Select a family to read its copyright and license.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
             Section("Platform") {
@@ -105,6 +105,7 @@ private struct LicenseText: UIViewRepresentable {
         view.font = .preferredFont(forTextStyle: .body)
         view.textColor = .label
         view.backgroundColor = .systemBackground
+        view.tintColor = UIColor(YouRecStyle.accent)
         view.textContainerInset = UIEdgeInsets(top: 16, left: 16, bottom: 24, right: 16)
         view.text = text
         view.accessibilityIdentifier = "credits.licenseText"

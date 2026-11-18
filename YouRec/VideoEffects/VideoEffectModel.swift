@@ -320,6 +320,14 @@ struct VideoEffectSettings: Codable, Equatable, Identifiable, Sendable {
         return floor(cycles*2 + 1e-7).truncatingRemainder(dividingBy: 2) == 1
     }
 
+    mutating func trimSourceRange(_ range: ClosedRange<Double>) {
+        if kind == .crashZoom, let phaseOffset { self.phaseOffset = max(0, phaseOffset + range.lowerBound - start) }
+        if let releaseTime, releaseTime >= range.upperBound || releaseTime < range.lowerBound - (phaseOffset ?? 0) {
+            self.releaseTime = nil
+        }
+        start = range.lowerBound; end = range.upperBound
+    }
+
     // Captured moves may be retimed in the editor. Never leave their old end
     // cutting off an extended push/hold, and never overlap a later trigger.
     mutating func retimeCapturedCrash(after previous:Self,limit:Double) {

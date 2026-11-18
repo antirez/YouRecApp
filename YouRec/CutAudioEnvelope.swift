@@ -1,5 +1,8 @@
 @preconcurrency import AVFoundation
 import MediaToolbox
+#if targetEnvironment(macCatalyst)
+import CoreAudio
+#endif
 
 struct AudioEnvelopeSegment {
     let start: Double

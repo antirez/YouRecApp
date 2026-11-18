@@ -4,7 +4,7 @@ Effective November 13, 2026.
 
 **Recordings and projects**
 
-YouRec uses the camera and microphone to record when you choose to record. Videos, audio, edits, bookmarks and subtitles are stored on your device. YouRec runs its audio filters, person detection and speech recognition on your device. The developer does not receive your recordings, voice, face information, transcripts or edits through the app.
+YouRec uses the camera and microphone to record when you choose to record. On Mac, you can also choose a display or window in the system sharing picker to record its contents. Videos, audio, edits, bookmarks and subtitles are stored on your device. YouRec runs its audio filters, person detection and speech recognition on your device. The developer does not receive your recordings, voice, face information, transcripts or edits through the app.
 
 **Optional speech model download**
 

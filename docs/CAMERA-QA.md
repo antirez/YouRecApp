@@ -35,6 +35,21 @@ For a change to camera framing, orientation, encoding, or capture format:
    Restore recorder preferences, install in place, and verify existing projects.
    Preserve reports, screenshots, source-frame samples and commit IDs together.
 
+## Mac picture-in-picture regression
+
+Run `scripts/test-mac-pip.sh` from a logged-in Apple silicon Mac with Xcode.
+XCTest starts a take, drags the floating inset to the lower left, enlarges it
+using its upper-right corner, and stops recording. It measures the inset edges
+in the visible preview and in decoded movie frames. The opposite corner must
+stay in place during resizing. The default test supplies two colored images
+and needs neither a camera nor a screen-sharing selection.
+
+Use `scripts/test-mac-pip.sh --hardware` to also exercise the built-in camera
+and a chart window owned by the test app through ScreenCaptureKit. macOS may
+prompt for Xcode UI automation or camera access for a new development build.
+The test runs the gestures itself and records into a temporary per-run folder.
+Keep the YouRec test window visible while it runs.
+
 ## Device artifact cleanup
 
 - Never use `devicectl device copy to --remove-existing-content` against an

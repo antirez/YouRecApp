@@ -96,6 +96,11 @@ private struct MoveOrigin {
     let scale: Double
 }
 
+private enum EditorToolsPage: Hashable, Identifiable {
+    case catalog, addVideo, range, fonts, cover(CoverPickerSource)
+    var id: Self { self }
+}
+
 struct EditorView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.verticalSizeClass) private var verticalSizeClass
@@ -135,12 +140,11 @@ struct EditorView: View {
     @State private var bookmarkHelp = false
     @State private var renamingBookmark: UUID?
     @State private var bookmarkName = ""
-    @State private var playTapTime: Date?
+    @State private var playTapTime: ContinuousClock.Instant?
     @State private var playTapAnchor = 0.0
-    @State private var pendingPlay: Task<Void, Never>?
+    @State private var pointerTool = TimelinePointerTool.select
     @State private var addAudioSheet = false
     @State private var pendingAddAudio = false
-    @State private var showingAddVideo = false
     @State private var timelineAddSite: VideoInsertionSite?
     @State private var pendingRecord = false
     @State private var insertionTime = 0.0
@@ -156,14 +160,18 @@ struct EditorView: View {
     @State private var audioDetent: PresentationDetent = .fraction(0.85)
     @State private var exportSheet = false
     @State private var dismissedExportAudioWarning: UUID?
-    @State private var toolsSheet = false
-    @State private var coverPicker: CoverPickerSource?
+    @State private var toolsSheet: EditorToolsPage?
+    @State private var toolsPath: [EditorToolsPage] = []
     @State private var toolRequest: ToolRequest?
     @State private var pendingTool: ToolRequest?
     @State private var effectChoices: [ToolRegion] = []
     @State private var timelineRegions: [ToolRegion] = []
+    @State private var selectionEffectRegions: [ToolRegion] = []
+    @State private var catalogRegions: [ToolRegion] = []
     @State private var effectsSheet = false
     @State private var removalRegionID:String?
+    @State private var effectRange: EffectRangeEdit?
+    @StateObject private var rangePreview = TimelineEffectRangePreview()
     @State private var confirmLeave = false
     @State private var feedback: String?
     @State private var resumeGainAtRevision: Int?
@@ -175,7 +183,7 @@ struct EditorView: View {
     var body: some View {
         if let project {
             editorSheets(project)
-            .fullScreenCover(item: $toolRequest) { request in toolEditor(request, project: project) }
+            .fullScreenCover(item: Binding(get: { usesTabletWorkspace ? nil : toolRequest }, set: { if !usesTabletWorkspace { toolRequest = $0 } })) { request in toolEditor(request, project: project) }
             .alert("Editor", isPresented: Binding(get: { editor.error != nil }, set: { if !$0 { editor.error = nil } })) {
                 Button("OK") { editor.error = nil }
             } message: { Text(editor.error ?? "") }
@@ -202,6 +210,7 @@ struct EditorView: View {
                 if revision.inspecting { editor.cancelObsoleteEffectWork(); return }
                 guard !editor.applicationPaused else { return }
                 timelineRegions = project.edit.toolRegions
+                refreshSelectionEffects(project)
                 editorLoadTask = Task { @MainActor in
                     guard !Task.isCancelled else { return }
                     await editor.load(project, folder: store.folder(project))
@@ -218,7 +227,8 @@ struct EditorView: View {
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in editor.pauseExport(); editor.applicationDidEnterBackground() }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in editor.resumeApplication() }
             .onDisappear {
-                pendingPlay?.cancel(); movePreviewTask?.cancel()
+                resetPlayTap(); movePreviewTask?.cancel()
+                effectRange = nil; rangePreview.reset()
                 if toolRequest == nil && !fullPreview {
                     editorLoadTask?.cancel(); editorLoadTask = nil; requestedLoad = nil
                     editor.stop()
@@ -242,13 +252,15 @@ struct EditorView: View {
                 if let origin = moveOrigin, origin.revision != date {
                     finishMove(project, apply: false)
                 }
-                removalRegionID = nil
+                removalRegionID = nil; effectRange = nil; rangePreview.reset()
                 if editor.exportPaused { editor.restorePausedExport(project, folder: store.folder(project)) }
             }
-            .onChange(of: selectedItems) {_,_ in removalRegionID=nil}
-            .onChange(of: toolsSheet) {_,_ in removalRegionID=nil; cancelPendingPlay()}
-            .onChange(of: toolRequest?.id) {_,_ in cancelPendingPlay()}
-            .onChange(of: fullPreview) {_,_ in cancelPendingPlay()}
+            .onChange(of: selectedItems) { _,_ in removalRegionID = nil; refreshSelectionEffects(project) }
+            .onChange(of: rangeTargets) { _,_ in refreshSelectionEffects(project) }
+            .onChange(of: selection) { _,_ in removalRegionID = nil; refreshSelectionEffects(project) }
+            .onChange(of: toolsSheet) {_,_ in removalRegionID=nil; resetPlayTap()}
+            .onChange(of: toolRequest?.id) {_,_ in resetPlayTap()}
+            .onChange(of: fullPreview) {_,_ in resetPlayTap()}
             .onChange(of: verticalSizeClass) { _, value in if audioSheet && value == .compact { audioDetent = .large } }
             .onChange(of: exportSheet) { _, shown in
                 if shown { feedback = nil }
@@ -308,33 +320,17 @@ struct EditorView: View {
             .sheet(isPresented: $exportSheet) {
                 MovieExportPanel(store: store, editor: editor, project: project, dismissedExportAudioWarning: $dismissedExportAudioWarning)
             }
-            .sheet(isPresented: $toolsSheet, onDismiss: {
-                coverPicker = nil
+            .sheet(item: $toolsSheet, onDismiss: {
+                toolsPath = []
                 if let pendingTool { toolRequest = pendingTool; self.pendingTool = nil }
-                showingAddVideo = false
                 if pendingRecord { pendingRecord = false; recordHere(insertionTime, timelineAddSite) }
                 timelineAddSite = nil
                 if pendingAddAudio { pendingAddAudio = false; addAudioSheet = true }
-            }) {
-                NavigationStack {
-                    if timelineAddSite != nil {
-                        addVideoPanel(project)
-                    } else {
-                        ToolsPanel(snapToCuts: $snapToCuts, matchListeningLevels: $editor.matchListeningLevels,
-                                   scope: toolScopeTitle(project), overlayScope: selection == nil ? "At \(editorTime(editor.playhead)) · 3 s long" : toolScopeTitle(project), choose: { kind in
-                            if kind == .addVideo { insertionTime = editor.playhead; showingAddVideo = true; return }
-                            else if kind == .addAudio { insertionTime = editor.playhead; pendingAddAudio = true }
-                            else { pendingTool = makeToolRequest(kind, project: project) }
-                            toolsSheet = false
-                        }, regions: uniqueEffects(project), insertionPosition: editor.playhead, canAdjust: project.edit.duration > 0, hasVideo: !targets(project).video.isEmpty, hasAudio: !targets(project).audio.isEmpty, canCensor: selection != nil, canTranscribe: !project.edit.timeline.audio.isEmpty || project.edit.timeline.subtitles != nil,
-                                   selectCover: coverAction(project),
-                                   edit: { region in
-                            pendingTool = request(for: region, project: project); toolsSheet = false
-                        }, close: { toolsSheet = false })
-                        .navigationDestination(isPresented: $showingAddVideo) { addVideoPanel(project) }
-                        .navigationDestination(item: $coverPicker) { CoverPicker(source: $0) }
-                    }
-                }.presentationDetents([.large]).presentationDragIndicator(.visible)
+            }) { root in
+                NavigationStack(path: $toolsPath) {
+                    toolsPage(root, project: project, root: true)
+                        .navigationDestination(for: EditorToolsPage.self) { page in toolsPage(page, project: project, root: false) }
+                }.preferredColorScheme(.dark).presentationDetents([.large]).presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $addAudioSheet) { AudioImportEditor(store: store, projectID: project.id, position: insertionTime, close: { addAudioSheet = false }, inserted: { addAudioSheet = false; editor.seek(insertionTime); feedback = "Audio added · Undo available" }) }
             .sheet(isPresented: $effectsSheet, onDismiss: {
@@ -351,8 +347,88 @@ struct EditorView: View {
                 }.presentationDetents([.medium, .large])
             }
     }
+    private func openToolsPage(_ page: EditorToolsPage) {
+        resetPlayTap()
+        editor.pause()
+        if toolsSheet == .catalog { toolsPath.append(page) }
+        else { toolsSheet = page }
+    }
+
+    @ViewBuilder private func toolsPage(_ page: EditorToolsPage, project: Project, root: Bool) -> some View {
+        switch page {
+        case .catalog:
+            ScrollView { toolCatalog(project, sidebar: false) }
+                .accessibilityIdentifier("tools.content").background(Color(white: 0.06))
+                .navigationTitle("Tools").navigationBarTitleDisplayMode(.inline)
+                .toolbar { closeToolsButton }
+        case .addVideo:
+            addVideoPanel(project, standalone: root)
+        case .range:
+            rangeEditor(project, standalone: root)
+        case .cover(let source):
+            CoverPicker(source: source).toolbar { if root { closeToolsButton } }
+        case .fonts:
+            FontLibraryView().toolbar { if root { closeToolsButton } }
+        }
+    }
+
+    private var closeToolsButton: some ToolbarContent {
+        ToolbarItem(placement: .confirmationAction) {
+            Button("Done") { toolsSheet = nil }.frame(minHeight: 44)
+        }
+    }
+
+    private func toolCatalog(_ project: Project, sidebar: Bool) -> some View {
+        let edit = project.edit
+        let target = rangeTargets ?? (selectedItems.isEmpty ? nil : edit.timeline.selection(ids: selectedItems))
+        let scope = toolScopeTitle(project)
+        return ToolsPanel(snapToCuts: $snapToCuts, matchListeningLevels: $editor.matchListeningLevels,
+            scope: scope, overlayScope: selection == nil && selectedItems.isEmpty ? "At \(editorTime(editor.playhead)) · 3 s long" : scope,
+            choose: { kind in
+                resetPlayTap(); editor.pause()
+                switch kind {
+                case .addVideo:
+                    insertionTime = editor.playhead
+                    openToolsPage(.addVideo)
+                case .addAudio:
+                    insertionTime = editor.playhead
+                    if sidebar { addAudioSheet = true }
+                    else { pendingAddAudio = true; toolsSheet = nil }
+                default:
+                    openCatalogInspector(makeToolRequest(kind, project: project), sidebar: sidebar)
+                }
+            }, regions: sidebar ? catalogRegions : uniqueEffects(project, at: EditTime(editor.playhead)),
+            insertionPosition: editor.playhead, canAdjust: edit.duration > 0,
+            hasVideo: !(target?.video.isEmpty ?? edit.timeline.video.isEmpty),
+            hasAudio: !(target?.audio.isEmpty ?? edit.timeline.audio.isEmpty), canCensor: selection != nil,
+            canTranscribe: !edit.timeline.audio.isEmpty || edit.timeline.subtitles != nil, selectCover: coverAction(project),
+            selectRange: { openToolsPage(.range) }, edit: { region in
+                resetPlayTap(); editor.pause()
+                openCatalogInspector(request(for: region, project: project), sidebar: sidebar)
+            }, manageFonts: { openToolsPage(.fonts) }, sidebar: sidebar)
+    }
+
+    private func openCatalogInspector(_ request: ToolRequest, sidebar: Bool) {
+        if sidebar { toolRequest = request }
+        else { pendingTool = request; toolsSheet = nil }
+    }
+
+    private func rangeEditor(_ project: Project, standalone: Bool = false) -> some View {
+        var tracks = targets(project)
+        tracks.range = nil
+        let limits = project.edit.timeline.interval(for: tracks)?.seconds ?? 0...project.edit.duration
+        let timing = EditorRangeTiming(range: selection ?? limits, bounds: limits)
+        return SelectionDurationEditor(timing: timing, source: editor.player.currentItem, showsCancel: standalone) { range in
+            rangeTargets = tracks
+            selection = range
+            markStart = nil
+        }
+    }
     private func editorLayout(_ project: Project) -> some View {
         GeometryReader { geometry in
+            if usesTabletWorkspace {
+                tabletEditor(project, size: geometry.size)
+            } else {
                 let horizontal = geometry.size.width > geometry.size.height
                 VStack(spacing: 0) {
                     if !horizontal { header(project).background(Color.black).zIndex(2) }
@@ -380,8 +456,76 @@ struct EditorView: View {
                     }
                 }.allowsHitTesting(!audioSheet)
             }
+        }
     }
-    @ViewBuilder private func toolEditor(_ request: ToolRequest, project: Project) -> some View {
+
+    private var usesTabletWorkspace: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad || UIDevice.current.userInterfaceIdiom == .mac
+    }
+
+    private func tabletEditor(_ project: Project, size: CGSize) -> some View {
+        #if targetEnvironment(macCatalyst)
+        let wide = size.width >= 760 && size.height >= 480
+        #else
+        let wide = size.width >= 760 && size.width > size.height && size.height >= 480
+        #endif
+        let timelineHeight = min(max(164, size.height * 0.22), 240) + (timelineRulerHeight - 20)
+        return VStack(spacing: 0) {
+            if let request = toolRequest {
+                toolEditor(request, project: project)
+                    .id(request.id)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                header(project)
+                if wide {
+                    HStack(spacing: 0) {
+                        preview(project, horizontal: false)
+                        Divider()
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 6) {
+                                editTools(project, compact: false, showsToolsButton: false)
+                                comparison(project)
+                                if moveDraft == nil && effectRange == nil {
+                                    Divider()
+                                    toolCatalog(project, sidebar: true)
+                                        .disabled(editor.loading || editor.rendering)
+                                }
+                                processingStatus()
+                            }.padding(.vertical, 8)
+                        }.scrollIndicators(.visible).accessibilityIdentifier("editor.toolsSidebar")
+                            .frame(width: min(420, size.width * 0.43)).background(editorSurface)
+                    }
+                } else {
+                    preview(project, horizontal: false)
+                }
+            }
+            if toolRequest == nil {
+                transport(project, workspaceWidth: size.width)
+                refinementStatus(project)
+            }
+            if wide || toolRequest == nil {
+                timeline(project, height: timelineHeight)
+                    .allowsHitTesting(toolRequest == nil)
+                    .accessibilityHidden(toolRequest != nil)
+                if toolRequest == nil { selectionStatus(project) }
+            }
+            if !wide && toolRequest == nil {
+                editTools(project, compact: false)
+                comparison(project)
+                processingStatus()
+            }
+        }
+        .allowsHitTesting(!audioSheet)
+    }
+
+    @ViewBuilder private func toolEditor(_ request: ToolRequest, project original: Project) -> some View {
+        let project: Project = {
+            guard let operation = request.scopedEffect else { return original }
+            var copy = original
+            copy.history = [operation.inspectorState(original.edit)]; copy.historyCursor = 0
+            return copy
+        }()
+
                 if request.tool == .subtitles {
                     SubtitleEditor(project: project, folder: store.folder(project), request: request, position: editor.playhead,
                                    cancel: { toolRequest = nil }, apply: { applyTool($0, request: request) })
@@ -409,12 +553,15 @@ struct EditorView: View {
     }
     private func applyTool(_ state: EditState, request: ToolRequest) {
         guard let current = self.project else { toolRequest = nil; return }
+        let state = request.scopedEffect?.applying(state, to: current.edit) ?? state
         guard state != current.edit else { toolRequest = nil; return }
         let transitionPosition: Double? = request.tool == .transition ? request.boundaryIndex.flatMap { index -> Double? in
             guard let original = current.edit.layout.joins.first(where: { $0.index == index }) else { return nil }
             return state.layout.joins.first { $0.outgoingID == original.outgoingID && $0.incomingID == original.incomingID }?.time
         } : nil
-        guard commit(state, project: current, position: transitionPosition) else { return }
+        var applied = state
+        applied.rememberApplications(of: request.tool, changedFrom: current.edit)
+        guard commit(applied, project: current, position: transitionPosition) else { return }
         if let saved = self.project, let receipt = EffectApplicationReceipt(project: saved, tool: request.tool) {
             do { try receipt.save(in: store.folder(saved)) }
             catch { editor.notice = "Edit saved. Reopen this project to continue applying the effect." }
@@ -428,10 +575,10 @@ struct EditorView: View {
             if !compact { Text(project.title).font(.subheadline.weight(.semibold)).lineLimit(1) }
             Spacer(minLength: 4)
             if compact { fullPreviewButton(project).padding(.trailing,8) }
-        }.foregroundStyle(.white).disabled(moveDraft != nil)
+        }.foregroundStyle(.white).disabled(moveDraft != nil || effectRange != nil)
     }
     private func fullPreviewButton(_ project: Project) -> some View {
-        Button { cancelPendingPlay(); editor.restoreAudition(); fullPreview = true } label: {
+        Button { resetPlayTap(); editor.restoreAudition(); fullPreview = true } label: {
             ZStack {
                 // A crisp black outline around the white glyph, without a button plate.
                 ForEach(0..<8) { index in
@@ -442,15 +589,20 @@ struct EditorView: View {
             }.font(.system(size:21,weight:.semibold)).frame(width:44,height:44).contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityLabel("Full").accessibilityHint("Open full-screen preview")
             .accessibilityIdentifier("editor.fullPreview")
-            .disabled(project.edit.duration <= 0 || editor.loading || editor.rendering || moveDraft != nil)
+            .disabled(project.edit.duration <= 0 || editor.loading || editor.rendering || moveDraft != nil || effectRange != nil)
     }
     private func preview(_ project: Project, horizontal: Bool) -> some View {
         ZStack {
-            PlayerSurface(player: editor.player, inspectionZoom: true, onPlaybackTap: { guard !editor.loading, project.edit.duration > 0 else { return }; cancelPendingPlay(); editor.togglePlay() }, hideFromAccessibility: fullPreview)
+            EditorFramePreview(player: effectRange != nil && rangePreview.ready ? rangePreview.player : editor.player, identifier: "editor.preview", hideFromAccessibility: fullPreview,
+                               copyEnabled: !fullPreview && effectRange == nil && !editor.loading && project.edit.duration > 0,
+                               cutFrameReady: effectRange == nil ? editor.cutFrameReady : nil) {
+                guard effectRange == nil, !editor.editingBlocked, project.edit.duration > 0 else { return }
+                resetPlayTap(); editor.togglePlay()
+            }
             if project.edit.duration <= 0 {
                 ContentUnavailableView("Your timeline is empty", systemImage: "film", description: Text(project.canUndo ? "Undo to bring your clips back." : "Record or import a video to get started."))
             }
-            if !editor.rendering { VStack { Spacer(); HStack(spacing: 0) {
+            if !editor.rendering && effectRange == nil { VStack { Spacer(); HStack(spacing: 0) {
                 Button { withAnimation(.easeOut(duration: 0.16)) { playbackSpeedsOpen.toggle() } } label: {
                     Text("\(editor.playbackSpeed.formatted())×").font(.subheadline.monospacedDigit().weight(.semibold)).frame(minWidth: 48, minHeight: 44)
                 }.foregroundStyle(.white).accessibilityLabel("Review speed").accessibilityValue("\(editor.playbackSpeed.formatted())×")
@@ -465,7 +617,7 @@ struct EditorView: View {
                 }
             }.background(.black.opacity(0.65), in: Capsule()).overlay { Capsule().strokeBorder(.white.opacity(0.2), lineWidth: 0.5).allowsHitTesting(false) }.frame(maxWidth: .infinity, alignment: .leading).padding(8) }
                 .disabled(project.edit.duration <= 0 || editor.loading) }
-            if editor.loading {
+            if editor.editingBlocked {
                 VStack(spacing: 8) {
                     if let progress = editor.videoProgress {
                         ProgressView(value: progress).frame(width: 160)
@@ -479,28 +631,18 @@ struct EditorView: View {
         }.overlay(alignment:.topTrailing) {
             if !horizontal { fullPreviewButton(project).padding(8) }
         }.frame(minHeight: 120).clipped()
+        .task(id: effectRange?.region.id) {
+            if let draft = effectRange {
+                await rangePreview.prepare(draft, project: project, folder: store.folder(project), canvas: editor.canvas)
+            }
+        }
     }
     private func controls(_ project: Project, compact: Bool = false) -> some View {
         VStack(spacing: 0) {
             transport(project)
-            if editor.applicationPaused {
-                Text("Effect application paused · resumes when YouRec is active").font(.caption)
-            } else if editor.refiningEffects || editor.accurateEffectsReady {
-                HStack(spacing:8) {
-                    if editor.refiningEffects {ProgressView().controlSize(.small)}
-                    Text(editor.accurateEffectsReady ? "Effects applied · pause playback to see the result" : editor.applyingEffectsLabel).font(.caption).foregroundStyle(.secondary)
-                        .accessibilityIdentifier("editor.effectRefinement")
-                    Spacer(minLength:0)
-                    if editor.canUndoApplication { undoApplicationButton(project) }
-                }.padding(.horizontal,16).padding(.bottom,6)
-            } else if editor.effectRefinementError != nil {
-                HStack {
-                    Text(editor.effectRefinementError ?? "").lineLimit(2)
-                    Button("Retry applying effects") { editor.retryEffects(project, folder: store.folder(project)) }
-                }.font(.caption).padding(.horizontal).padding(.bottom, 6)
-            }
+            refinementStatus(project)
             if !compact {
-                timeline(project, height: portraitTimelineHeight(project))
+                timeline(project, height: timelineRulerHeight + 6 * 36, portraitLaneSizing: true)
                 selectionStatus(project)
             }
             editTools(project, compact: compact)
@@ -508,12 +650,23 @@ struct EditorView: View {
             if !compact { processingStatus() }
         }.background(editorSurface)
     }
-    private func portraitTimelineHeight(_ project: Project) -> Double {
-        let lanes = timelineLanes((moveDraft ?? project.edit).timeline, moving: moveDraft == nil ? nil : moveTargets)
-        let rows = (lanes.map(\.row).max() ?? 1) + 1
-        // Keep six full-size usable lanes visible on the taller portrait canvas.
-        // Landscape retains its 164-point area and explicit vertical scrolling.
-        return max(164, 20 + Double(min(6, rows)) * 36)
+    @ViewBuilder private func refinementStatus(_ project: Project) -> some View {
+        if editor.applicationPaused {
+            Text("Effect application paused · resumes when YouRec is active").font(.caption)
+        } else if editor.refiningEffects || editor.accurateEffectsReady {
+            HStack(spacing:8) {
+                if editor.refiningEffects {ProgressView().controlSize(.small)}
+                Text(editor.accurateEffectsReady ? "Effects applied · pause playback to see the result" : editor.applyingEffectsLabel).font(.caption).foregroundStyle(.secondary)
+                    .accessibilityIdentifier("editor.effectRefinement")
+                Spacer(minLength:0)
+                if editor.canUndoApplication { undoApplicationButton(project) }
+            }.padding(.horizontal,16).padding(.bottom,6)
+        } else if editor.effectRefinementError != nil {
+            HStack {
+                Text(editor.effectRefinementError ?? "").lineLimit(2)
+                Button("Retry applying effects") { editor.retryEffects(project, folder: store.folder(project)) }
+            }.font(.caption).padding(.horizontal).padding(.bottom, 6)
+        }
     }
     private func targets(_ project: Project) -> TimelineSelection {
         var value = rangeTargets ?? (selectedItems.isEmpty ? project.edit.timeline.entireSelection() : project.edit.timeline.selection(ids: selectedItems))
@@ -523,81 +676,124 @@ struct EditorView: View {
     private func selectedTargets(_ project: Project) -> TimelineSelection {
         selection != nil || markStart != nil || !selectedItems.isEmpty ? targets(project) : TimelineSelection()
     }
-    private func quickReview(_ project: Project) {
-        if let moveDraft {
-            var candidate = project; candidate.history = [moveDraft]; candidate.historyCursor = 0
-            editor.audition(at: editor.playhead); return
+    private func quickReview(_ project: Project, anchor: Double? = nil) {
+        guard !editor.loading else { return }
+        let position = anchor ?? editor.stationaryPlayhead
+        resetPlayTap()
+        if moveDraft == nil, let selection {
+            editor.auditionRemoval(selection, project: project, folder: store.folder(project), selection: targets(project), returnTo: position)
+        } else {
+            editor.audition(at: position)
         }
-        if let selection { editor.auditionRemoval(selection, project: project, folder: store.folder(project), selection: targets(project)) }
-        else { editor.audition(at: editor.playhead) }
     }
+
     private func playTapped(_ project: Project) {
-        if UIAccessibility.isVoiceOverRunning { editor.togglePlay(); return }
-        let now = Date()
-        if let last = playTapTime, now.timeIntervalSince(last) < 0.27 {
-            pendingPlay?.cancel(); pendingPlay = nil; playTapTime = nil
-            editor.seek(playTapAnchor); quickReview(project); return
-        }
-        playTapTime = now; playTapAnchor = editor.playhead
-        if editor.playing { editor.pause(); return }
-        pendingPlay?.cancel()
-        pendingPlay = Task { @MainActor in
-            do { try await Task.sleep(for: .milliseconds(270)); editor.togglePlay(); pendingPlay = nil; playTapTime = nil } catch {}
+        let now = ContinuousClock.now
+        if !editor.loading, !UIAccessibility.isVoiceOverRunning, let last = playTapTime, last.duration(to: now) < .milliseconds(270) {
+            quickReview(project, anchor: playTapAnchor)
+        } else {
+            // Only a tap on Play starts a Quick Review gesture. A tap on
+            // Pause followed immediately by Play is an ordinary resume.
+            if !editor.playing && !editor.loading && !UIAccessibility.isVoiceOverRunning {
+                playTapTime = now
+                playTapAnchor = editor.stationaryPlayhead
+            } else {
+                resetPlayTap()
+            }
+            editor.togglePlay()
         }
     }
-    private func transport(_ project: Project) -> some View {
+    @ViewBuilder private func transport(_ project: Project, workspaceWidth: CGFloat? = nil) -> some View {
         let duration = moveDraft?.duration ?? project.edit.duration
         let position = pickingMoveBoundary ? moveBrowseTime ?? editor.playhead : editor.playhead
         let accessible = dynamicTypeSize.isAccessibilitySize
-        return VStack(spacing: 0) {
-            if accessible {
-                ViewThatFits(in: .horizontal) {
-                    HStack { timecode(position); Spacer(); timecode(duration, total: true) }
-                    VStack(alignment: .leading) { timecode(position); timecode(duration, total: true) }
-                }.frame(maxWidth: .infinity, alignment: .leading)
+        Group {
+            if let workspaceWidth {
+                TimelineToolbarLayout {
+                    TimelineToolPalette(selection: $pointerTool)
+                        .disabled(project.edit.duration <= 0 || moveDraft != nil)
+                    if accessible || workspaceWidth < 440 {
+                        VStack(spacing: 0) {
+                            HStack(spacing: 16) { timecode(position); timecode(duration, total: true) }
+                            playbackButtons(project)
+                        }
+                    } else {
+                        HStack(spacing: 10) {
+                            timecode(position).frame(minWidth: 68, alignment: .trailing)
+                            playbackButtons(project)
+                            timecode(duration, total: true).frame(minWidth: 68, alignment: .leading)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                .padding(.vertical, 2)
+            } else {
+                VStack(spacing: 0) {
+                    if accessible {
+                        ViewThatFits(in: .horizontal) {
+                            HStack { timecode(position); Spacer(); timecode(duration, total: true) }
+                            VStack(alignment: .leading) { timecode(position); timecode(duration, total: true) }
+                        }.frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    HStack(spacing: 0) {
+                        if !accessible { timecode(position).frame(maxWidth: .infinity, alignment: .leading) }
+                        playbackButtons(project)
+                        if !accessible { timecode(duration, total: true).frame(maxWidth: .infinity, alignment: .trailing) }
+                    }
+                }
             }
-            HStack(spacing: 0) {
-                if !accessible { timecode(position).frame(maxWidth: .infinity, alignment: .leading) }
-                Button { jumpBookmark(project, forward: false) } label: { Image(systemName: "bookmark").overlay(alignment: .leading) { Image(systemName: "chevron.left").font(.system(size: 7)).offset(x: -6) }.frame(width: 44, height: 48) }.accessibilityLabel("Previous bookmark")
-                ChangeNavigationButton(forward: false, enabled: project.edit.duration > 0 && editor.navigation.destination(from: editor.stationaryPlayhead, forward: false) != nil, hideFromAccessibility: fullPreview) { effectsOnly in
-                    cancelPendingPlay(); editor.jumpChange(forward: false, effectsOnly: effectsOnly)
-                }.frame(width: 44, height: 48)
-                Button { playTapped(project) } label: { Image(systemName: editor.playing || pendingPlay != nil ? "pause.fill" : "play.fill").font(.title3).frame(width: 48, height: 48) }
-                    .accessibilityLabel(editor.playing ? "Pause playback" : "Play").accessibilityAction(named: "Quick review") { quickReview(project) }
-                    .disabled(project.edit.duration <= 0)
-                ChangeNavigationButton(forward: true, enabled: project.edit.duration > 0 && editor.navigation.destination(from: editor.stationaryPlayhead, forward: true) != nil, hideFromAccessibility: fullPreview) { effectsOnly in
-                    cancelPendingPlay(); editor.jumpChange(forward: true, effectsOnly: effectsOnly)
-                }.frame(width: 44, height: 48)
-                Button { jumpBookmark(project, forward: true) } label: { Image(systemName: "bookmark").overlay(alignment: .trailing) { Image(systemName: "chevron.right").font(.system(size: 7)).offset(x: 6) }.frame(width: 44, height: 48) }.accessibilityLabel("Next bookmark")
-                if !accessible { timecode(duration, total: true).frame(maxWidth: .infinity, alignment: .trailing) }
-            }
-        }.padding(.horizontal, 12).foregroundStyle(.white).disabled(editor.loading)
+        }.padding(.horizontal, 12).foregroundStyle(.white).disabled(editor.editingBlocked || effectRange != nil)
     }
+
+    private func playbackButtons(_ project: Project) -> some View {
+        HStack(spacing: 0) {
+            Button { jumpBookmark(project, forward: false) } label: { Image(systemName: "bookmark").overlay(alignment: .leading) { Image(systemName: "chevron.left").font(.system(size: 7)).offset(x: -6) }.frame(width: 44, height: 48) }.accessibilityLabel("Previous bookmark")
+            ChangeNavigationButton(forward: false, enabled: project.edit.duration > 0 && editor.navigation.destination(from: editor.stationaryPlayhead, forward: false) != nil, hideFromAccessibility: fullPreview) { effectsOnly in
+                resetPlayTap(); editor.jumpChange(forward: false, effectsOnly: effectsOnly)
+            }.frame(width: 44, height: 48)
+            Button { playTapped(project) } label: { Image(systemName: editor.playing ? "pause.fill" : "play.fill").font(.title3).frame(width: 48, height: 48) }
+                .background {
+                    // A keyboard repeat or a rapid pair of Space presses must never invoke pointer double-click review.
+                    Button("Play or pause") { resetPlayTap(); editor.togglePlay() }
+                        .keyboardShortcut(.space, modifiers: []).hidden().accessibilityHidden(true)
+                }
+                .accessibilityLabel(editor.playing ? "Pause playback" : "Play").accessibilityAction(named: "Quick review") { quickReview(project) }
+                .disabled(project.edit.duration <= 0)
+            ChangeNavigationButton(forward: true, enabled: project.edit.duration > 0 && editor.navigation.destination(from: editor.stationaryPlayhead, forward: true) != nil, hideFromAccessibility: fullPreview) { effectsOnly in
+                resetPlayTap(); editor.jumpChange(forward: true, effectsOnly: effectsOnly)
+            }.frame(width: 44, height: 48)
+            Button { jumpBookmark(project, forward: true) } label: { Image(systemName: "bookmark").overlay(alignment: .trailing) { Image(systemName: "chevron.right").font(.system(size: 7)).offset(x: 6) }.frame(width: 44, height: 48) }.accessibilityLabel("Next bookmark")
+        }
+    }
+
     private func timecode(_ seconds: Double, total: Bool = false) -> some View {
-        Text(editorTime(seconds)).font(.caption.monospacedDigit()).lineLimit(1).minimumScaleFactor(0.75)
+        Text(editorTime(seconds)).font((usesTabletWorkspace ? Font.subheadline : .caption).monospacedDigit()).lineLimit(1).minimumScaleFactor(0.75)
             .fixedSize(horizontal: dynamicTypeSize.isAccessibilitySize, vertical: true)
             .foregroundStyle(total ? .secondary : .primary)
             .accessibilityIdentifier(total ? "editor.duration" : "editor.playhead")
     }
-    private func timeline(_ project: Project, height: CGFloat) -> some View {
-        let content = EditorTimeline(edit: moveDraft ?? project.edit, sources: project.sources, folder: store.folder(project), waves: editor.waveforms, processedWaves: editor.processedWaveforms, processedRegions: editor.waveformRegions, thumbnails: editor.thumbnails,
+    private func timeline(_ project: Project, height: CGFloat, portraitLaneSizing: Bool = false) -> some View {
+        var content = EditorTimeline(edit: moveDraft ?? project.edit, sources: project.sources, folder: store.folder(project), waves: editor.waveforms, processedWaves: editor.processedWaveforms, processedRegions: editor.waveformRegions, thumbnails: editor.thumbnails,
                        playhead: pickingMoveBoundary ? moveBrowseTime ?? editor.playhead : editor.playhead, pointsPerSecond: pointsPerSecond, selected: moveDraft == nil ? selectedTargets(project) : moveTargets,
                        selection: moveDraft == nil ? selection ?? markStart.map { min($0, editor.playhead)...max($0, editor.playhead) } : nil,
                        seek: { time in
-                           cancelPendingPlay()
+                           resetPlayTap()
                            if pickingMoveBoundary { moveBrowseTime = time > (moveDraft?.duration ?? project.edit.duration) ? time : nil }
+                           #if targetEnvironment(macCatalyst)
+                           if editor.scrubbing { editor.seek(time, frameAccurate: true); return }
+                           #endif
                            editor.seekPaused(time)
-                       }, scrubbing: { active in if active { cancelPendingPlay() }; editor.setScrubbing(active) }, snapEnabled: snapToCuts, moving: moveDraft != nil, moveLayout: moveBase?.timeline, moveViewportEnd: moveViewportEnd,
+                       }, scrubbing: { active in if active { resetPlayTap() }; editor.setScrubbing(active) }, snapEnabled: snapToCuts, moving: moveDraft != nil, moveLayout: moveBase?.timeline, moveViewportEnd: moveViewportEnd,
                        boundaryChoices: pickingMoveBoundary ? moveBoundaries.times : nil,
                        pickBoundary: { choices in
                            if choices.count == 1, let time = choices.first { placeMove(at: time, project: project) }
                            else if !choices.isEmpty { nearbyMoveBoundaries = choices }
-                       }, laneAreaHeight: height - 20, snapTime: moveSnap?.target.seconds, bookmarks: { bookmarksSheet = true },
+                       }, laneAreaHeight: height - timelineRulerHeight, snapTime: moveSnap?.target.seconds, bookmarks: { bookmarksSheet = true },
                        focusTransition: { time in editor.pause(); removalRegionID = nil; editor.seek(time) },
-                       addVideo: editor.loading || editor.rendering || moveDraft != nil ? nil : { site in
-                           cancelPendingPlay(); editor.pause()
+                       addVideo: editor.loading || editor.rendering || moveDraft != nil || effectRange != nil ? nil : { site in
+                           resetPlayTap(); editor.pause()
                            insertionTime = site.placement(in: project.edit.timeline, length: .zero).start.seconds
-                           timelineAddSite = site; toolsSheet = true
+                           timelineAddSite = site; toolsSheet = .addVideo
                        },
                        move: { delta, scale in updateMove(moveDragOrigin + delta, project: project, scale: scale) }, moveEnded: { moveDragOrigin = moveOffset; previewMove(project) },
                        moveCancelled: { updateMove(moveDragOrigin, project: project, snapping: false); previewMove(project) },
@@ -613,79 +809,156 @@ struct EditorView: View {
                            selection = nil; markStart = nil; rangeTargets = nil
                        },
                        zoom: { pointsPerSecond = $0 }, trim: { trimItem($0, left: $1, delta: $2, project: project) },
-                       gainIdentity: "\(project.id)|\(project.historyCursor)", gainEnabled: !editor.loading && moveDraft == nil,
+                       gainIdentity: "\(project.id)|\(project.historyCursor)", gainEnabled: !editor.loading && moveDraft == nil && effectRange == nil,
                        gainHeadroom: editor.headroom, gainHeadroomSelection: editor.headroomSelection,
                        previewGain: { db,scope in editor.auditionGain(db,selection:scope) },
                        commitGain: { db,scope in commitGain(db,scope:scope,project:project) }, hideFromAccessibility: fullPreview)
-        return content.frame(height: min(height,content.contentHeight))
-            .accessibilityAction(named: "Mark cut boundary") { if moveDraft == nil { mark(project) } }
-            .accessibilityAction(named: "Split at playhead") { if moveDraft == nil { split(project) } }
-            .accessibilityAction(named: "Delete selection") { if moveDraft == nil { removeSelection(project) } }
+        content.portraitLaneSizing = portraitLaneSizing
+        content.effectRange = effectRange
+        content.changeEffectEdge = changeEffectEdge
+        content.filmstripCanvas = editor.canvas
+        content.filmstripItem = moveDraft == nil ? editor.coverItem(for: project.edit) : nil
+        #if targetEnvironment(macCatalyst)
+        content.playing = editor.playing
+        content.bladeLayout = pointerTool == .blade ? cutLayout : nil
+        #endif
+        if pointerTool == .blade && moveDraft == nil && effectRange == nil && !editor.editingBlocked {
+            content.blade = { time, lane in split(project, at: time, lane: lane) }
+        }
+        return content.fixedSize(horizontal: false, vertical: true)
+            .accessibilityAction(named: "Mark cut boundary") { if moveDraft == nil && effectRange == nil { mark(project) } }
+            .accessibilityAction(named: "Split at playhead") { if moveDraft == nil && effectRange == nil { split(project) } }
+            .accessibilityAction(named: "Delete selection") { if moveDraft == nil && effectRange == nil { removeSelection(project) } }
 
     }
     private func selectionStatus(_ project: Project) -> some View {
+        HStack(spacing: 4) {
+            if let trim = effectRange {
+                rangeActions(trim, project: project)
+            } else if moveDraft != nil {
+                moveActions(project)
+            } else {
+                selectionDetails(project)
+                Spacer(minLength: 0)
+            }
+        }.font(.subheadline).padding(.horizontal, 8)
+        #if targetEnvironment(macCatalyst)
+        .buttonStyle(.plain)
+        .frame(height: effectRange != nil && dynamicTypeSize.isAccessibilitySize ? nil : max(52, clipboardIconHeight + 28))
+        #else
+        .frame(minHeight: 48)
+        #endif
+        .padding(.vertical, 6)
+    }
+
+    // Each state has its own view type. Erase only at this boundary so SwiftUI
+    // doesn't resolve every possible toolbar at once on the iPhone's main stack.
+    private func selectionDetails(_ project: Project) -> AnyView {
+        let position = EditTime(editor.playhead)
+        let atEnd = position == EditTime(cutLayout.duration)
         let active = timelineRegions.filter { region in
-            region.tool == .placement ? EditInterval(region.range).contains(EditTime(editor.playhead)) : region.range.contains(editor.playhead)
+            let interval = EditInterval(region.range)
+            // At project end the player still displays its final frame.
+            return interval.contains(position) || (atEnd && interval.end == position)
         }
-        let placement = active.first { $0.tool == .placement }
-        let cuts = moveDraft == nil && !editor.playing
+        let cuts = !editor.playing
             ? pasteTargets.filter { $0.isAt(EditTime(editor.playhead)) } : []
         let join = cutLayout.boundary(at: editor.playhead) ?? cuts.first(where: { $0.kind == .picture }).flatMap { cut in
             guard case let .between(left, right) = cut.anchor else { return nil }
             return cutLayout.joins.first { $0.incomingID == right && $0.outgoingID == left }
         }
-        return HStack(spacing: 4) {
-            if moveDraft != nil {
-                moveActions(project)
-            } else {
-                if let id = removalRegionID, let armed = timelineRegions.first(where: { $0.id == id }) {
-                    effectBubble(armed, project: project, identifier: "effect." + armed.tool.rawValue)
-                } else if !selectedItems.isEmpty || selection != nil || markStart != nil {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 4) {
-                            Menu {
-                                Button("Copy", systemImage: "doc.on.doc") { copyOrCut(project, cut: false) }.disabled(markStart != nil)
-                                Button("Cut", systemImage: "scissors") { copyOrCut(project, cut: true) }.disabled(markStart != nil)
-                                if clipboard != nil { Button("Clear clipboard", systemImage: "xmark") { clipboard = nil } }
-                                if let id = targets(project).audio.first, targets(project).audio.count == 1,
-                                   let offset = project.edit.timeline.syncOffset(audio: id), offset != .zero {
-                                    Button("Restore audio sync (\(offset.seconds.formatted(.number.sign(strategy: .always()).precision(.fractionLength(2)))) s)", systemImage: "arrow.triangle.2.circlepath") {
-                                        var edit = project.edit; edit.timeline.restoreSync(audio: id); commit(edit, project: project)
-                                    }
-                                }
-                                if selection != nil { Button("Preview cut", systemImage: "play.square") { quickReview(project) } }
-                            } label: {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(selectionTitle(project, scope: targets(project))).font(.caption.weight(.semibold))
-                                    Text(markStart != nil ? "Choose end" : selection.map { editorTime($0.upperBound - $0.lowerBound) } ?? targets(project).countTitle).font(.caption2).foregroundStyle(.secondary)
-                                }.lineLimit(1).frame(minWidth: 44, maxWidth: 120, minHeight: 48, alignment: .leading).accessibilityLabel("Selection actions: " + targets(project).title)
-                            }
-                            if selection != nil { Button { quickReview(project) } label: { Image(systemName: "play.square").frame(width: 44, height: 48) }.accessibilityLabel("Preview cut") }
-                            clipboardButton(project, cut: false)
-                            clipboardButton(project, cut: true)
-                                .padding(.trailing, 4)
-                            Button { removeSelection(project) } label: { Image(systemName: "trash").frame(width: 44, height: 48) }.foregroundStyle(editorAccent).accessibilityLabel(targets(project).video.isEmpty || targets(project).audio.isEmpty ? "Delete, leave gap" : "Delete selection")
-                            clearSelectionButton
-                            if clipboard != nil { pasteButton(cuts, project: project) }
-                            if let placement { compactPlacement(placement, project: project) }
-                        }
-                    }
-                } else if clipboard != nil || !active.isEmpty || (join?.maximum ?? 0) >= TimelineEditing.frame {
-                    effectChips(project, active: active, join: join.flatMap { $0.maximum >= TimelineEditing.frame ? $0 : nil }, cuts: cuts)
-                }
-                else if project.edit.timeline.gap(at: EditTime(editor.playhead)) != nil {
-                    Button("Close gap", systemImage: "arrow.right.and.line.vertical.and.arrow.left") {
-                        var edit = project.edit
-                        let cut = edit.timeline.gap(at: EditTime(editor.stationaryPlayhead))?.start.seconds
-                        edit.timeline.closeGap(at: EditTime(editor.stationaryPlayhead))
-                        commit(edit, project: project, position: cut)
-                    }.frame(minHeight: 48)
-                }
-                else { Text(feedback ?? "Scroll to scrub · pinch to zoom").font(.caption).foregroundStyle(.secondary).lineLimit(1) }
-                Spacer(minLength: 0)
-            }
-        }.font(.subheadline).padding(.horizontal, 8).frame(minHeight: 48).padding(.vertical,6)
+        if !selectedItems.isEmpty || selection != nil || markStart != nil {
+            let badges = markStart == nil ? selectionEffectRegions : []
+            return AnyView(selectedClipActions(project, cuts: cuts, effects: badges))
+        }
+        if clipboard != nil || !active.isEmpty || (join?.maximum ?? 0) >= TimelineEditing.frame {
+            return AnyView(effectChips(project, active: active, join: join.flatMap { $0.maximum >= TimelineEditing.frame ? $0 : nil }, cuts: cuts))
+        }
+        if project.edit.timeline.gap(at: EditTime(editor.playhead)) != nil {
+            return AnyView(Button("Close gap", systemImage: "arrow.right.and.line.vertical.and.arrow.left") {
+                var edit = project.edit
+                let cut = edit.timeline.gap(at: EditTime(editor.stationaryPlayhead))?.start.seconds
+                edit.timeline.closeGap(at: EditTime(editor.stationaryPlayhead))
+                commit(edit, project: project, position: cut)
+            }.frame(minHeight: 48))
+        }
+        #if targetEnvironment(macCatalyst)
+        let hint = pointerTool == .blade ? "Click a clip to split · A to select" : "Drag the ruler to scrub · drag the filmstrip to scroll"
+        #else
+        let hint = pointerTool == .blade ? "Tap a clip to split it" : "Scroll to scrub · pinch to zoom"
+        #endif
+        return AnyView(Text(feedback ?? hint).font(.caption).foregroundStyle(.secondary).lineLimit(1))
     }
+
+    private func refreshSelectionEffects(_ project: Project) {
+        if usesTabletWorkspace { catalogRegions = uniqueEffects(project) }
+        guard selection != nil || !selectedItems.isEmpty else { selectionEffectRegions = []; return }
+        let scope = selectedTargets(project)
+        var seen = Set<String>()
+        selectionEffectRegions = timelineRegions.filter { region in
+            let owners = region.tool.isAudioRange || region.tool == .volume ? scope.audio : scope.video
+            return owners.contains(region.clipID) && (scope.range.map { $0.intersection(EditInterval(region.range)) != nil } ?? true)
+                && seen.insert(region.tool.rawValue + region.effectID.uuidString).inserted
+        }
+    }
+
+    private func selectedClipActions(_ project: Project, cuts: [TimelinePasteTarget], effects: [ToolRegion]) -> some View {
+        let scope = targets(project)
+        return ScrollViewReader { bar in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 4) {
+                    selectionAction("Copy", icon: "doc.on.doc", tint: .cyan, label: "Copy selection", id: "editor.copy") {
+                        copyOrCut(project, cut: false)
+                    }
+                    .accessibilityHint("Copies the selection to the clipboard.")
+                    .disabled(markStart != nil)
+                    .id("selectionActionsStart")
+                    selectionAction("Cut", icon: "scissors", tint: .cyan, label: "Cut selection", id: "editor.cut") {
+                        copyOrCut(project, cut: true)
+                    }
+                    .accessibilityHint("Removes the selection and puts it on the clipboard.")
+                    .disabled(markStart != nil)
+                    selectionAction("Delete", icon: "trash", tint: editorAccent,
+                                    label: scope.video.isEmpty || scope.audio.isEmpty ? "Delete, leave gap" : "Delete selection", id: "editor.delete") {
+                        removeSelection(project)
+                    }
+                    selectionAction("Cancel", icon: "xmark", tint: .secondary, label: "Cancel selection", id: "editor.clearSelection") {
+                        clearSelection()
+                        feedback = "Selection cleared"
+                    }
+                    .padding(.trailing, 4)
+                    Menu {
+                        if markStart == nil {
+                            Button("Edit duration", systemImage: "clock") { openToolsPage(.range) }
+                        }
+                        Button("Copy", systemImage: "doc.on.doc") { copyOrCut(project, cut: false) }.disabled(markStart != nil)
+                        Button("Cut", systemImage: "scissors") { copyOrCut(project, cut: true) }.disabled(markStart != nil)
+                        if clipboard != nil { Button("Clear clipboard", systemImage: "xmark") { clipboard = nil } }
+                        if let id = scope.audio.first, scope.audio.count == 1,
+                           let offset = project.edit.timeline.syncOffset(audio: id), offset != .zero {
+                            Button("Restore audio sync (\(offset.seconds.formatted(.number.sign(strategy: .always()).precision(.fractionLength(2)))) s)", systemImage: "arrow.triangle.2.circlepath") {
+                                var edit = project.edit; edit.timeline.restoreSync(audio: id); commit(edit, project: project)
+                            }
+                        }
+                        if selection != nil { Button("Preview cut", systemImage: "play.square") { quickReview(project) } }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(selectionTitle(project, scope: scope)).font(.caption.weight(.semibold))
+                            Text(markStart != nil ? "Choose end" : selection.map { editorTime($0.upperBound - $0.lowerBound) } ?? scope.countTitle).font(.caption2).foregroundStyle(.secondary)
+                        }.lineLimit(1).frame(minWidth: 44, maxWidth: 120, minHeight: 48, alignment: .leading).accessibilityLabel("Selection actions: " + scope.title)
+                    }
+                    ForEach(effects) { region in
+                        effectBubble(region, project: project, identifier: "effect." + region.tool.rawValue)
+                    }
+                    if selection != nil { Button { quickReview(project) } label: { Image(systemName: "play.square").frame(width: 44, height: 48) }.accessibilityLabel("Preview cut") }
+                    if clipboard != nil { pasteButton(cuts, project: project) }
+                }
+            }
+            .accessibilityIdentifier("editor.selectionActions")
+            .onChange(of: scope, initial: true) { _, _ in bar.scrollTo("selectionActionsStart", anchor: .leading) }
+        }
+    }
+
     @ViewBuilder private func moveActions(_ project: Project) -> some View {
         let at = moveBoundaries.anchor + EditTime(moveOffset)
         let previous = moveBoundaries.previous(from: at), next = moveBoundaries.next(from: at)
@@ -693,7 +966,11 @@ struct EditorView: View {
             Image(systemName: "scope").foregroundStyle(.cyan).accessibilityHidden(true)
                 .padding(.trailing, 4)
             VStack(alignment: .leading, spacing: 2) {
+                #if targetEnvironment(macCatalyst)
+                Text("Click a dashed cyan line on the timeline").font(.headline)
+                #else
                 Text("Tap a dashed cyan line on the timeline").font(.headline)
+                #endif
                 Text("Your selection will start there.").font(.subheadline).foregroundStyle(.secondary)
             }
             .fixedSize(horizontal: false, vertical: true)
@@ -702,7 +979,11 @@ struct EditorView: View {
             Spacer(minLength: 0)
             Button { pickingMoveBoundary = false } label: {
                 Text("Back").frame(minWidth: 48, minHeight: 44).contentShape(Rectangle())
-            }.accessibilityLabel("Back to Move")
+            }.editorDecisionButton(primary: false)
+            #if targetEnvironment(macCatalyst)
+            .keyboardShortcut(.cancelAction)
+            #endif
+            .accessibilityLabel("Back to Move")
         } else {
             VStack(alignment: .leading, spacing: 1) {
                 Text(moveBoundaryLabel(at, among: moveBoundaries.times)).font(.subheadline.monospacedDigit().weight(.semibold))
@@ -717,7 +998,7 @@ struct EditorView: View {
                     moveBoundaryIcon("arrow.right.to.line", tint: .yellow)
                 }.disabled(next == nil).accessibilityLabel("Move to next cut").accessibilityIdentifier("move.next")
                 Button {
-                    cancelPendingPlay(); editor.pause(); moveBrowseTime = nil; pickingMoveBoundary = true
+                    resetPlayTap(); editor.pause(); moveBrowseTime = nil; pickingMoveBoundary = true
                     UIAccessibility.post(notification: .announcement, argument: moveDestinationHint)
                 } label: {
                     moveBoundaryIcon("scope", tint: .cyan)
@@ -725,12 +1006,21 @@ struct EditorView: View {
                     .accessibilityLabel("Move to a boundary").accessibilityIdentifier("move.choose")
             }.buttonStyle(EditorActionStyle())
             Spacer(minLength: 0)
+            #if targetEnvironment(macCatalyst)
+            HStack(spacing: 8) {
+                Button("Cancel") { finishMove(project, apply: false) }
+                    .editorDecisionButton(primary: false).keyboardShortcut(.cancelAction)
+                Button("Done") { finishMove(project, apply: true) }
+                    .editorDecisionButton(primary: true).keyboardShortcut(.defaultAction)
+            }
+            #else
             Button { finishMove(project, apply: false) } label: {
                 Text("Cancel").frame(minWidth: 48, minHeight: 48).contentShape(Rectangle())
             }
             Button { finishMove(project, apply: true) } label: {
                 Text("Done").fontWeight(.semibold).frame(minWidth: 44, minHeight: 48).contentShape(Rectangle())
             }
+            #endif
         }
     }
 
@@ -744,16 +1034,15 @@ struct EditorView: View {
             .contentShape(Rectangle())
     }
 
-    private func clipboardButton(_ project: Project, cut: Bool) -> some View {
-        Button {
-            copyOrCut(project, cut: cut)
-        } label: {
+    private func selectionAction(_ title: String, icon: String, tint: Color, label: String, id: String,
+                                 action: @escaping () -> Void) -> some View {
+        Button(action: action) {
             VStack(spacing: 2) {
-                Image(systemName: cut ? "scissors" : "doc.on.doc")
+                Image(systemName: icon)
                     .font(.title3.weight(.medium))
-                    .foregroundStyle(.cyan)
+                    .foregroundStyle(tint)
                     .frame(height: clipboardIconHeight)
-                Text(cut ? "Cut" : "Copy")
+                Text(title)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.primary)
             }
@@ -761,15 +1050,13 @@ struct EditorView: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
             .frame(minWidth: 46, minHeight: 44)
-            .background(.cyan.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+            .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
             .frame(minHeight: 48)
             .contentShape(Rectangle())
         }
         .buttonStyle(EditorActionStyle())
-        .accessibilityLabel(cut ? "Cut selection" : "Copy selection")
-        .accessibilityHint(cut ? "Removes the selection and puts it on the clipboard." : "Copies the selection to the clipboard.")
-        .accessibilityIdentifier(cut ? "editor.cut" : "editor.copy")
-        .disabled(markStart != nil)
+        .accessibilityLabel(label)
+        .accessibilityIdentifier(id)
     }
 
     private func pasteButton(_ cuts: [TimelinePasteTarget], project: Project) -> some View {
@@ -794,49 +1081,113 @@ struct EditorView: View {
             }
         }.foregroundStyle(.cyan).accessibilityLabel("Paste")
             .accessibilityValue(replacesTransition ? "Replaces transition" : "").accessibilityIdentifier("editor.paste")
-            .disabled(editor.loading || editor.rendering || editor.playing)
+            .disabled(editor.editingBlocked || editor.rendering || editor.playing)
     }
 
-    private func compactPlacement(_ region: ToolRegion, project: Project) -> some View {
-        effectBubble(region, project: project, identifier: "effect.placement").labelStyle(.iconOnly).frame(width: 44)
-    }
     private func effectChips(_ project: Project, active: [ToolRegion], join: TransitionJoin? = nil, cuts: [TimelinePasteTarget] = []) -> some View {
         let regions = active.filter { join == nil || $0.effectID != join?.transition?.id }
-        return ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                if clipboard != nil {
-                    pasteButton(cuts, project: project)
-                    Button { clipboard = nil } label: { Image(systemName: "xmark").frame(width: 44, height: 48) }
-                        .accessibilityLabel("Clear clipboard")
-                }
-                if let join {
-                    if let transition=join.transition,let region=timelineRegions.first(where:{$0.tool == .transition && $0.effectID==transition.id}) {
-                        effectBubble(region,project:project,identifier:"editor.transition")
-                    } else {
-                        Button {
-                            removalRegionID=nil;editor.pause();editor.seek(join.time);toolRequest=makeToolRequest(.transition,project:project)
-                        } label: {Label("Transition",systemImage:"plus").fixedSize().padding(.horizontal,12).frame(minHeight:48).background(Color.orange.opacity(0.12),in:Capsule())}
-                            .foregroundStyle(.orange).accessibilityIdentifier("editor.transition")
+        return HStack(spacing: 4) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    if clipboard != nil {
+                        pasteButton(cuts, project: project)
+                        Button { clipboard = nil } label: { Image(systemName: "xmark").frame(width: 44, height: 48) }
+                            .accessibilityLabel("Clear clipboard")
                     }
+                    if let join {
+                        if let transition=join.transition,let region=timelineRegions.first(where:{$0.tool == .transition && $0.effectID==transition.id}) {
+                            effectBubble(region,project:project,identifier:"editor.transition")
+                        } else {
+                            Button {
+                                removalRegionID=nil;editor.pause();editor.seek(join.time);toolRequest=makeToolRequest(.transition,project:project)
+                            } label: {Label("Transition",systemImage:"plus").fixedSize().padding(.horizontal,12).frame(minHeight:48).background(Color.orange.opacity(0.12),in:Capsule())}
+                                .foregroundStyle(.orange).accessibilityIdentifier("editor.transition")
+                        }
+                    }
+                    if let placement = regions.first(where: { $0.tool == .placement }) {
+                        effectBubble(placement, project: project, identifier: "effect.placement")
+                    }
+                    ForEach(regions.filter { $0.tool != .placement }) {region in effectBubble(region,project:project,identifier:"effect."+region.tool.rawValue)}
                 }
-                if let placement = regions.first(where: { $0.tool == .placement }) {
-                    effectBubble(placement, project: project, identifier: "effect.placement")
-                }
-                ForEach(regions.filter { $0.tool != .placement }) {region in effectBubble(region,project:project,identifier:"effect."+region.tool.rawValue)}
             }
         }
     }
-    private func effectBubble(_ region:ToolRegion,project:Project,identifier:String)->some View {
-        EffectRemovalBubble(title:region.label,symbol:region.tool.symbol,tint:region.tool.tint,identifier:identifier,
-                            armed:removalRegionID==region.id,edit:{
-            removalRegionID=nil;editor.pause();editor.seek(editor.playhead);toolRequest=request(for:region,project:project)
-        },arm:{editor.pause();removalRegionID=region.id;UIImpactFeedbackGenerator(style:.light).impactOccurred()},cancel:{removalRegionID=nil},remove:{
-            guard let current=self.project else {return}
-            let state=current.edit.removingTool(request(for:region,project:current))
-            removalRegionID=nil
-            guard state != current.edit else {return}
-            commit(state,project:current);feedback="Removed "+region.label+" · Undo available"
-        })
+
+    private func effectBubble(_ region: ToolRegion, project: Project, identifier: String) -> some View {
+        let armed = removalRegionID == region.id
+        func model() -> EditState { project.edit }
+        let scope = armed ? selectedTargets(project) : TimelineSelection()
+        let localSelection = scope.isEmpty && scope.range == nil
+            ? TimelineSelection(video: region.tool.isAudioRange ? [] : [region.clipID],
+                                audio: region.tool.isAudioRange ? [region.clipID] : []) : scope
+        let local = armed && markStart == nil
+            ? ScopedEffectOperation(region, in: model(), selection: localSelection, all: timelineRegions) : nil
+        let trim = armed ? EffectRangeEdit(region, in: model(), playhead: editor.stationaryPlayhead) : nil
+        func whole() -> ToolRequest {
+            if let op = ScopedEffectOperation(region, in: model(), selection: nil, all: timelineRegions), op.needsProjection(in: model()) {
+                return op.request()
+            }
+            return request(for: region, project: project)
+        }
+        func open(_ request: ToolRequest) {
+            removalRegionID = nil; editor.pause()
+            toolRequest = request
+        }
+        func remove(_ operation: ScopedEffectOperation?) {
+            removalRegionID = nil
+            let request = whole()
+            let model = model()
+            let state = (operation ?? request.scopedEffect)?.removing(from: model) ?? model.removingTool(request)
+            guard state != model, commit(state, project: project) else { return }
+            feedback = "Removed " + region.label + " · Undo available"
+        }
+        return EffectRemovalBubble(title: region.label, symbol: region.tool.symbol, tint: region.tool.tint,
+            identifier: identifier, armed: armed, scopeName: local?.scopeName,
+            edit: { open(whole()) }, arm: {
+                editor.pause(); removalRegionID = region.id
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }, close: { if removalRegionID == region.id { removalRegionID = nil } },
+            localEdit: { if let local { open(local.request()) } },
+            localRemove: { if let local { remove(local) } },
+            adjust: trim.map { draft in { resetPlayTap(); editor.pause(); playbackSpeedsOpen = false
+                removalRegionID = nil; rangePreview.reset(); effectRange = draft } },
+            remove: { remove(nil) })
+    }
+    private func changeEffectEdge(_ edge: EditorRangeTiming.Edge, to time: Double) {
+        guard var draft = effectRange else { return }
+        let previous = draft.timing.range
+        draft.timing.set(edge, to: time)
+        guard previous != draft.timing.range || draft.lastEdge != edge else { return }
+        draft.lastEdge = edge
+        effectRange = draft; rangePreview.update(draft)
+        editor.seekPaused(draft.timing.previewTime(for: edge))
+    }
+
+    private func rangeActions(_ trim: EffectRangeEdit, project: Project) -> some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout(spacing: 12))
+        return layout {
+            Text("Drag either handle.")
+                .font(.footnote).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("effect.rangeHint")
+            HStack(spacing: 12) {
+                Button("Cancel") {
+                    effectRange = nil; rangePreview.reset()
+                    editor.seekPaused(trim.originalPlayhead)
+                }.buttonStyle(EditorDecisionStyle(primary: false, fill: Color(red: 0.23, green: 0.28, blue: 0.35)))
+                    .accessibilityIdentifier("effect.rangeCancel")
+                Button("Done") {
+                    effectRange = nil; rangePreview.reset()
+                    guard trim.timing.range != trim.original else { return }
+                    applyTool(trim.applying(to: project.edit), request: project.edit.request(for: trim.region))
+                    viewPositions[project.historyCursor] = trim.originalPlayhead
+                }.buttonStyle(EditorDecisionStyle(primary: true))
+                    .accessibilityIdentifier("effect.rangeDone")
+            }.frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil, alignment: .trailing)
+        }.padding(.horizontal, 4)
     }
     private func copyOrCut(_ project: Project, cut: Bool) {
         guard markStart == nil, !selectedItems.isEmpty || selection != nil else { return }
@@ -844,7 +1195,7 @@ struct EditorView: View {
         if cut {
             var edit = project.edit
             guard let result = edit.timeline.cutToClipboard(scope, preserving: EditTime(editor.stationaryPlayhead)),
-                  commit(edit, project: project, position: result.position.seconds) else { return }
+                  commit(edit, project: project, position: result.position.seconds, cut: .changesContent) else { return }
             clipboard = result.clipboard
         } else {
             let copied = project.edit.timeline.copied(scope)
@@ -862,13 +1213,13 @@ struct EditorView: View {
         guard let clipboard, !clipboard.isEmpty else { return }
         var state = project.edit
         let added = state.timeline.paste(clipboard, at: EditTime(editor.stationaryPlayhead), target: target)
-        guard !added.isEmpty, commit(state, project: project, position: state.timeline.interval(for: added)?.start.seconds) else { return }
+        guard !added.isEmpty, commit(state, project: project, position: state.timeline.interval(for: added)?.start.seconds, cut: .changesContent) else { return }
         clearSelection(); selectedItems = added.ids
         feedback = "Pasted · Undo available"
         UIAccessibility.post(notification: .announcement, argument: "Pasted")
     }
 
-    private func addVideoPanel(_ project: Project) -> some View {
+    private func addVideoPanel(_ project: Project, standalone: Bool) -> some View {
         let target: TimelinePasteTarget?
         switch timelineAddSite {
         case .start: target = pasteTargets.first { $0.kind != .project && $0.anchor == .start }
@@ -879,28 +1230,20 @@ struct EditorView: View {
         // A cut can leave an empty project. Its start + still pastes at zero.
         return AddVideoPanel(store: store, project: project, position: insertionTime, site: timelineAddSite,
                       pasteHere: timelineAddSite != nil && clipboard != nil ? {
-                          toolsSheet = false
+                          toolsSheet = nil
                           paste(project, target: target)
                       } : nil,
-                      close: timelineAddSite == nil ? nil : { toolsSheet = false }, record: {
-            pendingRecord = true; toolsSheet = false
+                      close: standalone ? { toolsSheet = nil } : nil, record: {
+            pendingRecord = true; toolsSheet = nil
         }, inserted: { count, start in
-            toolsSheet = false
+            toolsSheet = nil
             if let updated = self.project { finishEdit(updated.edit, from: project, position: start) }
             feedback = count == 1 ? "Clip inserted · Undo available" : "\(count) clips inserted · Undo available"
         })
     }
-    private var clearSelectionButton: some View {
-        Button {
-            clearSelection()
-            feedback = "Selection cleared"
-        } label: {
-            Image(systemName: "xmark").frame(width: 44, height: 48)
-        }.foregroundStyle(.white.opacity(0.8))
-            .accessibilityLabel("Clear selection").accessibilityIdentifier("editor.clearSelection")
-    }
-    private func editTools(_ project: Project, compact: Bool) -> some View {
-        let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: dynamicTypeSize.isAccessibilitySize ? 2 : 4)
+    private func editTools(_ project: Project, compact: Bool, showsToolsButton: Bool = true) -> some View {
+        let count = moveDraft != nil || showsToolsButton ? 4 : 3
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: dynamicTypeSize.isAccessibilitySize ? 2 : count)
         return LazyVGrid(columns: columns, spacing: 8) {
             if moveDraft != nil {
                 ForEach(TimelineMoveScope.allCases, id: \.self) { scope in
@@ -910,15 +1253,17 @@ struct EditorView: View {
                 }
             } else {
                 tool(selection != nil ? "Move end" : markStart == nil ? "Mark start" : "Mark end", markStart == nil ? "rectangle.dashed" : "checkmark", compact: compact) { mark(project) }.disabled(project.edit.duration <= 0)
-                tool("Split", "square.split.2x1", compact: compact) { split(project) }.disabled(project.edit.duration <= 0)
-                tool("Tools", "square.grid.2x2", compact: compact) {
-                    editor.pause(); editor.seek(editor.playhead); toolsSheet = true
-                }.disabled(editor.rendering)
+                tool("Split", "square.split.2x1", compact: compact) { split(project) }.keyboardShortcut("b", modifiers: .command).disabled(project.edit.duration <= 0)
+                if showsToolsButton {
+                    tool("Tools", "square.grid.2x2", compact: compact) {
+                        editor.pause(); editor.seek(editor.playhead); toolsSheet = .catalog
+                    }.disabled(editor.rendering || editor.loading)
+                }
                 tool("Export", "square.and.arrow.up", compact: compact, fill: MovieExportPanel.buttonColor) {
                     exportSheet = true
-                }.disabled(project.edit.duration <= 0)
+                }.disabled(project.edit.duration <= 0 || editor.loading)
             }
-        }.padding(.horizontal, 12).disabled(editor.loading && moveDraft == nil)
+        }.padding(.horizontal, 12).disabled((editor.editingBlocked && moveDraft == nil) || effectRange != nil)
     }
     private func comparison(_ project: Project) -> some View {
         let scope = selectedTargets(project)
@@ -947,7 +1292,7 @@ struct EditorView: View {
             if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 0) }
             HStack(spacing: 4) {
                 tool(linked ? "Unlink" : "Link", linked ? "link" : "link.badge.plus", compact: true) { toggleLink(project) }.disabled(moveDraft != nil)
-                tool("Move", "arrow.left.and.right", compact: true) { beginMove(project) }.disabled(scope.isEmpty || moveDraft != nil)
+                tool("Move", "arrow.left.and.right", compact: true) { beginMove(project) }.disabled(scope.isEmpty || moveDraft != nil || editor.loading)
                 QuickVolumeControl(value: AudioGainGrid.common(project.edit.timeline.audio.filter { volumeScope.audio.contains($0.id) }),
                     enabled: !volumeScope.audio.isEmpty && moveDraft == nil && !editor.loading,
                     headroom: scope.audio.isEmpty ? nil : editor.headroom,
@@ -959,7 +1304,7 @@ struct EditorView: View {
                         await editor.measureHeadroom(selection: scope, timeline: project.edit.timeline)
                     }
             }
-        }.padding(.horizontal, 8).padding(.top, 8).foregroundStyle(.white).disabled(editor.loading && moveDraft == nil)
+        }.padding(.horizontal, 8).padding(.top, 8).foregroundStyle(.white).disabled((editor.editingBlocked && moveDraft == nil) || effectRange != nil)
     }
     private func commitGain(_ db:Double,scope:TimelineSelection,project:Project) {
         let wasPlaying=editor.playing
@@ -974,15 +1319,18 @@ struct EditorView: View {
             feedback=String(format:"%+.1f dB · Undo available",db)
         }
     }
-    private func uniqueEffects(_ project: Project) -> [ToolRegion] {
+    private func uniqueEffects(_ project: Project, at time: EditTime? = nil) -> [ToolRegion] {
         var seen = Set<String>()
         let selection = selectedTargets(project)
-        let regions = project.edit.toolRegions.filter { region in
+        let ids = selection.ids
+        let regions = timelineRegions.filter { region in
             guard region.tool != .transition, region.tool != .placement else { return false }
-            return selection.isEmpty || (selection.ids.contains(region.clipID) && (selection.range == nil || selection.range?.intersection(EditInterval(region.range)) != nil))
+            return selection.isEmpty || (ids.contains(region.clipID) && (selection.range == nil || selection.range?.intersection(EditInterval(region.range)) != nil))
         }.sorted { a, b in
-            let hereA = EditInterval(a.range).contains(EditTime(editor.playhead)), hereB = EditInterval(b.range).contains(EditTime(editor.playhead))
-            if hereA != hereB { return hereA }
+            if let time {
+                let hereA = EditInterval(a.range).contains(time), hereB = EditInterval(b.range).contains(time)
+                if hereA != hereB { return hereA }
+            }
             return a.range.lowerBound < b.range.lowerBound
         }
         return regions.filter { seen.insert($0.tool.rawValue + $0.effectID.uuidString).inserted }
@@ -1004,8 +1352,8 @@ struct EditorView: View {
         guard !project.edit.timeline.video.isEmpty, let item = editor.coverItem(for: project.edit) else { return nil }
         return {
             let scope = selection == nil && selectedItems.isEmpty ? TimelineSelection() : targets(project)
-            coverPicker = CoverPickerSource(item: item, project: project, selection: scope,
-                                            canvas: editor.canvas ?? item.presentationSize)
+            openToolsPage(.cover(CoverPickerSource(item: item, project: project, selection: scope,
+                                                   canvas: editor.canvas ?? item.presentationSize)))
         }
     }
     private func makeToolRequest(_ kind: VideoTool, project: Project) -> ToolRequest {
@@ -1013,12 +1361,12 @@ struct EditorView: View {
         var scope = targets(project)
         if [.enhanceAudio, .volume, .censorAudio].contains(kind) { scope.video = [] }
         var range = project.edit.timeline.interval(for: scope)?.seconds ?? 0...project.edit.duration
-        if selection == nil, kind == .text || (kind == .image && selectedItems.isEmpty) { range = min(editor.playhead, max(0, project.edit.duration - TimelineEditing.frame))...min(project.edit.duration, editor.playhead + 3) }
+        if selection == nil, selectedItems.isEmpty, kind == .text || kind == .image { range = min(editor.playhead, max(0, project.edit.duration - TimelineEditing.frame))...min(project.edit.duration, editor.playhead + 3) }
         let title = kind == .volume && selectedTargets(project).isEmpty ? "Whole project · All audio" : selectionTitle(project, scope: scope)
-        let scopeTitle = (kind == .text || kind == .image) ? title : title + " · " + editorTime(range.lowerBound) + "–" + editorTime(range.upperBound)
+        let scopeTitle = [.text, .image, .color].contains(kind) ? title : title + " · " + editorTime(range.lowerBound) + "–" + editorTime(range.upperBound)
         return ToolRequest(tool: kind, range: range, scopeTitle: scopeTitle, clipIDs: scope.video, targets: scope)
     }
-    private func request(for region: ToolRegion, project: Project) -> ToolRequest {
+    private func request(for region: ToolRegion, project: Project, openingBadge: Bool = true) -> ToolRequest {
         if region.tool == .placement {
             let plan = project.edit.timeline.compile().first { $0.video.count > 1 && $0.interval.intersection(EditInterval(region.range)) != nil }
             let ids = Set(plan?.video ?? [])
@@ -1029,7 +1377,7 @@ struct EditorView: View {
         if region.tool == .transition, let join = project.edit.layout.joins.first(where: { $0.transition?.id == region.effectID }) {
             return ToolRequest(tool: .transition, range: join.range, scopeTitle: join.title, effectID: region.effectID, boundaryIndex: join.index)
         }
-        return project.edit.request(for: region, selection: selectedTargets(project))
+        return project.edit.request(for: region, selection: openingBadge ? TimelineSelection() : selectedTargets(project), openingBadge: openingBadge)
     }
     private func clipAtPlayhead(_ project: Project) -> TimelineClip? {
         project.edit.layout.placement(at: editor.playhead)?.clip
@@ -1040,7 +1388,7 @@ struct EditorView: View {
                 HStack {
                     ProgressView(value: editor.progress)
                     Text("\(Int(editor.progress * 100))%").font(.caption.monospacedDigit())
-                    Button("Cancel") { editor.cancel() }.font(.caption).frame(minHeight: 44)
+                    Button("Cancel") { editor.cancel() }.font(.caption).editorDecisionButton(primary: false).frame(minHeight: 44)
                 }.padding(.horizontal, 16)
             }
             if let notice = editor.notice { Text(notice).font(.caption).foregroundStyle(.orange).padding(.horizontal, 16).padding(.bottom, 8) }
@@ -1057,15 +1405,17 @@ struct EditorView: View {
                 .foregroundStyle(.white).id(title).transaction { $0.animation = nil }
         }.buttonStyle(EditorActionStyle()).accessibilityLabel(title)
     }
-    private func cancelPendingPlay() { pendingPlay?.cancel(); pendingPlay = nil; playTapTime = nil }
+    private func resetPlayTap() { playTapTime = nil }
+    private enum CutEdit { case split, changesContent }
     @discardableResult
-    private func commit(_ state: EditState, project: Project, position: Double? = nil) -> Bool {
-        cancelPendingPlay()
+    private func commit(_ state: EditState, project: Project, position: Double? = nil, cut: CutEdit? = nil) -> Bool {
+        resetPlayTap()
         editor.restoreAudition()
         editor.pause()
         viewPositions[project.historyCursor] = editor.playhead
         guard store.commit(projectID, state) else { return false }
         editor.cancelObsoleteEffectWork()
+        if let cut, let saved = self.project { editor.beginCutRefresh(from: project, to: saved, splitOnly: cut == .split) }
         finishEdit(state, from: project, position: position)
         return true
     }
@@ -1085,24 +1435,31 @@ struct EditorView: View {
         editor.seekAfterEdit(newPosition, duration: state.duration)
     }
     private func history(_ project: Project, redo: Bool) {
-        cancelPendingPlay(); editor.restoreAudition(); editor.pause(); viewPositions[project.historyCursor] = editor.playhead
+        resetPlayTap(); editor.restoreAudition(); editor.pause(); viewPositions[project.historyCursor] = editor.playhead
         guard store.update(projectID, { if redo { $0.redo() } else { $0.undo() } }) else { return }
         editor.cancelObsoleteEffectWork()
         clearSelection()
-        if let updated = self.project { editor.seekAfterEdit(viewPositions[updated.historyCursor] ?? editor.playhead, duration: updated.edit.duration) }
+        if let updated = self.project {
+            editor.beginCutRefresh(from: project, to: updated, history: true)
+            editor.seekAfterEdit(viewPositions[updated.historyCursor] ?? editor.playhead, duration: updated.edit.duration)
+        }
         feedback = redo ? "Redone" : "Undone"
     }
-    private func split(_ project: Project) {
-        let time = editor.playhead
+    private func split(_ project: Project, at pointerTime: Double? = nil, lane: TimelineLane? = nil) {
+        let time = pointerTime ?? editor.playhead
+        if let lane {
+            let point = EditTime(TimelineEditing.quantize(time))
+            guard lane.interval.start < point, point < lane.interval.end else { return }
+        }
         if cutLayout.transition(at: time) != nil { feedback = "Remove the transition before splitting inside its overlap"; return }
-        let items = selection == nil && markStart == nil ? selectedItems : []
+        let items = lane.map { Set([$0.id]) } ?? (selection == nil && markStart == nil ? selectedItems : [])
         let next = TimelineEditing.split(project.edit, at: time, selectedItems: items)
         guard next != project.edit else {
             feedback = cutLayout.placement(at: time).map { let joins = cutLayout.joins(for: $0); return joins.incoming.transition != nil || joins.outgoing.transition != nil } == true
                 ? "Shorten or remove the nearby transition before splitting here" : "Move at least one frame inside a clip"
             return
         }
-        guard commit(next, project: project, position: TimelineEditing.quantize(time)) else { return }
+        guard commit(next, project: project, position: TimelineEditing.quantize(time), cut: .split) else { return }
         clearSelection()
         feedback = "Split · Undo available"
         UISelectionFeedbackGenerator().selectionChanged()
@@ -1130,7 +1487,7 @@ struct EditorView: View {
         let position = scope.timeline.remove(scope.selection, preserving: EditTime(editor.stationaryPlayhead))
         let next = EditState(timeline: scope.timeline, outputSize: project.edit.outputSize)
         guard !scope.selection.isEmpty, next != project.edit else { clearSelection(); feedback = "Nothing selected to delete"; return }
-        guard commit(next, project: project, position: position?.seconds) else { return }
+        guard commit(next, project: project, position: position?.seconds, cut: .changesContent) else { return }
         clearSelection(); feedback = "Deleted · Undo available"
     }
     private func toggleLink(_ project: Project) {
@@ -1160,7 +1517,7 @@ struct EditorView: View {
         } catch { editor.error = error.localizedDescription }
     }
     private func beginMove(_ project: Project) {
-        cancelPendingPlay(); editor.restoreAudition(); editor.pause()
+        resetPlayTap(); editor.restoreAudition(); editor.pause()
         let scope = project.edit.timeline.scoped(targets(project))
         guard !scope.selection.isEmpty else { return }
         var base = project.edit; base.timeline = scope.timeline
@@ -1183,7 +1540,7 @@ struct EditorView: View {
     }
     private func placeMove(at time: EditTime, project: Project) {
         guard moveOrigin?.revision == project.updatedAt, moveBoundaries.times.contains(time) else { return }
-        cancelPendingPlay(); editor.pause()
+        resetPlayTap(); editor.pause()
         pickingMoveBoundary = false
         updateMove((time - moveBoundaries.anchor).seconds, project: project, snapping: false)
         moveDragOrigin = moveOffset
@@ -1243,7 +1600,7 @@ struct EditorView: View {
         guard let interval = project.edit.timeline.interval(for: chosen) else { return }
         if left && delta < 0 || !left && delta > 0 {
             var edit = project.edit; edit.timeline.extend(chosen, left: left, by: EditTime(abs(delta)), sources: project.sources)
-            if edit != project.edit { commit(edit, project: project); feedback = "Trim extended · Undo available" }
+            if edit != project.edit { commit(edit, project: project, cut: .changesContent); feedback = "Trim extended · Undo available" }
             return
         }
         // A trim removes material from this occurrence, never from another lane.
@@ -1253,14 +1610,14 @@ struct EditorView: View {
         var target = chosen; target.range = EditInterval(removed)
         var scope = project.edit.timeline.scoped(target)
         let position = scope.timeline.remove(scope.selection, preserving: EditTime(editor.stationaryPlayhead))
-        commit(EditState(timeline: scope.timeline, outputSize: project.edit.outputSize), project: project, position: position?.seconds)
+        commit(EditState(timeline: scope.timeline, outputSize: project.edit.outputSize), project: project, position: position?.seconds, cut: .changesContent)
         feedback = "Trimmed · Undo available"
     }
     private func jumpBookmark(_ project: Project, forward: Bool) {
         let marks = project.edit.timeline.resolvedBookmarks
-        guard !marks.isEmpty else { cancelPendingPlay(); editor.pause(); bookmarkHelp = true; return }
+        guard !marks.isEmpty else { resetPlayTap(); editor.pause(); bookmarkHelp = true; return }
         let mark = forward ? marks.first { $0.time.seconds > editor.playhead + 0.02 } : marks.last { $0.time.seconds < editor.playhead - 0.02 }
-        if let mark { cancelPendingPlay(); editor.seekPaused(mark.time.seconds) }
+        if let mark { resetPlayTap(); editor.seekPaused(mark.time.seconds) }
     }
     private func addBookmark(_ project: Project) {
         var edit = project.edit; edit.timeline.addBookmark(at: EditTime(editor.playhead), preferredVideo: selectedClip)
@@ -1295,6 +1652,98 @@ struct EditorView: View {
         .presentationDetents([.medium, .large])
     }
 
+}
+
+private enum TimelinePointerTool: String, CaseIterable {
+    case select, blade
+
+    var name: String { self == .select ? "Select" : "Blade" }
+    var symbol: String { self == .select ? "cursorarrow" : "scissors" }
+    var key: KeyEquivalent { self == .select ? "a" : "b" }
+    var shortcutLabel: String { "\(name) (\(String(key.character).uppercased()))" }
+}
+
+private struct TimelineToolPalette: View {
+    private let toolSize: CGFloat = 44
+    @Binding var selection: TimelinePointerTool
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var hovered: TimelinePointerTool?
+    @State private var tip: TimelinePointerTool?
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(TimelinePointerTool.allCases, id: \.self) { tool in
+                let selected = selection == tool
+                Button {
+                    selection = tool
+                    tip = nil
+                } label: {
+                    Image(systemName: tool.symbol).font(.body.weight(.semibold))
+                        .foregroundStyle(selected ? Color.cyan : .white.opacity(0.78))
+                        .frame(width: toolSize, height: toolSize)
+                        .background {
+                            if selected { RoundedRectangle(cornerRadius: 6).fill(.cyan.opacity(0.19)).padding(3) }
+                        }
+                        .contentShape(Rectangle())
+                }.buttonStyle(.plain)
+                    .keyboardShortcut(tool.key, modifiers: [])
+                    .accessibilityLabel(tool.name)
+                    .accessibilityHint(tool == .select ? "Select timeline clips. Shortcut A." : "Split a clip at the chosen point. Shortcut B.")
+                    .accessibilityAddTraits(selected ? .isSelected : [])
+                    .accessibilityIdentifier("timeline.mode." + tool.rawValue)
+                    .onHover { inside in
+                        if inside { hovered = tool }
+                        else if hovered == tool { hovered = nil }
+                    }
+                    .overlay(alignment: .bottomLeading) {
+                        if tip == tool, hovered == tool, isEnabled {
+                            Text(tool.shortcutLabel).font(.caption.weight(.semibold)).fixedSize()
+                                .padding(.horizontal, 8).padding(.vertical, 5)
+                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 5))
+                                .offset(y: -toolSize - 5)
+                                .allowsHitTesting(false).accessibilityHidden(true)
+                        }
+                    }
+            }
+        }
+        .background(Color(white: 0.12), in: RoundedRectangle(cornerRadius: 9))
+        .overlay { RoundedRectangle(cornerRadius: 9).strokeBorder(.white.opacity(0.13)).allowsHitTesting(false) }
+        .accessibilityElement(children: .contain).accessibilityLabel("Timeline tools")
+        .opacity(isEnabled ? 1 : 0.5)
+        .task(id: hovered) {
+            tip = nil
+            guard let hovered else { return }
+            do { try await Task.sleep(for: .milliseconds(450)) } catch { return }
+            tip = hovered
+        }
+    }
+}
+
+/// Center playback on the timeline. Give the tool palette its own row only when
+/// even a right-shifted transport would overlap it.
+private struct TimelineToolbarLayout: Layout {
+    private let gap: CGFloat = 12
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let palette = subviews[0].sizeThatFits(.unspecified)
+        let playback = subviews[1].sizeThatFits(.unspecified)
+        let minimumWidth = palette.width + gap + playback.width
+        let width = proposal.width ?? minimumWidth
+        return CGSize(width: width, height: width < minimumWidth ? palette.height + playback.height : max(palette.height, playback.height))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let palette = subviews[0].sizeThatFits(.unspecified)
+        let playback = subviews[1].sizeThatFits(.unspecified)
+        if palette.width + gap + playback.width > bounds.width {
+            subviews[0].place(at: bounds.origin, anchor: .topLeading, proposal: .unspecified)
+            subviews[1].place(at: CGPoint(x: bounds.midX, y: bounds.maxY), anchor: .bottom, proposal: .unspecified)
+        } else {
+            subviews[0].place(at: CGPoint(x: bounds.minX, y: bounds.midY), anchor: .leading, proposal: .unspecified)
+            let leading = max(bounds.minX + palette.width + gap, bounds.midX - playback.width / 2)
+            subviews[1].place(at: CGPoint(x: leading, y: bounds.midY), anchor: .leading, proposal: .unspecified)
+        }
+    }
 }
 
 /// Native cancellation guarantees that a hold fires only effects-only navigation,
@@ -1335,6 +1784,69 @@ final class ChangeNavigationControl: UIButton {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 }
 
+struct EditorFramePreview: View {
+    let player: AVPlayer
+    let identifier: String
+    var hideFromAccessibility = false
+    var copyEnabled = true
+    var cutFrameReady: Bool?
+    let onPlaybackTap: () -> Void
+
+    private struct FrameRequest: Identifiable {
+        let id = UUID()
+        let item: AVPlayerItem
+        let time: CMTime
+    }
+    @State private var request: FrameRequest?
+    @State private var message: String?
+
+    var body: some View {
+        PlayerSurface(player: player, onPlaybackTap: onPlaybackTap, hideFromAccessibility: hideFromAccessibility,
+                      identifier: identifier, cutFrameReady: cutFrameReady, onCopyFrame: copyEnabled ? { item, time in
+            message = "Copying frame…"
+            request = FrameRequest(item: item, time: time)
+        } : nil)
+        .overlay {
+            if let message {
+                Text(message).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                    .padding(.horizontal, 14).padding(.vertical, 8).background(.black.opacity(0.8), in: Capsule())
+                    .allowsHitTesting(false).accessibilityIdentifier("preview.copyFeedback")
+            }
+        }
+        .task(id: request?.id) {
+            guard let request else { return }
+            do {
+                let generator = AVAssetImageGenerator(editorAsset: request.item.asset, composition: request.item.videoComposition)
+                let png = try await Self.framePNG(generator, at: request.time)
+                try Task.checkCancellation()
+                guard player.currentItem === request.item else { message = nil; return }
+                UIPasteboard.general.setData(png, forPasteboardType: UTType.png.identifier)
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                message = "Frame copied"
+            } catch {
+                guard !Task.isCancelled else { return }
+                message = "Couldn’t copy this frame"
+            }
+            UIAccessibility.post(notification: .announcement, argument: message)
+            do {
+                try await Task.sleep(for: .seconds(2))
+                message = nil
+                self.request = nil
+            } catch {}
+        }
+        .onDisappear { request = nil; message = nil }
+    }
+
+    private nonisolated static func framePNG(_ generator: AVAssetImageGenerator, at time: CMTime) async throws -> Data {
+        let frame = try await withTaskCancellationHandler {
+            try await generator.image(at: time).image
+        } onCancel: { generator.cancelAllCGImageGeneration() }
+        try Task.checkCancellation()
+        guard let data = UIImage(cgImage: frame).pngData() else { throw CocoaError(.fileWriteUnknown) }
+        return data
+    }
+}
+
 struct PlayerSurface: UIViewRepresentable {
     let player: AVPlayer
     var inspectionZoom = true
@@ -1343,28 +1855,40 @@ struct PlayerSurface: UIViewRepresentable {
     var hideFromAccessibility = false
     var identifier="editor.preview"
     var preserveInspection=false
+    var cutFrameReady: Bool?
     var onPointOutside:(()->Void)?
     var onBackgroundGesture:((VideoEffectPlacementGesture)->Void)?
     var captions: CaptionPreview?
+    var onCopyFrame: ((AVPlayerItem, CMTime) -> Void)?
     func makeUIView(context: Context) -> PlayerLayerView {
-        let view = PlayerLayerView(); view.configure(player: player, inspectionZoom: inspectionZoom,preserveInspection:preserveInspection);view.onPointTap=onPointTap;view.onPlaybackTap=onPlaybackTap;view.accessibilityElementsHidden=hideFromAccessibility;view.previewIdentifier=identifier;view.onPointOutside=onPointOutside;view.onBackgroundGesture=onBackgroundGesture; view.captions=captions; return view
+        let view = PlayerLayerView()
+        updateUIView(view, context: context)
+        return view
     }
-    func updateUIView(_ uiView: PlayerLayerView, context: Context) { uiView.configure(player: player, inspectionZoom: inspectionZoom,preserveInspection:preserveInspection);uiView.onPointTap=onPointTap;uiView.onPlaybackTap=onPlaybackTap;uiView.accessibilityElementsHidden=hideFromAccessibility;uiView.previewIdentifier=identifier;uiView.onPointOutside=onPointOutside;uiView.onBackgroundGesture=onBackgroundGesture; uiView.captions=captions }
-    static func dismantleUIView(_ uiView: PlayerLayerView, coordinator: ()) { uiView.layerPlayer.player = nil }
+    func updateUIView(_ uiView: PlayerLayerView, context: Context) { uiView.configure(player: player, inspectionZoom: inspectionZoom,preserveInspection:preserveInspection, cutFrameReady: cutFrameReady);uiView.onPointTap=onPointTap;uiView.onPlaybackTap=onPlaybackTap;uiView.accessibilityElementsHidden=hideFromAccessibility;uiView.previewIdentifier=identifier;uiView.onPointOutside=onPointOutside;uiView.onBackgroundGesture=onBackgroundGesture; uiView.captions=captions; uiView.onCopyFrame=onCopyFrame }
+    static func dismantleUIView(_ uiView: PlayerLayerView, coordinator: ()) { uiView.detachPlayers() }
 }
 struct CaptionPreview {
     var envelope: CGRect
     var value: String
     var editable = true
-    var change: (VideoEffectPlacementGesture) -> Void
+    var begin: () -> Void
+    var move: (CGPoint) -> Void
+    var resize: (Double, CGPoint, CGPoint) -> Void
+
+    var center: CGPoint { CGPoint(x: envelope.midX, y: envelope.midY) }
+    func nudge(x: CGFloat = 0, y: CGFloat = 0) { move(CGPoint(x: center.x + x, y: center.y + y)) }
 }
 final class PlayerLayerView: UIView, UIGestureRecognizerDelegate {
-    let layerPlayer = AVPlayerLayer()
+    private var layerPlayer = AVPlayerLayer()
+    private var heldLayer: AVPlayerLayer?
+    private var cutFrameReady: Bool?
     private let picture = UIView()
     private let captionHandle = UIView()
     private let captionGuide = CAShapeLayer()
     private var captionPan = false
     private var captionPinch = false
+    private var captionDragAnchor: (center: CGPoint, touch: CGPoint)?
     var captions: CaptionPreview? {
         // A seek can update this representable inside a SwiftUI graph update.
         // Synchronously committing a layer transaction here re-enters that graph.
@@ -1381,9 +1905,17 @@ final class PlayerLayerView: UIView, UIGestureRecognizerDelegate {
     private var backgroundScale:CGFloat=1
     var onPointTap:((CGPoint)->Void)? { didSet { pointTap.isEnabled=onPointTap != nil || onPlaybackTap != nil } }
     var onPlaybackTap:(()->Void)? { didSet { pointTap.isEnabled=onPointTap != nil || onPlaybackTap != nil; updateGestureAccessibility() } }
+    var onCopyFrame: ((AVPlayerItem, CMTime) -> Void)? {
+        didSet {
+            guard (oldValue == nil) != (onCopyFrame == nil) else { return }
+            frameHold.isEnabled = onCopyFrame != nil
+            updateGestureAccessibility()
+        }
+    }
+    private lazy var frameHold = UILongPressGestureRecognizer(target: self, action: #selector(heldFrame(_:)))
     private lazy var pointTap=UITapGestureRecognizer(target:self,action:#selector(pickedPoint(_:)))
     private lazy var pinch = UIPinchGestureRecognizer(target: self, action: #selector(pinched(_:)))
-    private lazy var pan = UIPanGestureRecognizer(target: self, action: #selector(panned(_:)))
+    private lazy var pan = TouchDownPanRecognizer(target: self, action: #selector(panned(_:)))
     private var zoom = CGFloat(1)
     private var offset = CGPoint.zero
     private var gestureZoom = CGFloat(1)
@@ -1414,10 +1946,10 @@ final class PlayerLayerView: UIView, UIGestureRecognizerDelegate {
         captionHandle.accessibilityLabel = "Subtitle placement"
         captionHandle.accessibilityHint = "Drag to move, pinch to resize all captions. Limited by the largest caption in the project."
         captionHandle.accessibilityCustomActions = [
-            UIAccessibilityCustomAction(name: "Move subtitles left") { [weak self] _ in self?.captions?.change(.pan(CGPoint(x: -0.05, y: 0))); return true },
-            UIAccessibilityCustomAction(name: "Move subtitles right") { [weak self] _ in self?.captions?.change(.pan(CGPoint(x: 0.05, y: 0))); return true },
-            UIAccessibilityCustomAction(name: "Move subtitles up") { [weak self] _ in self?.captions?.change(.pan(CGPoint(x: 0, y: -0.05))); return true },
-            UIAccessibilityCustomAction(name: "Move subtitles down") { [weak self] _ in self?.captions?.change(.pan(CGPoint(x: 0, y: 0.05))); return true },
+            UIAccessibilityCustomAction(name: "Move subtitles left") { [weak self] _ in self?.captions?.nudge(x: -0.05); return true },
+            UIAccessibilityCustomAction(name: "Move subtitles right") { [weak self] _ in self?.captions?.nudge(x: 0.05); return true },
+            UIAccessibilityCustomAction(name: "Move subtitles up") { [weak self] _ in self?.captions?.nudge(y: -0.05); return true },
+            UIAccessibilityCustomAction(name: "Move subtitles down") { [weak self] _ in self?.captions?.nudge(y: 0.05); return true },
             UIAccessibilityCustomAction(name: "Enlarge subtitles") { [weak self] _ in self?.resizeCaption(1.1); return true },
             UIAccessibilityCustomAction(name: "Shrink subtitles") { [weak self] _ in self?.resizeCaption(1 / 1.1); return true }
         ]; addSubview(captionHandle)
@@ -1425,19 +1957,51 @@ final class PlayerLayerView: UIView, UIGestureRecognizerDelegate {
         captionGuide.actions = ["path": NSNull(), "hidden": NSNull()]
         captionGuide.lineWidth = 1; captionGuide.lineDashPattern = [4, 3]; layer.addSublayer(captionGuide)
         pointTap.delegate=self;pointTap.isEnabled=false;addGestureRecognizer(pointTap)
+        frameHold.delegate = self; frameHold.isEnabled = false; addGestureRecognizer(frameHold)
+        pointTap.require(toFail: frameHold)
         pinch.delegate = self; addGestureRecognizer(pinch); pan.maximumNumberOfTouches = 2; pan.delegate = self; addGestureRecognizer(pan)
         resetButton.setImage(UIImage(systemName: "arrow.down.right.and.arrow.up.left", withConfiguration: UIImage.SymbolConfiguration(pointSize: 19, weight: .semibold)), for: .normal)
         resetButton.tintColor = .white; resetButton.backgroundColor = UIColor.black.withAlphaComponent(0.7)
         resetButton.layer.cornerRadius = 24; resetButton.isHidden = true
         resetButton.accessibilityLabel = "Reset preview zoom"; resetButton.accessibilityIdentifier = "editor.preview.resetZoom"
         resetButton.addTarget(self, action: #selector(resetZoom), for: .touchUpInside); addSubview(resetButton)
-        readyObservation = layerPlayer.observe(\.isReadyForDisplay, options: [.initial, .new]) { [weak self] _, _ in
-            DispatchQueue.main.async { self?.updateAccessibility(); self?.setNeedsLayout() }
+        observeDisplay()
+    }
+    private func observeDisplay() {
+        readyObservation = layerPlayer.observe(\.isReadyForDisplay, options: [.new]) { [weak self] _, _ in
+            DispatchQueue.main.async {
+                self?.releaseFrameIfReady()
+                self?.updateAccessibility()
+                self?.setNeedsLayout()
+            }
         }
     }
-    func configure(player: AVPlayer, inspectionZoom: Bool,preserveInspection:Bool=false) {
+    private func releaseFrameIfReady() {
+        guard heldLayer != nil, cutFrameReady == nil || (cutFrameReady == true && layerPlayer.isReadyForDisplay) else { return }
+        heldLayer?.removeFromSuperlayer()
+        heldLayer?.player = nil
+        heldLayer = nil
+        updateCanvasSize()
+    }
+    func detachPlayers() {
+        cutFrameReady = nil
+        releaseFrameIfReady()
+        layerPlayer.player = nil
+    }
+    func configure(player: AVPlayer, inspectionZoom: Bool,preserveInspection:Bool=false, cutFrameReady: Bool?) {
+        self.cutFrameReady = cutFrameReady
         self.preserveInspection=preserveInspection
         if layerPlayer.player !== player {
+            if cutFrameReady != nil, heldLayer == nil, layerPlayer.isReadyForDisplay {
+                let outgoing = layerPlayer
+                // Cover the letterbox too if the cut changes canvas shape.
+                outgoing.backgroundColor = UIColor.black.cgColor
+                heldLayer = outgoing
+                layerPlayer = AVPlayerLayer()
+                layerPlayer.frame = outgoing.frame
+                picture.layer.insertSublayer(layerPlayer, at: 0)
+                observeDisplay()
+            }
             layerPlayer.player = player
             // SwiftUI can keep this representable unchanged while the same
             // AVPlayer receives a new item. Follow that change directly.
@@ -1449,6 +2013,7 @@ final class PlayerLayerView: UIView, UIGestureRecognizerDelegate {
             }
         }
         bindItem(player.currentItem)
+        releaseFrameIfReady()
         pinch.isEnabled = inspectionZoom; pan.isEnabled = inspectionZoom
         if !inspectionZoom { resetZoom() }
         inspectionZoomEnabled=inspectionZoom;updateGestureAccessibility()
@@ -1476,17 +2041,22 @@ final class PlayerLayerView: UIView, UIGestureRecognizerDelegate {
             if onPlaybackTap != nil {
                 picture.accessibilityCustomActions = [UIAccessibilityCustomAction(name: "Play or pause") { [weak self] _ in self?.onPlaybackTap?(); return true }] + (picture.accessibilityCustomActions ?? [])
             }
+            if onCopyFrame != nil {
+                picture.accessibilityHint = (picture.accessibilityHint ?? "") + " Hold to copy the frame."
+                picture.accessibilityCustomActions?.append(UIAccessibilityCustomAction(name: "Copy frame") { [weak self] _ in
+                    self?.copyFrame() ?? false
+                })
+            }
         }
     }
     private func bindItem(_ value: AVPlayerItem?) {
         guard item !== value else { return }
         item = value
-        if !preserveInspection { resetZoom() }
+        if !preserveInspection && cutFrameReady == nil { resetZoom() }
         sizeObservation=value?.observe(\.presentationSize,options:[.initial,.new]) { [weak self] value,_ in
             DispatchQueue.main.async {
-                guard let self,self.item===value,value.presentationSize.width>0,value.presentationSize.height>0 else { return }
-                if self.knownCanvas != .zero && self.knownCanvas != value.presentationSize { self.resetZoom() }
-                self.knownCanvas=value.presentationSize;self.updatePicture()
+                guard let self, self.item === value, self.heldLayer == nil else { return }
+                self.updateCanvasSize()
             }
         }
         durationObservation = item?.observe(\.duration, options: [.initial, .new]) { [weak self] item, _ in
@@ -1495,6 +2065,12 @@ final class PlayerLayerView: UIView, UIGestureRecognizerDelegate {
                 self.updateAccessibility()
             }
         }
+    }
+    private func updateCanvasSize() {
+        guard let size = item?.presentationSize, size.width > 0, size.height > 0 else { return }
+        if knownCanvas != .zero && knownCanvas != size { resetZoom() }
+        knownCanvas = size
+        updatePicture()
     }
     override func layoutSubviews() {
         super.layoutSubviews()
@@ -1505,7 +2081,7 @@ final class PlayerLayerView: UIView, UIGestureRecognizerDelegate {
         updatePicture()
     }
     private func updatePicture() {
-        let measured=item?.presentationSize ?? .zero
+        let measured = heldLayer == nil ? item?.presentationSize ?? .zero : knownCanvas
         let size=measured.width>0 && measured.height>0 ? measured : knownCanvas != .zero ? knownCanvas : bounds.size
         let fit = size.width > 0 && size.height > 0 ? AVMakeRect(aspectRatio: size, insideRect: bounds).size : bounds.size
         let limitX = max(0, (fit.width * zoom - bounds.width) / 2), limitY = max(0, (fit.height * zoom - bounds.height) / 2)
@@ -1513,6 +2089,7 @@ final class PlayerLayerView: UIView, UIGestureRecognizerDelegate {
         CATransaction.begin(); CATransaction.setDisableActions(true)
         layerPlayer.frame = CGRect(x: (bounds.width * (1 - zoom)) / 2 + offset.x, y: (bounds.height * (1 - zoom)) / 2 + offset.y,
                                   width: bounds.width * zoom, height: bounds.height * zoom)
+        heldLayer?.frame = layerPlayer.frame
         CATransaction.commit()
         resetButton.setTitle(preserveInspection ? String(format:" %.1f× · Preview",zoom) : nil,for:.normal)
         resetButton.titleLabel?.font = .systemFont(ofSize:12,weight:.semibold)
@@ -1520,8 +2097,7 @@ final class PlayerLayerView: UIView, UIGestureRecognizerDelegate {
     }
     private func resizeCaption(_ factor: Double) {
         guard let captions else { return }
-        let center = CGPoint(x: captions.envelope.midX, y: captions.envelope.midY)
-        captions.change(.pinch(factor: factor, from: center, to: center))
+        captions.resize(factor, captions.center, captions.center)
     }
     private func updateCaptions() {
         guard let captions else {
@@ -1538,16 +2114,37 @@ final class PlayerLayerView: UIView, UIGestureRecognizerDelegate {
         captionGuide.isHidden = !captionPan && !captionPinch
     }
     private func positionCaption(_ gesture: UIGestureRecognizer, pinching: Bool) -> Bool {
-        guard let captions, captions.editable else { captionPan = false; captionPinch = false; return false }
+        guard let captions, captions.editable else { captionPan = false; captionPinch = false; captionDragAnchor = nil; return false }
+        let touch = gesture.location(in: self)
         if gesture.state == .began {
-            let hits = captionHandle.frame.insetBy(dx: -10, dy: -10).contains(gesture.location(in: self))
+            let first = (gesture as? TouchDownPanRecognizer)?.touchDown ?? touch
+            let hits = captionHandle.frame.insetBy(dx: -10, dy: -10).contains(first)
             if pinching { captionPinch = captionPan || hits } else { captionPan = captionPinch || hits }
-            if pinching ? captionPinch : captionPan { captions.change(.pan(.zero)) }
+            if pinching ? captionPinch : captionPan { captions.begin() }
         }
         let owns = pinching ? captionPinch : captionPan
-        if owns { positionBackground(gesture, action: captions.change) }
-        if [.ended, .cancelled, .failed].contains(gesture.state) {
-            if pinching { captionPinch = false; panNeedsAnchor = true } else { captionPan = false }
+        if owns {
+            if let pinch = gesture as? UIPinchGestureRecognizer {
+                captionDragAnchor = nil
+                positionBackground(pinch) { change in
+                    if case let .pinch(factor, from, to) = change { captions.resize(factor, from, to) }
+                }
+            } else if let pan = gesture as? TouchDownPanRecognizer, !captionPinch,
+                      pan.numberOfTouches == 1 || (pan.state == .ended && captionDragAnchor != nil) {
+                // Re-anchor after a pinch. During a drag, measure all travel
+                // from this anchor so a slow-moving finger can leave the snap.
+                if pan.state == .began { captionDragAnchor = (captions.center, pan.touchDown ?? touch) }
+                if captionDragAnchor == nil { captionDragAnchor = (captions.center, touch) }
+                let video = layerPlayer.convert(layerPlayer.videoRect, to: layer)
+                if let anchor = captionDragAnchor, !video.isEmpty, pan.state != .cancelled && pan.state != .failed {
+                    captions.move(CGPoint(x: anchor.center.x + (touch.x - anchor.touch.x) / video.width,
+                                          y: anchor.center.y + (touch.y - anchor.touch.y) / video.height))
+                }
+            } else { captionDragAnchor = nil }
+            if [.ended, .cancelled, .failed].contains(gesture.state) {
+                captionDragAnchor = nil
+                if pinching { captionPinch = false; panNeedsAnchor = true } else { captionPan = false }
+            }
         }
         updateCaptions()
         return owns
@@ -1603,10 +2200,24 @@ final class PlayerLayerView: UIView, UIGestureRecognizerDelegate {
         (gestureRecognizer === pinch && otherGestureRecognizer === pan) || (gestureRecognizer === pan && otherGestureRecognizer === pinch)
     }
     func gestureRecognizer(_ gestureRecognizer:UIGestureRecognizer,shouldReceive touch:UITouch)->Bool {
-        if gestureRecognizer===pointTap {
+        if gestureRecognizer === frameHold {
+            let point = touch.location(in: self)
+            guard layerPlayer.isReadyForDisplay, layerPlayer.videoRect.contains(layerPlayer.convert(point, from: layer)) else { return false }
+        }
+        if gestureRecognizer === pointTap || gestureRecognizer === frameHold {
             var view=touch.view
             while let current=view,current !== self { if current is UIControl { return false };view=current.superview }
         }
+        return true
+    }
+    @objc private func heldFrame(_ gesture: UILongPressGestureRecognizer) {
+        if gesture.state == .began { _ = copyFrame() }
+    }
+    private func copyFrame() -> Bool {
+        guard let onCopyFrame, layerPlayer.isReadyForDisplay, let item = layerPlayer.player?.currentItem else { return false }
+        let duration = item.duration, now = item.currentTime()
+        guard duration.isNumeric, duration > .zero, now.isNumeric else { return false }
+        onCopyFrame(item, item.pictureTime(at: now, before: duration))
         return true
     }
     @objc private func pickedPoint(_ gesture:UITapGestureRecognizer) {
@@ -1629,83 +2240,156 @@ final class PlayerLayerView: UIView, UIGestureRecognizerDelegate {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 }
 
-final class ImportedPhotoMedia: Transferable, Sendable {
-    let url: URL
-    let originalName: String
-    let isPhoto: Bool
-    private init(url: URL, originalName: String, isPhoto: Bool) {
-        self.url = url; self.originalName = originalName; self.isPhoto = isPhoto
+private struct EffectChipLabelLayout: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let label = subviews.first else { return .zero }
+        let width = min(180, proposal.width ?? 180, label.sizeThatFits(.unspecified).width)
+        return label.sizeThatFits(ProposedViewSize(width: width, height: nil))
     }
-    deinit { try? FileManager.default.removeItem(at: url) }
-
-    // The provider can finish a copy after cancellation. Own it until the
-    // consumer finishes, and sweep interrupted transfers on the next use.
-    private static let transferDirectory: URL = {
-        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("YouRecPhotoTransfers", isDirectory: true)
-        try? FileManager.default.removeItem(at: folder)
-        return folder
-    }()
-    static var transferRepresentation: some TransferRepresentation {
-        FileRepresentation(importedContentType: .movie) { received in
-            try await copy(received.file, isPhoto: false)
-        }
-        FileRepresentation(importedContentType: .image) { received in
-            try await copy(received.file, isPhoto: true)
-        }
-    }
-
-    private static func copy(_ source: URL, isPhoto: Bool) async throws -> ImportedPhotoMedia {
-        let ext = source.pathExtension.lowercased()
-        try FileManager.default.createDirectory(at: transferDirectory, withIntermediateDirectories: true)
-        let url = transferDirectory.appendingPathComponent(UUID().uuidString)
-            .appendingPathExtension(isPhoto || ["mp4", "m4v"].contains(ext) ? ext : "mov")
-        let size = try source.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-        let free = (try FileManager.default.attributesOfFileSystem(forPath: transferDirectory.path)[.systemFreeSize] as? NSNumber)?.int64Value ?? 0
-        guard free > Int64(size) + 256_000_000 else { throw CocoaError(.fileWriteOutOfSpace) }
-        do {
-            try await ProjectArchive.copyFile(source, to: url) { _ in }
-            try Task.checkCancellation()
-            return ImportedPhotoMedia(url: url, originalName: source.lastPathComponent, isPhoto: isPhoto)
-        } catch {
-            try? FileManager.default.removeItem(at: url)
-            throw error
-        }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: CGPoint(x: bounds.minX, y: bounds.midY), anchor: .leading,
+                              proposal: ProposedViewSize(width: bounds.width, height: bounds.height))
     }
 }
 
-// An explicit second tap confirms removal; a long press itself never edits data.
-private struct EffectRemovalBubble:View {
-    let title:String
-    let symbol:String
-    let tint:Color
-    let identifier:String
-    let armed:Bool
-    let edit:()->Void
-    let arm:()->Void
-    let cancel:()->Void
-    let remove:()->Void
-    private var label:some View {Label(title,systemImage:symbol).lineLimit(1).frame(maxWidth:180).padding(.horizontal,12).frame(minHeight:48)}
-    var body:some View {
-        Group {
-            if armed {
-                HStack(spacing:0) {
-                    label
-                    Button(action:remove) {Image(systemName:"trash.fill").frame(width:44,height:48)}
-                        .foregroundStyle(.red).accessibilityLabel("Remove "+title).accessibilityIdentifier("effect.confirmRemove")
-                    Button(action:cancel) {Image(systemName:"xmark").frame(width:44,height:48)}
-                        .accessibilityLabel("Cancel removal").accessibilityIdentifier("effect.cancelRemove")
-                }.accessibilityElement(children:.contain)
-            } else {
-                label.contentShape(Capsule())
-                    .gesture(LongPressGesture(minimumDuration:0.5).exclusively(before:TapGesture()).onEnded {value in
-                        switch value {case .first(true):arm();case .second:edit();default:break}
-                    })
-                    .accessibilityElement(children:.ignore).accessibilityLabel("Edit "+title).accessibilityAddTraits(.isButton)
-                    .accessibilityHint("Touch and hold for removal controls")
-                    .accessibilityAction {edit()}.accessibilityAction(named:"Remove") {arm()}
-                    .accessibilityIdentifier(identifier)
+private struct EffectRemovalBubble: View {
+    @Environment(\.dynamicTypeSize) private var typeSize
+    let title: String
+    let symbol: String
+    let tint: Color
+    let identifier: String
+    let armed: Bool
+    let scopeName: String?
+    let edit: () -> Void
+    let arm: () -> Void
+    let close: () -> Void
+    let localEdit: () -> Void
+    let localRemove: () -> Void
+    let adjust: (() -> Void)?
+    let remove: () -> Void
+
+    var body: some View {
+        HStack(spacing: 0) {
+            EffectChipLabelLayout {
+                Label(title, systemImage: symbol).lineLimit(1).truncationMode(.tail)
+                    .padding(.leading, 12).padding(.trailing, 6).frame(minWidth: 44, minHeight: 44, alignment: .leading)
             }
-        }.foregroundStyle(tint).background(tint.opacity(armed ? 0.22 : 0.12),in:Capsule())
+            .contentShape(Rectangle())
+            .gesture(LongPressGesture(minimumDuration: 0.5).exclusively(before: TapGesture()).onEnded { gesture in
+                switch gesture { case .first(true): arm(); case .second: edit(); default: break }
+            })
+            .accessibilityElement(children: .ignore).accessibilityLabel("Edit " + title)
+            .accessibilityAddTraits(.isButton).accessibilityAction { edit() }
+            .accessibilityAction(named: "Effect options") { arm() }.accessibilityIdentifier(identifier)
+            Rectangle().fill(tint.opacity(0.32)).frame(width: 1, height: 16).accessibilityHidden(true)
+            Button(action: arm) {
+                Image(systemName: "ellipsis").font(.body.weight(.semibold)).frame(width: 44, height: 44).contentShape(Rectangle())
+            }.buttonStyle(.plain).frame(width: 44, height: 44).contentShape(Rectangle()).accessibilityLabel("Options for " + title).accessibilityIdentifier(identifier + ".options")
+        }
+        #if targetEnvironment(macCatalyst)
+        .background(EffectSecondaryClick(open: arm))
+        #endif
+        .foregroundStyle(tint).background(tint.opacity(armed ? 0.22 : 0.12), in: Capsule())
+        .popover(isPresented: Binding(get: { armed }, set: { if !$0 { close() } })) {
+            if typeSize.isAccessibilitySize {
+                ScrollView { options }.accessibilityIdentifier("effect.optionsScroll")
+                    .presentationDetents([.large]).presentationCompactAdaptation(.sheet)
+            } else {
+                options.frame(idealWidth: 300).presentationCompactAdaptation(.popover)
+            }
+        }
+    }
+
+    private var options: some View {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Text(title).font(.headline).lineLimit(2)
+                    Spacer()
+                    Button(action: close) { Image(systemName: "xmark").frame(width: 44, height: 44) }
+                        .accessibilityLabel("Close effect options").accessibilityIdentifier("effect.cancelRemove")
+                }.padding(.leading, 12)
+                if let scopeName {
+                    option(scopeName == "marked range" ? "Edit in marked range" : "Edit on " + scopeName,
+                           "pencil", "effect.localEdit", action: localEdit)
+                    option("Remove from " + scopeName, "minus.circle", "effect.localRemove", destructive: true, action: localRemove)
+                    Divider().padding(.vertical, 4)
+                }
+                option("Edit entire effect", "slider.horizontal.3", "effect.editWhole", action: edit)
+                if let adjust { option("Adjust effect range", "arrow.left.and.right", "effect.editRange", action: adjust) }
+                option("Remove entire effect", "trash", "effect.confirmRemove", destructive: true, action: remove)
+            }.buttonStyle(.plain).padding(8)
+    }
+
+    private func option(_ text: String, _ icon: String, _ id: String, destructive: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(text, systemImage: icon).font(.body)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .padding(.horizontal, 12).contentShape(Rectangle())
+        }.foregroundStyle(destructive ? Color.red : Color.primary).accessibilityIdentifier(id)
+    }
+}
+
+#if targetEnvironment(macCatalyst)
+/// Secondary clicks follow the same presentation route as touch-and-hold.
+/// A non-interactive marker lets the primary SwiftUI buttons keep their actions.
+private struct EffectSecondaryClick: UIViewRepresentable {
+    let open: () -> Void
+    final class Marker: UIView {
+        var open: (() -> Void)?
+        private var observation: AnyObject?
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            observation = window == nil ? nil : DesktopProjectLibrary.nativeServices?.observeSecondaryClick { [weak self] fraction in
+                guard let self, let window, window.isKeyWindow, !isHidden, let open else { return false }
+                let p = CGPoint(x: fraction.x * window.bounds.width, y: fraction.y * window.bounds.height)
+                guard bounds.contains(convert(p, from: window)) else { return false }
+                var ancestor = superview
+                while let view = ancestor {
+                    if view.isHidden || (view.clipsToBounds && !view.bounds.contains(view.convert(p, from: window))) { return false }
+                    ancestor = view.superview
+                }
+                open(); return true
+            }
+        }
+    }
+    func makeUIView(context: Context) -> Marker {
+        let view = Marker(); view.isUserInteractionEnabled = false; return view
+    }
+    func updateUIView(_ view: Marker, context: Context) { view.open = open }
+}
+#endif
+
+// Custom editor bars on Catalyst don't get the native sheet's action hierarchy.
+extension View {
+    @ViewBuilder func editorDecisionButton(primary: Bool) -> some View {
+        #if targetEnvironment(macCatalyst)
+        buttonStyle(EditorDecisionStyle(primary: primary, minimumHeight: 40))
+        #else
+        self
+        #endif
+    }
+}
+
+private struct EditorDecisionStyle: ButtonStyle {
+    let primary: Bool
+    var fill: Color?
+    var minimumHeight: CGFloat = 44
+    @Environment(\.isEnabled) private var enabled
+    func makeBody(configuration: Configuration) -> some View {
+        let background = fill ?? (primary ? Color(red: 0.37, green: 0.84, blue: 0.94) : Color(white: 0.22))
+        configuration.label
+            #if targetEnvironment(macCatalyst)
+            .font(.system(size: 18, weight: .semibold))
+            #else
+            .font(.subheadline.weight(.semibold))
+            #endif
+            .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+            .padding(.horizontal, 12)
+            .frame(minWidth: 84, minHeight: minimumHeight)
+            .foregroundStyle(primary ? Color.black : Color.white)
+            .background(background, in: RoundedRectangle(cornerRadius: 8))
+            .contentShape(Rectangle())
+            .opacity(enabled ? (configuration.isPressed ? 0.72 : 1) : 0.42)
     }
 }
 

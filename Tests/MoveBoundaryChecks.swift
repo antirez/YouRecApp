@@ -6,7 +6,10 @@ func moveBoundaryChecks() throws {
         guard ok else { throw NSError(domain: "MoveBoundaryQA", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
     }
     let source = SourceMedia(filename: "moves.mov", duration: 18)
-    let scenes = (0..<3).map { TimelineClip(sourceID: source.id, start: Double(6 * $0), end: Double(6 * ($0 + 1))) }
+    let scenes = (0..<3).map { (index: Int) -> TimelineClip in
+        let start = Double(index * 6)
+        return TimelineClip(sourceID: source.id, start: start, end: start + 6)
+    }
     let base = TrackTimeline(clips: scenes)
     let picked = base.selection(of: scenes[1].id), choices = base.moveChoices(for: picked)
     func stops(_ t: TrackTimeline, _ moved: TimelineSelection) -> TimelineMoveBoundaries {

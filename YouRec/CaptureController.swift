@@ -150,6 +150,7 @@ final class CaptureController: NSObject, ObservableObject, AVCaptureVideoDataOut
     @Published private(set) var cameraID = ""
     @Published private(set) var switchingCamera = false
     @Published private(set) var microphones: [MicrophoneChoice] = []
+    static let allowAudioPlaybackKey = "allowAudioPlayback"
     @Published private(set) var microphonePriority: [MicrophoneChoice] = []
     @Published private(set) var recordingGainDB = 0.0
     private let recordingGain = RecordingGain() // media queue
@@ -715,7 +716,8 @@ final class CaptureController: NSObject, ObservableObject, AVCaptureVideoDataOut
     private func prepareRecorderControlFixture() {
         let widePreview = CommandLine.arguments.contains("--front-landscape-preview-test")
         let turnFixture = CommandLine.arguments.contains("--interface-turn-fixture")
-        let picture = widePreview || turnFixture ? Self.framingFixture() : nil
+        let showcase = CommandLine.arguments.contains("--liquid-glass-showcase") ? Self.showcaseFixture() : nil
+        let picture = showcase ?? (widePreview || turnFixture ? Self.framingFixture() : nil)
         let fixtureSize = picture.map { CGSize(width: CVPixelBufferGetWidth($0), height: CVPixelBufferGetHeight($0)) }
         queue.async {
             // The fixture keeps its simulated camera and meter when visiting Projects.
@@ -736,13 +738,14 @@ final class CaptureController: NSObject, ObservableObject, AVCaptureVideoDataOut
                 $0.rememberCamera("fixture-wide", front: false)
                 $0.microphoneID = "fixture-mic"; $0.microphoneName = "Built-In Microphone"
                 $0.microphones = [MicrophoneChoice(id: "fixture-mic", name: "Built-In Microphone"),
-                                  MicrophoneChoice(id: "fixture-wireless", name: "Wireless test mic")]
+                                  MicrophoneChoice(id: "fixture-wireless", name: showcase != nil ? "Studio Wireless" : "Wireless test mic")]
                 $0.meterAvailable = true; $0.focusLockSupported = true; $0.focusAdjustable = true; $0.autofocusSupported = true
                 if CommandLine.arguments.contains("--fixed-focus-fixture") {
                     $0.autofocusSupported = false; $0.focusAdjustable = false; $0.focusLockSupported = true
                 }
-                if turnFixture {
+                if turnFixture || showcase != nil {
                     $0.rotationAngle = 0
+                    if showcase != nil { $0.previewRotationAngle = 0; $0.manualFramePreview = true }
                     $0.liveEffects.requireFramePreview(true)
                 }
                 if widePreview {
@@ -762,7 +765,7 @@ final class CaptureController: NSObject, ObservableObject, AVCaptureVideoDataOut
                     if let fixtureSize {
                         // The wide fixture bypasses captureOutput. Supply the same
                         // delivered geometry while its simulated lens is selected.
-                        let canvas = $0.frontLandscape || turnFixture ? fixtureSize : nil
+                        let canvas = $0.frontLandscape || turnFixture || showcase != nil ? fixtureSize : nil
                         if $0.previewCanvas != canvas { $0.previewCanvas = canvas }
                     }
                     // Reproduce capture's frequent publication while a menu is open.
@@ -781,6 +784,17 @@ final class CaptureController: NSObject, ObservableObject, AVCaptureVideoDataOut
             }
             self.meter = timer; timer.resume()
         }
+    }
+    private static func showcaseFixture() -> CVPixelBuffer? {
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let file = documents.appendingPathComponent("RecorderShowcase/background.png")
+        guard let cg = UIImage(contentsOfFile: file.path)?.cgImage else { return nil }
+        var pixel: CVPixelBuffer?
+        guard CVPixelBufferCreate(nil, cg.width, cg.height, kCVPixelFormatType_32BGRA,
+            [kCVPixelBufferIOSurfacePropertiesKey: [:]] as CFDictionary, &pixel) == kCVReturnSuccess,
+            let pixel else { return nil }
+        CIContext().render(CIImage(cgImage: cg), to: pixel)
+        return pixel
     }
     private static func framingFixture() -> CVPixelBuffer? {
         let size = CGSize(width: 1280, height: 720)
@@ -1063,10 +1077,7 @@ final class CaptureController: NSObject, ObservableObject, AVCaptureVideoDataOut
         configuring = true
         defer { configuring = false }
         do {
-            let audioSession = AVAudioSession.sharedInstance()
-            try audioSession.setCategory(.playAndRecord, mode: .videoRecording, options: [.allowBluetoothHFP])
-            try audioSession.setActive(true)
-            try audioSession.setAllowHapticsAndSystemSoundsDuringRecording(true)
+            try activateRecorderAudio()
             devices = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera, .builtInUltraWideCamera, .builtInTelephotoCamera], mediaType: .video, position: .unspecified).devices
             guard let camera = devices.first(where: { $0.position == .back && $0.deviceType == .builtInWideAngleCamera }) ?? devices.first else { throw ProjectError.invalidMedia }
             let videoInput = try AVCaptureDeviceInput(device: camera)
@@ -1114,12 +1125,26 @@ final class CaptureController: NSObject, ObservableObject, AVCaptureVideoDataOut
         } catch { publish { $0.error = error.localizedDescription } }
     }
 
-    private func resumeSession() throws {
-        refreshFramePreview()
+    private func activateRecorderAudio() throws {
         let audio = AVAudioSession.sharedInstance()
-        try audio.setCategory(.playAndRecord, mode: .videoRecording, options: [.allowBluetoothHFP])
+        var options: AVAudioSession.CategoryOptions = [.allowBluetoothHFP]
+        if UserDefaults.standard.bool(forKey: Self.allowAudioPlaybackKey) { options.insert(.mixWithOthers) }
+        try audio.setCategory(.playAndRecord, mode: .videoRecording, options: options)
         try audio.setActive(true)
         try audio.setAllowHapticsAndSystemSoundsDuringRecording(true)
+    }
+
+    func refreshAudioPlaybackPreference() {
+        queue.async {
+            guard self.configured, self.wantsPreview, !self.captureActive, !self.finalizing else { return }
+            do { try self.activateRecorderAudio() }
+            catch { self.publish { $0.warning = "Could not change audio playback. " + error.localizedDescription } }
+        }
+    }
+
+    private func resumeSession() throws {
+        refreshFramePreview()
+        try activateRecorderAudio()
         if dualEnabled {
             if !dualCapture.isDelivering {
                 meterLock.lock(); dualLastFrame = ProcessInfo.processInfo.systemUptime; meterLock.unlock()
@@ -1825,22 +1850,20 @@ final class CaptureController: NSObject, ObservableObject, AVCaptureVideoDataOut
     }
 
     private static func supportedApertures(_ device: AVCaptureDevice) -> [Float] {
-        guard #available(iOS 27.0, *), device.isExposureModeSupported(.custom),
+        guard #available(iOS 27.0, macCatalyst 27.0, *), device.isExposureModeSupported(.custom),
               device.isExposureModeSupported(.continuousAutoExposure) else { return [] }
         let format = device.activeFormat
-        return CameraAperture.stops(recommended: format.recommendedLensApertureStops,
+        return CameraAperture.stops(recommended: YRApertureStops(format).map(\.floatValue),
                                     minimum: format.minLensAperture, maximum: format.maxLensAperture) {
-            format.supportsExposureModeCustom(lensAperture: $0, duration: AVCaptureDevice.autoExposureDuration,
-                                               iso: AVCaptureDevice.autoISO)
+            YRApertureSupports(format, $0)
         }
     }
 
     // The caller holds the device configuration lock and has checked the active format.
     private static func applyAperture(_ value: Float?, to device: AVCaptureDevice) {
-        guard #available(iOS 27.0, *) else { return }
+        guard #available(iOS 27.0, macCatalyst 27.0, *) else { return }
         if let value {
-            device.setExposureModeCustom(lensAperture: value, duration: AVCaptureDevice.autoExposureDuration,
-                                         iso: AVCaptureDevice.autoISO, completionHandler: nil)
+            YRSetAperture(device, value)
         } else if device.isExposureModeSupported(.continuousAutoExposure) { device.exposureMode = .continuousAutoExposure }
     }
 
@@ -2799,7 +2822,7 @@ final class CaptureController: NSObject, ObservableObject, AVCaptureVideoDataOut
         let id = device.uniqueID
         #if DEBUG
         var apertureProbe = ""
-        if CommandLine.arguments.contains("--probe-aperture-controls"), #available(iOS 27.0, *) {
+        if CommandLine.arguments.contains("--probe-aperture-controls"), #available(iOS 27.0, macCatalyst 27.0, *) {
             apertureProbe = String(format: "actual=%.3f", aperture)
                 + " apertureAuto=\(device.automaticallyAdjustsLensAperture) shutterAuto=\(device.automaticallyAdjustsExposureDuration) isoAuto=\(device.automaticallyAdjustsISO)"
         }
@@ -3605,7 +3628,7 @@ struct CameraPreview: UIViewRepresentable {
             let center = CameraFraming.oriented(camera.probePanCenter, angle: angle, mirrored: camera.frontPreviewMirrored)
             view.accessibilityValue = (view.accessibilityValue ?? "") + String(format: " pan=%.4f,%.4f", center.x, center.y) + " stabilized=\(camera.singleStabilizationActive)"
         }
-        if CommandLine.arguments.contains("--probe-aperture-controls"), #available(iOS 27.0, *),
+        if CommandLine.arguments.contains("--probe-aperture-controls"), #available(iOS 27.0, macCatalyst 27.0, *),
            let device = AVCaptureDevice(uniqueID: camera.cameraID) {
             view.accessibilityValue = (view.accessibilityValue ?? "")
                 + " apertureAuto=\(device.automaticallyAdjustsLensAperture)"

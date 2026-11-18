@@ -4,11 +4,37 @@ import Security
 @main
 struct YouRecApp: App {
     @UIApplicationDelegateAdaptor(RecordingAppDelegate.self) private var delegate
+    @ViewBuilder private var root: some View {
+        #if DEBUG && targetEnvironment(macCatalyst)
+        if let run = DesktopPiPFixture.runID { DesktopPiPFixture(id: run) }
+        else { DesktopLibraryRoot() }
+        #elseif targetEnvironment(macCatalyst)
+        DesktopLibraryRoot()
+        #else
+        ContentView()
+        #endif
+    }
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            root
                 .preferredColorScheme(.dark)
+                #if targetEnvironment(macCatalyst)
+                .onAppear {
+                    for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) {
+                        scene.sizeRestrictions?.minimumSize = CGSize(width: 720, height: 540)
+                    }
+                }
+                #endif
         }
+        #if targetEnvironment(macCatalyst)
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") { NotificationCenter.default.post(name: .desktopProjectSettings, object: nil) }
+                    .keyboardShortcut(",", modifiers: .command)
+            }
+        }
+        #endif
     }
 }
 
@@ -88,7 +114,7 @@ final class RecordingAppDelegate: NSObject, UIApplicationDelegate, URLSessionDel
         pendingSaveTask = .invalid
     }
     func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
-        Self.allowedOrientations
+        UIDevice.current.userInterfaceIdiom == .pad && Self.allowedOrientations == .allButUpsideDown ? .all : Self.allowedOrientations
     }
     static func setOrientationLock(_ orientation: UIInterfaceOrientation?, animated: Bool = true) {
         switch orientation {

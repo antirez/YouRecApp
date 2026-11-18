@@ -12,6 +12,8 @@ import Foundation
               "A fixed-aperture lens has no control")
         check(CameraAperture.stops(recommended: [1.8, 2.8], minimum: .nan, maximum: 4) { _ in true }.isEmpty,
               "Invalid hardware bounds cannot expose a control")
+        check(CameraAperture.stops(recommended: [1.8, 2.8], minimum: 1.8, maximum: 2.8) { $0 == 1.8 }.isEmpty,
+              "A format with only one usable stop has no adjustable aperture")
         check(CameraAperture.savedStop(nil, in: stops) == nil, "Existing installations default to Auto")
         check(CameraAperture.savedStop(1.48000001, in: stops) == 1.48, "Preferences tolerate float representation")
         check(CameraAperture.savedStop(2.8, in: stops) == nil, "A stop unsupported by the new format falls back to Auto")

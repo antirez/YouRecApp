@@ -203,6 +203,23 @@ final class MetalEffectRenderer {
             }
         }
     }
+    // Creative effects work in display-referred SDR. Use the same headroom
+    // conversion for live display, analysis, editing and export, before Metal
+    // drops the source image's HDR metadata. Geometry alone preserves HDR.
+    static func displayInput(_ image: CIImage, hdr: Bool) -> (image: CIImage, hdr: Bool) {
+        guard hdr else { return (image, false) }
+        if #available(iOS 18, macOS 15, *) {
+            // Set both values explicitly. A default source of 1 clips highlights
+            // even on a transfer-tagged HLG buffer. Intermediate textures may
+            // lose the attachment; camera HLG uses 1,000 nits / 203-nit white.
+            let headroom = image.contentHeadroom > 0 ? image.contentHeadroom : 1000.0 / 203.0
+            return (image.applyingFilter("CIToneMapHeadroom", parameters: [
+                "inputSourceHeadroom": headroom, "inputTargetHeadroom": Float(1)
+            ]), false)
+        }
+        return (image, true) // iOS 17 uses the Metal shoulder.
+    }
+
     static func textureImage(_ image: CIImage) -> CIImage {
         image.transformed(by:CGAffineTransform(a:1,b:0,c:0,d:-1,tx:-image.extent.minX,ty:image.extent.maxY))
     }
@@ -585,11 +602,15 @@ final class MetalEffectRenderer {
         defer {matteCaptures.removeAll(keepingCapacity:true)}
         beginEncoding()
         let input=temporary(width,height),mapped=temporary(width,height),other=temporary(width,height)
-        // Fuse the SDR clamp with CI's camera conversion. The HDR shoulder
-        // remains in Metal; no extra full-resolution read/write for SDR.
-        let prepared=(hdr || preserveColor) ? image : image.applyingFilter("CIColorClamp",parameters:["inputMinComponents":CIVector(x:0,y:0,z:0,w:0),"inputMaxComponents":CIVector(x:1,y:1,z:1,w:1)])
-        context.render(Self.textureImage(prepared),to:input,commandBuffer:commandBuffer,bounds:CGRect(origin:.zero,size:image.extent.size),colorSpace:space)
-        let toneMap = hdr && !preserveColor
+        let display = Self.displayInput(image, hdr: hdr && !preserveColor)
+        let clamp = !display.hdr && !preserveColor
+        let prepared = clamp ? display.image.applyingFilter("CIColorClamp", parameters: [
+            "inputMinComponents": CIVector(x: 0, y: 0, z: 0, w: 0),
+            "inputMaxComponents": CIVector(x: 1, y: 1, z: 1, w: 1)
+        ]) : display.image
+        context.render(Self.textureImage(prepared), to: input, commandBuffer: commandBuffer,
+                       bounds: CGRect(origin: .zero, size: image.extent.size), colorSpace: space)
+        let toneMap = display.hdr
         if toneMap { compute("ve_toneMap",textures:[input,mapped],value:UInt32(1),output:mapped,commandBuffer:commandBuffer) }
         let baseCounts = scratchCounts
         var current=toneMap ? mapped : input

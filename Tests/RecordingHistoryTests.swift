@@ -1,5 +1,6 @@
 import AVFoundation
 import ImageIO
+import UniformTypeIdentifiers
 
 func recordingHistoryTests(root: URL) throws {
     try recordingRecoveryAssetTests(root: root)
@@ -312,7 +313,40 @@ private func automaticCanvasHistoryTests(root: URL) throws {
     try require(ambiguous.edit.outputSize == portraitSize, "A format without evidence of how it was chosen stays fixed")
 }
 
+private func photoProviderImportTests(_ root: URL) async throws {
+    let source = root.appendingPathComponent("source.mp4")
+    let provider = NSItemProvider()
+    provider.suggestedName = "Ordered selection.mp4"
+    // The first advertised movie is unavailable, as with a provider that can
+    // list an asset but fails to vend its original representation.
+    provider.registerFileRepresentation(forTypeIdentifier: UTType.quickTimeMovie.identifier, fileOptions: [],
+                                        visibility: .all) { finish in
+        finish(nil, false, CocoaError(.fileReadUnknown)); return nil
+    }
+    provider.registerFileRepresentation(forTypeIdentifier: UTType.mpeg4Movie.identifier, fileOptions: [],
+                                        visibility: .all) { finish in
+        finish(source, false, nil); return nil
+    }
+    let media = try await ImportedPhotoMedia.load(provider)
+    let copy = try Data(contentsOf: media.url), original = try Data(contentsOf: source)
+    try require(copy == original && !media.isPhoto && media.originalName == provider.suggestedName,
+                "Import must recover the alternative movie as a byte-for-byte disk copy")
+    let pending = NSItemProvider()
+    let (started, signal) = AsyncStream<Void>.makeStream()
+    pending.registerFileRepresentation(forTypeIdentifier: UTType.movie.identifier, fileOptions: [], visibility: .all) { _ in
+        signal.yield(); signal.finish(); return Progress(totalUnitCount: 1)
+    }
+    let task = Task { try await ImportedPhotoMedia.load(pending) }
+    for await _ in started { break }
+    task.cancel()
+    do {
+        _ = try await task.value
+        try require(false, "A stalled Photos transfer must cancel promptly")
+    } catch is CancellationError {}
+}
+
 func batchVideoImportTests(_ root: URL) async throws {
+    try await photoProviderImportTests(root)
     try timelineVideoInsertionTests()
     try await stillPhotoImportTests(root)
     func requireFailure(_ operation: () async throws -> Void, _ message: String) async throws {

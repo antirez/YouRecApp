@@ -338,14 +338,24 @@ private func coverSamplingTests() throws {
     }
     let short = CoverFramePool(picture: footage, scope: [EditInterval(0...0.2)])
     try require(short.picks(replacing: []) == Array(0..<6), "Six-frame range shows six distinct frames")
+    for pick in 0..<short.count {
+        let next = short.randomAlternative(to: pick)
+        try require((0..<short.count).contains(next) && next != pick, "Update in detail must choose another eligible frame")
+    }
+    let faster = CoverFramePool(picture: footage, scope: [EditInterval(0...0.1), EditInterval(20...20.05)],
+                                frameDuration: EditTime(1.0 / 60))
+    try require(faster.count == 9 && faster.time(of: 1) == EditTime(1.0 / 60) && faster.time(of: 6) == EditTime(20),
+                "Fine scrubbing follows the composition clock and skips gaps")
     let subframe = CoverFramePool(picture: footage, scope: [EditInterval(0.040...0.045)])
     try require(subframe.count == 1 && subframe.time(of: 0) == EditTime(0.040), "Subframe selection stays inside its range")
+    try require(subframe.randomAlternative(to: 0) == 0, "One-frame range keeps its only frame")
     let empty = CoverFramePool(picture: footage, scope: [EditInterval(5...7)])
     try require(empty.picks(replacing: []).isEmpty, "A gap has no cover candidates")
 }
 
 func videoToolsTests(root: URL) async throws {
     try coverSamplingTests()
+    try await timelineEffectRangeTests(root: root)
     try await colorGradeTests(root: root)
     try effectQuickRemovalTests()
     try splitEffectScopeTests()
@@ -753,6 +763,221 @@ func videoToolsTests(root: URL) async throws {
 
 }
 
+func timelineEffectRangeTests(root: URL) async throws {
+    let source = SourceMedia(filename: "source.mp4", duration: 4)
+    func trim(_ edit: EditState, _ tool: VideoTool, from a: Double, to b: Double, at position: Double? = nil) throws -> EditState {
+        guard let badge = edit.toolRegions.first(where: { $0.tool == tool && (position.map($0.range.contains) ?? true) }),
+              var draft = EffectRangeEdit(badge, in: edit, playhead: position ?? a) else { throw ProjectError.invalidDocument }
+        draft.timing.set(.start, to: a); draft.timing.set(.end, to: b)
+        return draft.applying(to: edit)
+    }
+    var project = Project(title: "Timeline effect ranges"); project.append(source)
+    let original = project.edit
+    try scopedEffectTests(original)
+    var edit = original
+    edit.timeline.video[0].content.mirror = MirrorSettings(horizontal: true)
+    edit.timeline.video[0].content.crop = CropSettings(zoom: 1.75)
+    edit.timeline.video[0].content.stabilization = StabilizationSettings(level: .light)
+    for tool in [VideoTool.crop, .mirror, .stabilize] { edit = try trim(edit, tool, from: 1, to: 3) }
+    let edges = edit.toolRegions.filter { [.crop, .mirror, .stabilize].contains($0.tool) }
+    try require(edges.count == 3 && edges.allSatisfy { $0.range == 1...3 }, "Framing edges reopen at the trimmed range")
+    try require(TimelineNavigation(edit).changes == [0, 1, 3, 4], "Effect navigation follows both handles")
+    try require(edit.timeline.audio == original.timeline.audio && edit.clips.count == 1 && edit.duration == 4, "Range edits preserve cuts and linked audio")
+    project.commit(edit); try project.validate()
+    let restored = try JSONDecoder().decode(Project.self, from: JSONEncoder().encode(project))
+    try require(restored.edit == project.edit && restored.schemaVersion == 15, "Saved project round-trips the framing windows")
+    project.undo(); try require(project.edit == original, "Undo restores the initial framing")
+    project.redo(); try require(project.edit == edit, "Redo restores both range edges")
+    // Compare decoded frames against separately rendered references, including both
+    // edges and the first frame after the effect. No stabilization analysis needed here.
+    edit.timeline.video[0].content.stabilization = nil
+    var always = original
+    always.clips[0].crop = CropSettings(zoom: 1.75); always.clips[0].mirror = MirrorSettings(horizontal: true)
+    func generator(_ edit: EditState) async throws -> AVAssetImageGenerator {
+        var candidate = project; candidate.history = [edit]; candidate.historyCursor = 0
+        let media = try await MediaRenderer.timeline(project: candidate, folder: root, forceCustom: true)
+        let gen = AVAssetImageGenerator(asset: media.composition)
+        gen.videoComposition = media.videoComposition; gen.maximumSize = CGSize(width: 96, height: 96)
+        gen.requestedTimeToleranceBefore = .zero; gen.requestedTimeToleranceAfter = .zero
+        return gen
+    }
+    let clean = try await generator(original), full = try await generator(always), ranged = try await generator(edit)
+    var outputProject = project; outputProject.history = [edit]; outputProject.historyCursor = 0
+    let url = root.appendingPathComponent("trimmed-effect-" + UUID().uuidString + ".mov")
+    _ = try await MediaRenderer.render(project: outputProject, folder: root, destination: url) { _ in }
+    let exported = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+    exported.maximumSize = CGSize(width: 96, height: 96); exported.requestedTimeToleranceBefore = .zero; exported.requestedTimeToleranceAfter = .zero
+    func pixels(_ gen: AVAssetImageGenerator, _ time: CMTime) async throws -> [UInt8] {
+        let image = try await gen.image(at: time).image
+        var bytes = [UInt8](repeating: 0, count: 64 * 36 * 4)
+        bytes.withUnsafeMutableBytes { storage in
+            let context = CGContext(data: storage.baseAddress, width: 64, height: 36, bitsPerComponent: 8, bytesPerRow: 256,
+                                    space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            context.draw(image, in: CGRect(x: 0, y: 0, width: 64, height: 36))
+        }
+        return bytes
+    }
+    func difference(_ a: [UInt8], _ b: [UInt8]) -> Double {
+        Double(zip(a, b).reduce(0) { $0 + abs(Int($1.0) - Int($1.1)) }) / Double(a.count)
+    }
+    var mirrored = original
+    mirrored.clips[0].mirror = MirrorSettings(horizontal: true)
+    let mirrorRegion = mirrored.toolRegions.first { $0.tool == .mirror }!
+    let middleSelection = TimelineSelection(video: [mirrorRegion.clipID], range: EditInterval(1...3))
+    let scopedMirror = ScopedEffectOperation(mirrorRegion, in: mirrored, selection: middleSelection, all: mirrored.toolRegions)!
+    let savedMirror = try await generator(mirrored)
+    let carved = scopedMirror.removing(from: mirrored)
+    let middleRemoved = try await generator(carved)
+    var carvedProject = project; carvedProject.history = [carved]; carvedProject.historyCursor = 0
+    let carvedMovie = root.appendingPathComponent("scoped-mirror-" + UUID().uuidString + ".mov")
+    defer { try? FileManager.default.removeItem(at: carvedMovie) }
+    _ = try await MediaRenderer.render(project: carvedProject, folder: root, destination: carvedMovie) { _ in }
+    let carvedExport = AVAssetImageGenerator(asset: AVURLAsset(url: carvedMovie))
+    carvedExport.maximumSize = CGSize(width: 96, height: 96)
+    carvedExport.requestedTimeToleranceBefore = .zero; carvedExport.requestedTimeToleranceAfter = .zero
+    for frame in [29, 30, 89, 90] {
+        let time = CMTime(value: Int64(frame), timescale: 30), removed = (30..<90).contains(frame)
+        let reference = try await pixels(removed ? clean : savedMirror, time)
+        let opposite = try await pixels(removed ? savedMirror : clean, time)
+        let result = try await pixels(middleRemoved, time)
+        let movie = try await pixels(carvedExport, time)
+        try require(difference(reference, opposite) > 10 && difference(reference, result) < 2 && difference(reference, movie) < 7,
+                    "Scoped removal renders the correct picture on each side of frame " + String(frame))
+    }
+    for frame in [29, 30, 89, 90] {
+        let time = CMTime(value: Int64(frame), timescale: 30), active = (30..<90).contains(frame)
+        let expected = try await pixels(active ? full : clean, time)
+        let opposite = try await pixels(active ? clean : full, time)
+        let preview = try await pixels(ranged, time), movie = try await pixels(exported, time)
+        try require(difference(expected, opposite) > 15 && difference(preview, expected) < 2 && difference(movie, expected) < 7,
+                    "Trimmed mirror and crop match preview and export at frame " + String(frame))
+    }
+
+    var clip = TimelineClip(sourceID: source.id, start: 0, end: 4)
+    clip.speed = SpeedSettings(rate: 2)
+    clip.texts = [TextOverlay(text: "One title", start: 0, end: 4)]
+    let split = TimelineEditing.split(EditState(clips: [clip]), at: 1)
+    let scoped = try trim(split, .text, from: 0.2, to: 0.8, at: 0.5)
+    try require(scoped.clips[0].texts?.first?.start == 0.4 && scoped.clips[0].texts?.first?.end == 1.6 &&
+                scoped.clips[1].texts == nil && scoped.timeline.audio == split.timeline.audio, "Trimming the shared title follows speed and retracts across the cut")
+    var looks = original
+    let owner = original.clips[0].id
+    var grade = ColorSettings(look: .warm)
+    grade.motion = EffectAnimation(grade.pose, duration: 1)
+    looks.setGrade(grade, in: 1...2, videos: [owner])
+    looks.setGrade(ColorSettings(look: .cool), in: 3...4, videos: [owner])
+    let extended = try trim(looks, .color, from: 0.5, to: 3.9, at: 1.5)
+    let grades = extended.clips[0].visibleGrades
+    try require(grades.count == 2 && grades[0].start == 0.5 && grades[0].end == 3 && grades[1].grade.look == .cool
+                && grades[0].grade.motion?.duration == 2.5 && grades[0].grade.motion?.elapsed(at: 0.5) == 0,
+                "Grade stops at its neighbor and animation follows its new clock")
+    var sound = original
+    let chain = [AudioEffect(kind: .gain, amount: 3)], soundID = UUID()
+    sound.timeline.audio[0].enhancements = [1.0...2.0, 3.0...4.0].map { AudioEnhancementRegion(id: soundID, interval: EditInterval($0), effects: chain) }
+    let audioTrim = try trim(sound, .enhanceAudio, from: 2.7, to: 3.8, at: 3.5)
+    try require(audioTrim.timeline.audio[0].enhancements.map(\.interval) == [EditInterval(1...2), EditInterval(2.7...3.8)],
+                "Disjoint audio effects sharing an identity trim independently")
+    var beep = original, second = original.timeline.audio[0]; second.id = UUID(); second.followsVideo = nil
+    beep.timeline.audio.append(second)
+    let tracks = Set(beep.timeline.audio.map(\.id)), event = UUID()
+    beep.timeline.censor(AudioCensorSettings(), selection: TimelineSelection(audio: tracks, range: EditInterval(1...2)), effectID: event)
+    let changed = try trim(beep, .censorAudio, from: 0.5, to: 2.5)
+    try require(changed.timeline.audio.allSatisfy { $0.censors.count == 1 && $0.censors[0].id == event && $0.censors[0].interval == EditInterval(0.5...2.5) },
+                "A single beep spanning two audio tracks retains both voices in its new range")
+    let replacementID = UUID(), voice = beep.timeline.audio[0].id
+    beep.timeline.censor(AudioCensorSettings(frequency: 600), selection: TimelineSelection(audio: [voice], range: EditInterval(1.3...1.7)), effectID: replacementID)
+    let protected = try trim(beep, .censorAudio, from: 0.5, to: 2.5, at: 1.1)
+    try require(protected.timeline.audio[0].censors.map(\.id) == [event, replacementID, event]
+                && protected.timeline.audio[0].censors.map(\.interval) == [EditInterval(0.5...1.3), EditInterval(1.3...1.7), EditInterval(1.7...2.5)]
+                && protected.timeline.audio[1].censors[0].interval == EditInterval(0.5...2.5), "Extending a bridged event preserves a newer beep inside it")
+    var cuts = TimelineEditing.split(original, at: 1)
+    cuts = TimelineEditing.split(cuts, at: 3)
+    let middle = cuts.timeline.video[1].id
+    cuts.timeline.video[1].content.mirror = MirrorSettings(horizontal: true)
+    cuts.timeline.video[1].content.texts = [TextOverlay(text: "Across both cuts", start: 1.5, end: 2.5)]
+    cuts.timeline.video[1].content.videoEffects = [VideoEffectSettings(.noir, start: 1.5, end: 2.5)]
+    let clipIDs = cuts.timeline.video.map(\.id)
+    for tool in [VideoTool.text, .mirror, .videoEffects] {
+        let expanded = try trim(cuts, tool, from: 0.5, to: 3.5, at: 2)
+        let parts = expanded.toolRegions.filter { $0.tool == tool }
+        try require(parts.map(\.range) == [0.5...1, 1...3, 3...3.5] && Set(parts.map(\.effectID)).count == 1,
+                    "Dragging both handles crosses two cuts with one identity for " + tool.rawValue)
+        try require(expanded.timeline.video.map(\.id) == clipIDs && expanded.timeline.audio == cuts.timeline.audio,
+                    "Extending a picture effect leaves footage and linked audio untouched")
+        var saved = project; saved.commit(expanded)
+        let loaded = try JSONDecoder().decode(Project.self, from: JSONEncoder().encode(saved))
+        try loaded.validate()
+        for region in loaded.edit.toolRegions where region.tool == tool {
+            let selected = TimelineSelection(video: [region.clipID])
+            let inspector = loaded.edit.request(for: region, selection: selected, openingBadge: true)
+            try require(inspector.range == 0.5...3.5 && inspector.clipIDs == Set(clipIDs) &&
+                        EffectRangeEdit(region, in: loaded.edit, playhead: 2)?.original == inspector.range,
+                        "Both ways of opening a badge recover its saved application")
+        }
+        let contracted = try trim(expanded, tool, from: 1.25, to: 2.75, at: 3.25)
+        try require(contracted.toolRegions.filter { $0.tool == tool }.map(\.range) == [1.25...2.75],
+                    "A handle can retract completely out of the clip it was opened from")
+    }
+    let crossMirror = try trim(cuts, .mirror, from: 0.5, to: 3.5, at: 2)
+    var plain = cuts
+    for i in plain.timeline.video.indices {
+        plain.timeline.video[i].content.texts = nil; plain.timeline.video[i].content.videoEffects = nil; plain.timeline.video[i].content.mirror = nil
+    }
+    var expectedMirror = plain, cleanCross = crossMirror
+    for i in expectedMirror.timeline.video.indices {
+        expectedMirror.timeline.video[i].content.mirror = cuts.timeline.video[1].content.mirror
+        cleanCross.timeline.video[i].content.texts = nil; cleanCross.timeline.video[i].content.videoEffects = nil
+    }
+    outputProject.history = [cleanCross]; outputProject.historyCursor = 0
+    let crossURL = root.appendingPathComponent("cross-cut-" + UUID().uuidString + ".mov")
+    _ = try await MediaRenderer.render(project: outputProject, folder: root, destination: crossURL) { _ in }
+    let movie = AVAssetImageGenerator(asset: AVURLAsset(url: crossURL))
+    movie.requestedTimeToleranceBefore = .zero; movie.requestedTimeToleranceAfter = .zero
+    movie.maximumSize = CGSize(width: 96, height: 96)
+    let withMirror = try await generator(expectedMirror), noMirror = try await generator(plain)
+    for frame in [14, 15, 29, 30, 89, 90, 104, 105] {
+        let time = CMTime(value: Int64(frame), timescale: 30)
+        let expected = try await pixels((15..<105).contains(frame) ? withMirror : noMirror, time)
+        let actual = try await pixels(movie, time)
+        try require(difference(expected, actual) < 7, "Exported cross-cut effect at frame " + String(frame))
+    }
+    var withOverlap = cuts
+    var overlay = withOverlap.timeline.video[1]; overlay.content.id = UUID(); overlay.occurrenceID = UUID()
+    overlay.start = EditTime(0.25); overlay.layer += 10; overlay.content.texts = nil
+    withOverlap.timeline.video.append(overlay)
+    let overlapped = try trim(withOverlap, .text, from: 0.5, to: 3.5, at: 2)
+    try require(overlapped.timeline.video.last == overlay, "Dragging on a row leaves a parallel overlay alone")
+    var gapped = cuts
+    gapped.timeline.video[2].start = EditTime(3.5)
+    let acrossGap = try trim(gapped, .text, from: 1.5, to: 4, at: 2)
+    let farBadge = acrossGap.toolRegions.first { $0.tool == .text && $0.clipID == clipIDs[2] }!
+    try require(acrossGap.request(for: farBadge, openingBadge: true).range == 1.5...4,
+                "An application intentionally extended across empty time remains one event")
+    var audioCuts = cuts
+    audioCuts.timeline.audio[1].enhancements = [AudioEnhancementRegion(id: soundID, interval: EditInterval(0.5...1.5), effects: chain)]
+    let extendedAudio = try trim(audioCuts, .enhanceAudio, from: 0.5, to: 3.5, at: 2)
+    try require(extendedAudio.timeline.audio.map { $0.enhancements.first?.interval } ==
+                [EditInterval(0.5...1), EditInterval(0...2), EditInterval(0...0.5)] && extendedAudio.timeline.video == audioCuts.timeline.video,
+                "Audio trims cross both clip edges without changing video")
+    var applied = cuts
+    let fresh = TextOverlay(text: "One application", start: 0, end: 4)
+    for i in applied.timeline.video.indices { applied.timeline.video[i].content.texts = [fresh] }
+    applied.rememberApplications(of: .text, changedFrom: cuts)
+    let badge = applied.toolRegions.first { $0.tool == .text && $0.clipID == middle }!
+    try require(applied.request(for: badge, selection: TimelineSelection(video: [middle]), openingBadge: true).range == 0...4,
+                "A freshly authored multi-clip application reopens from a selected clip")
+    var legacy = applied
+    for i in legacy.timeline.video.indices { legacy.timeline.video[i].spanningEffects = nil }
+    let selectedMiddle = TimelineSelection(video: [middle])
+    try require(legacy.request(for: badge, selection: selectedMiddle, openingBadge: true).range == 0...4 &&
+                legacy.request(for: badge, selection: selectedMiddle).clipIDs == [middle],
+                "An older shared title reopens across cuts and still supports selected removal")
+    legacy.timeline.video[1].content.texts?[0].text = "Edited separately"
+    try require(legacy.request(for: badge, selection: TimelineSelection(video: [clipIDs[0]]), openingBadge: true).range == 1...3,
+                "Opening an independently restyled legacy title ignores incidental clip selection")
+    print("PASS: effect range persistence, split scope, audio, animation, navigation and exported frame boundaries")
+}
+
 private func effectQuickRemovalTests() throws {
     var project=Project(title:"Quick removal")
     project.append(SourceMedia(filename:"source.mp4",duration:8))
@@ -868,4 +1093,122 @@ private func splitEffectScopeTests() throws {
     reopened.undo(); try require(reopened.edit == state, "Undo after reopening restores both split chains")
     reopened.redo(); try require(reopened.edit == audioRemoved, "Redo after reopening preserves the untouched split")
     print("PASS: split effect edit/removal scopes, explicit multi-selection, marked ranges, horizontal links and reopened Undo/Redo")
+}
+
+private func scopedEffectTests(_ original: EditState) throws {
+    let track = original.timeline.video[0].id, audio = original.timeline.audio[0].id
+    let targets = TimelineSelection(video: [track], audio: [audio], range: EditInterval(1...3))
+    func command(_ edit: EditState, _ tool: VideoTool, _ selected: TimelineSelection?, id: UUID? = nil) throws -> ScopedEffectOperation {
+        let regions = edit.toolRegions
+        guard let region = regions.first(where: { $0.tool == tool && (id == nil || $0.effectID == id) }),
+              let op = ScopedEffectOperation(region, in: edit, selection: selected, all: regions) else { throw ProjectError.invalidDocument }
+        return op
+    }
+    var base = original
+    base.timeline.video[0].content.texts = [TextOverlay(text: "Whole", start: 0, end: 4, motion: TitleMotion(entrance: .fade, inSeconds: 2))]
+    base.timeline.video[0].content.crop = CropSettings(zoom: 1.5)
+    base.timeline.video[0].content.mirror = MirrorSettings(horizontal: true)
+    base.timeline.video[0].content.stabilization = StabilizationSettings(level: .light)
+    base.timeline.video[0].content.color = ColorSettings(look: .warm)
+    base.timeline.video[0].content.videoEffects = [VideoEffectSettings(.noir, start: 0, end: 4)]
+    base.timeline.video[0].content.images = [ImageOverlay(filename: "image-test.png", start: 0, end: 4)]
+    base.timeline.enhance([.make(.gain)], selection: targetsForAudio())
+    base.timeline.censor(AudioCensorSettings(), selection: targetsForAudio())
+    func targetsForAudio() -> TimelineSelection { TimelineSelection(audio: [audio], range: EditInterval(0...4)) }
+    var film = original
+    film.clips[0].videoEffects = [VideoEffectSettings(.superEight, start: 0, end: 4)]
+    let cadence = VideoEffectSequenceClock(film.clips[0])
+    let scopedFilm = try command(film, .videoEffects, targets).removing(from: film)
+    let withHole = VideoEffectSequenceClock(scopedFilm.clips[0])
+    try require(withHole.hold(at: 1.7) == nil && withHole.hold(at: 3.123)?.boundary == cadence.hold(at: 3.123)?.boundary,
+                "Super 8 removes cadence inside the hole and preserves the original frame phase outside")
+    for tool in [VideoTool.text,.image,.color,.crop,.mirror,.stabilize,.videoEffects,.censorAudio,.enhanceAudio] {
+        let op = try command(base, tool, targets)
+        let noChange = op.applying(op.inspectorState(base), to: base)
+        try require(noChange == base, "\(tool) unchanged Apply leaves no detached IDs")
+        let edit = op.removing(from: base), pieces = edit.toolRegions.filter { $0.tool == tool }
+        try require(pieces.map(\.range) == [0...1, 3...4] && Set(pieces.map(\.effectID)).count == 1, "\(tool) keeps both remnants under one ID")
+        try require(edit.timeline.video.map(\.id) == [track] && edit.timeline.audio.map(\.id) == [audio] && edit.duration == base.duration &&
+                    edit.timeline.links == base.timeline.links, "\(tool) does not cut, unlink or retime media")
+        let whole = try command(edit, tool, nil)
+        try require(whole.event.count == 2 && whole.removing(from: edit).toolRegions.filter { $0.tool == tool }.isEmpty, "\(tool) whole removal addresses both ends")
+        guard var trim = EffectRangeEdit(pieces[1], in: edit, playhead: 3.5) else { throw ProjectError.invalidDocument }
+        trim.timing.set(.start, to: 0.5)
+        let trimmed = trim.applying(to: edit)
+        try require(trimmed.toolRegions.filter { $0.tool == tool }.map(\.range) == [0.5...1, 3...4], "\(tool) outer trim preserves its middle hole")
+        let wrong = TimelineSelection(video: [UUID()], audio: [UUID()], range: EditInterval(1...3))
+        try require(ScopedEffectOperation(op.region, in: base, selection: wrong, all: base.toolRegions) == nil, "\(tool) disjoint selection cannot remove the application")
+    }
+    let crop = try command(base, .crop, targets), parent = crop.region.effectID
+    let enhancement = try command(base, .enhanceAudio, targets)
+    var audioDraft = enhancement.inspectorState(base)
+    var gain = AudioEffect.make(.gain); gain.amount = -9
+    audioDraft.timeline.enhance([gain], selection: targets, effectID: enhancement.region.effectID)
+    let localAudio = enhancement.applying(audioDraft, to: base).timeline.audio[0].enhancements
+    try require(localAudio.map(\.interval) == [EditInterval(0...1), EditInterval(1...3), EditInterval(3...4)] &&
+                localAudio[1].effects == [gain] && localAudio[0].id == localAudio[2].id && localAudio[1].id != localAudio[0].id,
+                "Local audio settings affect only the selected sound")
+    var stacked = original, top = original.timeline.video[0]
+    top.content.id = UUID(); top.start = EditTime(1); top.content.end = 2; top.mapping = SourcePlaybackMap(top.content); top.layer += 1
+    stacked.timeline.video.append(top)
+    let lut = ColorSettings(look: .warm)
+    stacked.setGrade(lut, in: 0...4, videos: [track, top.id])
+    stacked.rememberApplications(of: .color, changedFrom: original)
+    let localLUT = try command(stacked, .color, TimelineSelection(video: [top.id], range: EditInterval(2...3)))
+    var lutDraft = localLUT.inspectorState(stacked), variantLUT = lut; variantLUT.look = .cool
+    lutDraft.setGrade(variantLUT, in: 2...3, videos: [top.id])
+    let twoLooks = localLUT.applying(lutDraft, to: stacked)
+    let remainingLUT = try command(twoLooks, .color, nil, id: lut.id)
+    try require(remainingLUT.needsProjection(in: twoLooks), "Coverage on the lower picture cannot hide a hole in the upper picture")
+    var wholeLUT = remainingLUT.inspectorState(twoLooks), mono = lut; mono.look = .mono
+    wholeLUT.setGrade(mono, in: 0...4, videos: [track,top.id])
+    let blackAndWhite = remainingLUT.applying(wholeLUT, to: twoLooks)
+    try require(blackAndWhite.clips[0].grade(at: 2.5)?.look == .mono && blackAndWhite.timeline.video[1].content.grade(at: 1.5)?.look == .cool,
+                "Whole LUT edits preserve a variant on an overlapping picture")
+    var changed = crop.inspectorState(base); changed.timeline.video[0].content.crop?.zoom = 2.5
+    var variant = crop.applying(changed, to: base)
+    let looks = variant.toolRegions.filter { $0.tool == .crop }
+    let localID = looks.first { $0.range == 1...3 }!.effectID
+    try require(looks.count == 3 && localID != parent, "Crop creates one independent variant without another clip")
+    func zooms(_ edit: EditState) -> [Double] {
+        [0.5, 1.5, 3.5].map { t in edit.clips[0].playbackPieces.first { $0.start <= t && t < $0.end }?.crop?.zoom ?? 1 }
+    }
+    try require(zooms(variant) == [1.5, 2.5, 1.5], "Render instructions gate both crop recipes")
+    let whole = try command(variant, .crop, nil, id: parent)
+    var parentDraft = whole.inspectorState(variant); parentDraft.timeline.video[0].content.crop?.zoom = 3
+    variant = whole.applying(parentDraft, to: variant)
+    try require(zooms(variant) == [3, 2.5, 3], "Whole edit from either end leaves the variant untouched")
+    let local = try command(variant, .crop, nil, id: localID)
+    var localDraft = local.inspectorState(variant); localDraft.timeline.video[0].content.crop?.zoom = 1.75
+    variant = local.applying(localDraft, to: variant)
+    try require(zooms(variant) == [3, 1.75, 3], "A reopened local framing variant edits independently")
+    let removed = whole.removing(from: variant)
+    try require(zooms(removed) == [1, 1.75, 1] && removed.clips[0].validEffectWindows, "Deleting the original promotes the surviving variant")
+    var pasted = variant
+    let clipboard = pasted.timeline.copied(TimelineSelection(video: [track]))
+    let inserted = pasted.timeline.paste(clipboard, at: EditTime(4))
+    let pastedLooks = pasted.toolRegions.filter { inserted.video.contains($0.clipID) && $0.tool == .crop }
+    try require(pastedLooks.map(\.range).sorted { $0.lowerBound < $1.lowerBound } == [4...5, 5...7, 7...8],
+                "Pasting preserves the three scoped crop ranges")
+    try require(Set(pastedLooks.map(\.effectID)).isDisjoint(with: [parent, localID]),
+                "A pasted variant stays independent of the original footage")
+    let title = try command(base, .text, targets)
+    var titleDraft = title.inspectorState(base); titleDraft.timeline.video[0].content.texts?[0].text = "Local"
+    let titles = title.applying(titleDraft, to: base)
+    let localTitle = titles.clips[0].resolvingEffects(at: 1.5).texts!.first!
+    try require(localTitle.text == "Local" && localTitle.playbackClock?.elapsed(at: 1.5) == 1.5, "Local title inherits the ongoing fade")
+    let navigation = TimelineNavigation(titles)
+    try require(navigation.changes.contains(1) && navigation.changes.contains(3), "Effect-change navigation includes scoped boundaries")
+    var project = Project(title: "Scoped effects")
+    project.sources = [SourceMedia(id: base.clips[0].sourceID, filename: "source.mp4", duration: 4)]
+    project.history = [base]; project.historyCursor = 0; project.commit(variant); try project.validate()
+    let saved = try JSONDecoder().decode(Project.self, from: JSONEncoder().encode(project))
+    try require(saved.edit == project.edit && saved.schemaVersion == 16, "Local variants survive reopening")
+    project.undo(); try require(project.edit == base, "One Undo restores settings and identities")
+    project.redo(); try require(project.edit == saved.edit, "Redo restores the same variant")
+    var split = TimelineEditing.split(variant, at: 2)
+    try require(split.toolRegions.filter { $0.effectID == localID }.map(\.range) == [1...2, 2...3], "A later video cut clips the source-anchored variant")
+    let moving = split.timeline.video[1].id
+    split.timeline.video[1].start = EditTime(6)
+    try require(split.toolRegions.contains { $0.clipID == moving && $0.effectID == localID && $0.range == 6...7 }, "Variant follows the moved footage")
 }

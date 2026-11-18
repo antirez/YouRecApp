@@ -28,40 +28,40 @@ struct ToolsPanel: View {
     var canCensor = false
     var canTranscribe = true
     let selectCover: (() -> Void)?
+    let selectRange: () -> Void
     var edit: (ToolRegion) -> Void = { _ in }
-    let close: () -> Void
+    let manageFonts: () -> Void
+    let sidebar: Bool
+    private let picture: [VideoTool] = [.crop, .color, .videoEffects, .stabilize, .mirror, .speed]
+    private let speech: [VideoTool] = [.enhanceAudio, .subtitles, .pauses, .censorAudio]
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Add media at \(editorTime(insertionPosition))").font(.caption).foregroundStyle(.secondary)
-                    HStack(spacing: 10) { toolCard(.addVideo); toolCard(.addAudio) }
-                    Button { selectCover?() } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: "photo.on.rectangle.angled").font(.title3).foregroundStyle(.teal).frame(width: 28)
-                            Text("Select cover").font(.subheadline.weight(.semibold))
-                            Spacer()
-                            Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                        }.padding(.horizontal, 12).frame(minHeight: 48)
-                            .background(Color.teal.opacity(0.09), in: RoundedRectangle(cornerRadius: 14))
-                    }.buttonStyle(.plain).disabled(selectCover == nil).accessibilityIdentifier("tools.cover")
-                        .accessibilityHint("Browse frames to share as a JPEG.")
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Overlays").font(.headline).accessibilityAddTraits(.isHeader)
-                        Text(overlayScope).font(.caption).foregroundStyle(.secondary)
-                    }
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 145), spacing: 10)], spacing: 10) {
-                        ForEach([VideoTool.text, .image]) { toolCard($0) }
-                    }
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Adjust").font(.headline).accessibilityAddTraits(.isHeader)
-                        Label(scope, systemImage: "rectangle.dashed").font(.caption).foregroundStyle(.secondary)
-                    }
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 145), spacing: 10)], spacing: 10) {
-                        ForEach([VideoTool.videoEffects, .stabilize, .crop, .mirror, .color, .speed, .pauses, .enhanceAudio, .censorAudio, .subtitles]) { toolCard($0) }
+        VStack(alignment: .leading, spacing: sidebar ? 14 : 18) {
+            if sidebar {
+                let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading)) : AnyLayout(HStackLayout())
+                layout {
+                    Text("Editing tools").font(.headline).accessibilityAddTraits(.isHeader)
+                    if canAdjust {
+                        if !typeSize.isAccessibilitySize { Spacer(minLength: 8) }
+                        rangeButton
                     }
                 }
-                if !regions.isEmpty {
+                if !canAdjust { media }
+                group("Picture", tools: picture)
+                group("Overlays", tools: [.text, .image], detail: overlayScope)
+                group("Audio & speech", tools: speech)
+                if canAdjust { media }
+            } else {
+                media
+                group("Overlays", tools: [.text, .image], detail: overlayScope)
+                VStack(alignment: .leading, spacing: 8) {
+                    heading("Adjust")
+                    if canAdjust { rangeButton }
+                    toolGrid(picture + speech)
+                }
+            }
+            if !regions.isEmpty {
+                LazyVStack(alignment: .leading, spacing: 6) {
                     Text("In this project").font(.headline).accessibilityAddTraits(.isHeader)
                     ForEach(regions) { region in
                         Button { edit(region) } label: {
@@ -69,46 +69,92 @@ struct ToolsPanel: View {
                                 Image(systemName: region.tool.symbol).foregroundStyle(region.tool.tint).frame(width: 26)
                                 VStack(alignment: .leading) {
                                     Text(region.tool == .text ? region.label : region.tool.title + " · " + region.label).lineLimit(1)
-                                    Text("Tap to edit or remove").font(.caption).foregroundStyle(.secondary)
+                                    Text("Edit or remove").font(.caption).foregroundStyle(.secondary)
                                 }
                                 Spacer(); Image(systemName: "chevron.right").foregroundStyle(.secondary)
                             }.frame(maxWidth: .infinity, minHeight: 48).contentShape(Rectangle())
                         }.buttonStyle(.plain).accessibilityIdentifier("tools.existing." + region.tool.rawValue)
                     }
                 }
-                VStack(alignment: .leading, spacing: 12) {
-                    Divider().overlay(.white.opacity(0.08))
-                    Text("Settings").font(.headline).accessibilityAddTraits(.isHeader)
-                        .accessibilityIdentifier("tools.settings")
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: typeSize.isAccessibilitySize ? 240 : 145), spacing: 10)], spacing: 10) {
-                        settingCard("Snap to cuts", symbol: "arrow.right.and.line.vertical.and.arrow.left", value: $snapToCuts,
-                                    identifier: "tools.settings.snap", hint: "Align the playhead and selection marks with nearby clip boundaries.",
-                                    explanation: "When you stop scrubbing near a clip boundary, the playhead snaps exactly to it. Selection marks also snap to nearby boundaries. Turn it off for free placement.\n\nThis applies to clip boundaries, not the cuts inside a Pauses effect.")
-                        settingCard("Match listening levels", symbol: "speaker.wave.2", value: $matchListeningLevels,
-                                    identifier: "tools.settings.matchLevels", hint: "Match Bypass and Enhanced volume inside Enhance audio. Exports are unchanged.",
-                                    explanation: "Plays Bypass and Enhanced audio at similar volume in Enhance audio, so you can compare sound quality without the louder version seeming better.\n\nThis changes preview volume only. Exported audio keeps your filter gain. Matching is automatically suspended when an Output gain filter is enabled, so gain adjustments remain audible. Turn it off to hear actual levels for other filters too.")
-                    }
-                    NavigationLink {
-                        FontLibraryView()
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: "textformat").frame(width: 28)
-                            Text("Fonts").font(.subheadline.weight(.semibold))
-                            Spacer(); Image(systemName: "chevron.right").font(.caption)
-                        }.padding(.horizontal, 12).frame(minHeight: 48)
-                            .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
-                    }.buttonStyle(.plain).accessibilityIdentifier("tools.settings.fonts")
-                        .accessibilityHint("Import and remove fonts for text and subtitles.")
-                    Text("Touch and hold a setting for an explanation.")
-                        .font(.caption).foregroundStyle(.secondary)
+            }
+            VStack(alignment: .leading, spacing: 12) {
+                Divider().overlay(.white.opacity(0.08))
+                Text("Settings").font(.headline).accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("tools.settings")
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: typeSize.isAccessibilitySize ? 240 : 145), spacing: 10)], spacing: 10) {
+                    settingCard("Snap to cuts", symbol: "arrow.right.and.line.vertical.and.arrow.left", value: $snapToCuts,
+                                identifier: "tools.settings.snap", hint: "Align the playhead and selection marks with nearby clip boundaries.",
+                                explanation: "When you stop scrubbing near a clip boundary, the playhead snaps exactly to it. Selection marks also snap to nearby boundaries. Turn it off for free placement.\n\nThis applies to clip boundaries, not the cuts inside a Pauses effect.")
+                    settingCard("Match listening levels", symbol: "speaker.wave.2", value: $matchListeningLevels,
+                                identifier: "tools.settings.matchLevels", hint: "Match Bypass and Enhanced volume inside Enhance audio. Exports are unchanged.",
+                                explanation: "Plays Bypass and Enhanced audio at similar volume in Enhance audio, so you can compare sound quality without the louder version seeming better.\n\nThis changes preview volume only. Exported audio keeps your filter gain. Matching is automatically suspended when an Output gain filter is enabled, so gain adjustments remain audible. Turn it off to hear actual levels for other filters too.")
                 }
-            }.padding(20)
-        }.accessibilityIdentifier("tools.content").background(Color(white: 0.06)).navigationTitle("Tools").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close).frame(minHeight: 44) } }
-        .preferredColorScheme(.dark)
+                Button(action: manageFonts) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "textformat").frame(width: 28)
+                        Text("Fonts").font(.subheadline.weight(.semibold))
+                        Spacer(); Image(systemName: "chevron.right").font(.caption)
+                    }.padding(.horizontal, 12).frame(minHeight: 48)
+                        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
+                }.buttonStyle(.plain).accessibilityIdentifier("tools.settings.fonts")
+                    .accessibilityHint("Import and remove fonts for text and subtitles.")
+                Text("Hold a setting for an explanation.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }.padding(.horizontal, sidebar ? 12 : 20)
+            .padding(.vertical, sidebar ? 4 : 20)
             .alert(item: $settingHelp) { help in
                 Alert(title: Text(help.title), message: Text(help.explanation), dismissButton: .default(Text("Got it")))
             }
+    }
+
+    private func heading(_ title: String) -> some View {
+        Text(title).font(sidebar ? .subheadline.weight(.semibold) : .headline).accessibilityAddTraits(.isHeader)
+    }
+
+    private func group(_ title: String, tools: [VideoTool], detail: String? = nil) -> some View {
+        VStack(alignment: .leading, spacing: sidebar ? 6 : 8) {
+            heading(title)
+            if let detail { Text(detail).font(.caption).foregroundStyle(.secondary) }
+            toolGrid(tools)
+        }
+    }
+
+    private func toolGrid(_ tools: [VideoTool]) -> some View {
+        let minimum: CGFloat = typeSize.isAccessibilitySize ? 220 : (sidebar ? 116 : 145)
+        return LazyVGrid(columns: [GridItem(.adaptive(minimum: minimum), spacing: 8)], spacing: 8) {
+            ForEach(tools) { toolCard($0) }
+        }
+    }
+
+    private var rangeButton: some View {
+        Button(action: selectRange) {
+            HStack {
+                if sidebar { Image(systemName: "rectangle.dashed") }
+                else { Label("Range", systemImage: "rectangle.dashed"); Spacer(minLength: 4) }
+                Text(scope).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.trailing)
+                Image(systemName: "chevron.right").font(.caption)
+            }.padding(.horizontal, 12).frame(minHeight: 44)
+                .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
+        }.buttonStyle(.plain).accessibilityLabel("Edit adjustment range").accessibilityValue(scope)
+            .accessibilityIdentifier("tools.range")
+    }
+
+    private var media: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            heading("Add media at \(editorTime(insertionPosition))")
+            toolGrid([.addVideo, .addAudio])
+            Button { selectCover?() } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "photo.on.rectangle.angled").foregroundStyle(.teal)
+                    Text("Select cover").font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                }.padding(.horizontal, 12).frame(minHeight: 44)
+                    .background(Color.teal.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
+            }.buttonStyle(.plain).disabled(selectCover == nil).accessibilityIdentifier("tools.cover")
+                .accessibilityHint("Browse frames to share as a JPEG.")
+        }
     }
     private func toolCard(_ tool: VideoTool) -> some View {
         Button {
@@ -116,12 +162,15 @@ struct ToolsPanel: View {
                 settingHelp = SettingHelp(title: "Mark the sound to censor", explanation: "In the timeline, use Mark start and Mark end around the word or sound, then open Censor audio. Select an audio item first to affect only that track; otherwise all audio in the marked range is censored.")
             } else { choose(tool) }
         } label: {
-            HStack(spacing: 10) {
-                Image(systemName: tool.symbol).font(.title3).foregroundStyle(tool.tint).frame(width: 28)
+            HStack(spacing: sidebar ? 6 : 10) {
+                Image(systemName: tool.symbol).font(sidebar ? .body : .title3).foregroundStyle(tool.tint)
+                    .frame(width: sidebar ? 20 : 28)
                 Text(tool.title).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
-            }.frame(maxWidth: .infinity, minHeight: 54).padding(.horizontal, 12)
-                .background(tool.tint.opacity(0.09), in: RoundedRectangle(cornerRadius: 14))
+            }.padding(.horizontal, sidebar ? 8 : 12)
+                .frame(maxWidth: .infinity, minHeight: sidebar ? 44 : 54)
+                .background(tool.tint.opacity(sidebar ? 0.13 : 0.09), in: RoundedRectangle(cornerRadius: sidebar ? 9 : 14))
         }.buttonStyle(.plain).disabled((!canAdjust && ![.addVideo, .addAudio].contains(tool)) || ([.enhanceAudio, .censorAudio].contains(tool) && !hasAudio) || (tool == .subtitles && !canTranscribe) || (![.addVideo, .addAudio, .censorAudio, .enhanceAudio, .subtitles].contains(tool) && !hasVideo)).accessibilityIdentifier("tools." + tool.rawValue).accessibilityHint(tool.detail)
     }
     private func settingCard(_ title: String, symbol: String, value: Binding<Bool>, identifier: String, hint: String, explanation: String) -> some View {
@@ -230,7 +279,8 @@ final class ToolWorkspace: ObservableObject {
                     var title = text
                     title.start = range.lowerBound
                     title.end = range.upperBound
-                    layer.previewTitle = .init(text: title, bitmap: bitmap, ranges: timing.clocks)
+                    layer.previewTitle = .init(text: title, bitmap: bitmap, ranges: timing.clocks,
+                                               scope: request.scopedEffect?.parts[layer.clip.id])
                 } else {
                     layer.previewTitle = nil
                 }
@@ -243,11 +293,34 @@ final class ToolWorkspace: ObservableObject {
         rasterKey = nil
         text.appearance = design
     }
-    private let gradeRange: ClosedRange<Double>
-    var playbackOrigin: Double { isOverlay ? start : request.tool == .color ? gradeRange.lowerBound : 0 }
+    func titleChanged(from old: TextOverlay) {
+        refreshTitlePreview()
+        guard showingOpeningFrame, old.motion != text.motion else { return }
+        let target = openingPosition
+        if busy { initialPosition = target }
+        else if abs(target - position) > 0.00001 {
+            seek(target)
+            showingOpeningFrame = true
+        }
+    }
+    private var previewsTimelineRange: Bool { isOverlay || request.tool == .color || (request.tool == .mirror && request.effectID != nil) }
+    var playbackOrigin: Double { previewsTimelineRange ? start : 0 }
+    private var showingOpeningFrame = false
+    private var openingPosition: Double {
+        let footage: [ClosedRange<Double>]
+        if let operation = request.scopedEffect {
+            let visible = operation.parts.values.joined().map(\.seconds).sorted { $0.lowerBound < $1.lowerBound }
+            let tapped = operation.parts[operation.region.clipID]?.compactMap { $0.intersection(EditInterval(operation.region.range))?.seconds } ?? []
+            footage = !operation.local && !tapped.isEmpty ? tapped : visible
+        } else {
+            footage = project.edit.timeline.video.filter { request.clipIDs?.contains($0.id) != false }.map { $0.interval.seconds }
+        }
+        let readable = request.tool == .text ? text.motion?.readableRange(in: titleMotionRange) : nil
+        return timing.openingPosition(footage: footage, readable: readable)
+    }
     private var titleAuditionEnd: Double?
     func replayTitle(exit: Bool) {
-        guard let motion = text.motion, !busy, !text.text.isEmpty else { return }
+        guard let motion = text.motion, !busy, text.hasText else { return }
         let clock = titleMotionRange
         let window = motion.previewWindow(exit: exit, duration: clock.upperBound - clock.lowerBound)
         let from = max(0, min(duration, clock.lowerBound + window.lowerBound - start))
@@ -258,11 +331,11 @@ final class ToolWorkspace: ObservableObject {
     @Published var mirror = MirrorSettings()
     @Published var image = ImageOverlay(filename: "")
     @Published var endpoint: EffectEndpoint?
-    private var previewEndpoint: EffectEndpoint?
+    @Published private var previewEndpoint: EffectEndpoint?
     @Published var animation: EffectAnimation?
     private var lastEndpoint: EffectEndpoint = .a
     private var endpointPose: EffectPose { request.tool == .image ? image.pose : colorSettings.pose }
-    private var motionDuration: Double { request.tool == .image ? end - start : gradeRange.upperBound - gradeRange.lowerBound }
+    private var motionDuration: Double { timing.duration }
     private var capturedAnimation: EffectAnimation? {
         guard var motion = animation else { return nil }
         motion[endpoint ?? lastEndpoint] = endpointPose
@@ -328,10 +401,62 @@ final class ToolWorkspace: ObservableObject {
         return image.applying(motion.pose(at: position))
     }
     @Published var imageBitmap: UIImage?
+    private lazy var imagePlacements: [UUID: TimelinePlacement] = Dictionary(uniqueKeysWithValues:
+        project.edit.layout.placements.filter { self.request.clipIDs?.contains($0.clip.id) != false }.map { ($0.clip.id, $0) })
+    private var imagePreviewLayers: [(VideoToolInstruction, TimelinePlacement)] = []
+    private func imageRecipe(with motion: EffectAnimation?) -> ImageOverlay {
+        var value = motion.map { image.applying($0.a) } ?? image
+        value.motion = motion
+        return value
+    }
+    var previewImageRecipe: ImageOverlay { imageRecipe(with: previewEndpoint == nil ? capturedAnimation : nil) }
+    private func timedImage(_ recipe: ImageOverlay, on placement: TimelinePlacement) -> ImageOverlay? {
+        let clip = placement.clip
+        let unchangedRange = request.effectID != nil && scope == request.range
+        let previous = unchangedRange ? clip.images?.first { $0.id == effectID } : nil
+        var value = recipe
+        if unchangedRange {
+            guard let previous else { return nil }
+            value.start = previous.start; value.end = previous.end
+        } else {
+            let a = max(start, placement.start), b = min(end, placement.end)
+            guard b > a + 0.000001 else { return nil }
+            value.start = clip.sourceTime(at: a - placement.start)
+            value.end = clip.sourceTime(at: b - placement.start)
+        }
+        value.motion = recipe.motion?.placed(on: clip, offset: placement.start - start, replacing: previous?.motion)
+        return value
+    }
+    private func prepareImagePreview(item: AVPlayerItem) {
+        // Track instructions can reuse a layer across several cuts. Only visit
+        // the layers in the edited range while the user's fingers are moving.
+        var seen = Set<ObjectIdentifier>()
+        imagePreviewLayers.removeAll(keepingCapacity: true)
+        for layer in item.videoComposition?.instructions.flatMap(\.toolLayers) ?? [] {
+            guard seen.insert(ObjectIdentifier(layer)).inserted else { continue }
+            if let placement = imagePlacements[layer.clip.id], timedImage(image, on: placement) != nil {
+                imagePreviewLayers.append((layer, placement))
+            } else { layer.previewImage = nil }
+        }
+        refreshImagePreview(item: item)
+    }
+    func refreshImagePreview(item: AVPlayerItem? = nil) {
+        guard request.tool == .image, let item = item ?? player.currentItem,
+              let composition = item.videoComposition?.mutableCopy() as? AVMutableVideoComposition else { return }
+        let recipe = previewImageRecipe, bitmap = imageBitmap?.cgImage
+        for (layer, placement) in imagePreviewLayers {
+            if let bitmap, let overlay = timedImage(recipe, on: placement) {
+                layer.previewImage = .init(overlay: overlay, bitmap: bitmap, scope: request.scopedEffect?.parts[layer.clip.id])
+            } else { layer.previewImage = nil }
+        }
+        // Redraw the current frame without seeking or rebuilding the timeline during a gesture.
+        item.videoComposition = composition
+    }
     @Published var loadingImage = false
     private var importedImages: [URL] = []
     var isOverlay: Bool { request.tool == .text || request.tool == .image }
-    @Published private(set) var timing: OverlayTiming
+    var showsOverlay: Bool { request.scopedEffect?.contains(projectTime: start + position) ?? true }
+    @Published private(set) var timing: EditorRangeTiming
     var start: Double { timing.range.lowerBound }
     var end: Double { timing.range.upperBound }
     @Published var pauseSettings = PauseSettings() { didSet { pauseDraft = nil } }
@@ -370,7 +495,6 @@ final class ToolWorkspace: ObservableObject {
     @Published var position = 0.0
     @Published var duration = 1.0
     @Published var canvas = CGSize(width: 1920, height: 1080)
-    @Published var still: UIImage?
     @Published var playing = false
     private var previewJob: Task<Void, Never>?
     private var pauseJob: Task<Void, Never>?
@@ -380,10 +504,10 @@ final class ToolWorkspace: ObservableObject {
     private var keptPauses: [UUID: [SourceInterval]] = [:]
     private var auditionJob: Task<Void, Never>?
     private var playbackRevision = UUID()
+    private let trimSeeker = RangeFrameSeeker()
+    private var pendingTrim: (position: Double, previewEdge: Bool)?
     private var itemStatus: NSKeyValueObservation?
     private var playbackFailure: NSObjectProtocol?
-    private var frameJob: Task<Void, Never>?
-    private var generator: AVAssetImageGenerator?
     private var endpointPlaybackEnd: EffectPreviewEndObserver?
     private var observer: Any?
     private var revision = UUID()
@@ -406,7 +530,7 @@ final class ToolWorkspace: ObservableObject {
     private let effectID: UUID
     private let awakeReason = "tool-" + UUID().uuidString
     var scope: ClosedRange<Double> { timing.range }
-    var canApply: Bool { (!busy || request.tool == .stabilize) && !loadingImage && (request.tool != .image || imageBitmap != nil) && !analyzingPauses && error == nil && (request.tool != .pauses || (detected && (!choices.isEmpty || request.effectID != nil))) && (request.tool != .text || !text.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
+    var canApply: Bool { (!busy || request.tool == .stabilize) && !loadingImage && (request.tool != .image || imageBitmap != nil) && !analyzingPauses && error == nil && (request.tool != .pauses || (detected && (!choices.isEmpty || request.effectID != nil))) && (request.tool != .text || text.hasText) }
     var cutSeconds: Double {
         state().clips.filter { scopedIDs.contains($0.id) }.reduce(0) { sum,clip in var complete=clip;complete.pauses=nil;return sum+complete.duration-clip.duration }
     }
@@ -417,33 +541,33 @@ final class ToolWorkspace: ObservableObject {
     init(project: Project, folder: URL, request: ToolRequest, position: Double) {
         self.project = project; self.folder = folder; self.request = request
         let bounds: ClosedRange<Double>
-        if [.text, .image].contains(request.tool), let ids = request.clipIDs {
+        if [.text, .image, .color].contains(request.tool), let ids = request.clipIDs {
             var lower = project.edit.duration, upper = 0.0
             for placement in project.edit.layout.placements where ids.contains(placement.clip.id) {
-                lower = min(lower, placement.lower); upper = max(upper, placement.upper)
+                lower = min(lower, placement.start); upper = max(upper, placement.end)
             }
             bounds = min(lower, upper)...upper
         } else { bounds = 0...project.edit.duration }
-        timing = OverlayTiming(range: request.range, bounds: bounds)
+        timing = EditorRangeTiming(range: request.range, bounds: bounds)
         effectID = request.effectID ?? UUID()
         let scoped: (EditState, Set<UUID>)
-        if request.targets != nil && ![.text, .image].contains(request.tool) { scoped = request.videoScope(in: project.edit) }
+        if request.targets != nil && ![.text, .image, .color].contains(request.tool) { scoped = request.videoScope(in: project.edit) }
         else if let ids = request.clipIDs { scoped = (project.edit, ids) }
-        else if [.text, .image].contains(request.tool) {
+        else if [.text, .image, .color].contains(request.tool) {
             scoped = (project.edit, Set(project.edit.layout.placements.filter { $0.start < request.range.upperBound && $0.end > request.range.lowerBound }.map { $0.clip.id }))
         } else { scoped = TimelineEditing.scoped(project.edit, range: request.range) }
         scopedState = scoped.0; scopedIDs = scoped.1
-        gradeRange = request.tool == .color ? request.videoPreviewRange(in:scoped.0,ids:scoped.1) : request.range
         if request.tool == .stabilize {
             let levels = Set(scoped.0.timeline.video.filter { scoped.1.contains($0.id) }.map { $0.content.stabilization?.level ?? .off })
             savedStabilizationLevel = levels.count == 1 && !levels.contains(.off) ? levels.first : nil
         } else { savedStabilizationLevel = nil }
         let clip = scoped.0.clips.first { scoped.1.contains($0.id) }
         level = clip?.stabilization?.level ?? .standard
-        rate = clip?.speed?.rate ?? 1; look = clip?.color?.look ?? .natural; amount = clip?.color?.amount ?? 1
-        importedLUT = clip?.color?.imported; exposure = clip?.color?.exposure ?? 0; warmth = clip?.color?.warmth ?? 0; tint = clip?.color?.tint ?? 0
-        highlights = clip?.color?.highlights ?? 0
-        localRecovery = clip?.color?.localRecovery ?? 0
+        let existingGrade = clip?.visibleGrades.first { $0.grade.id == request.effectID }?.grade ?? clip?.color
+        rate = clip?.speed?.rate ?? 1; look = existingGrade?.look ?? .natural; amount = existingGrade?.amount ?? 1
+        importedLUT = existingGrade?.imported; exposure = existingGrade?.exposure ?? 0
+        warmth = existingGrade?.warmth ?? 0; tint = existingGrade?.tint ?? 0
+        highlights = existingGrade?.highlights ?? 0; localRecovery = existingGrade?.localRecovery ?? 0
         if let value = clip?.pauses { pauseSettings = value }
         if let id = request.effectID, let existing = scoped.0.clips.lazy.filter({ scoped.1.contains($0.id) })
             .compactMap({ $0.texts?.first { $0.id == id } }).first {
@@ -451,14 +575,13 @@ final class ToolWorkspace: ObservableObject {
             existingMotion = existing.motion
             existingTitleRange = TitleMotionRanges(project.edit).range(for: existing, at: request.range.lowerBound)
         }
-        if request.effectID == nil { text.text = "" }
         text.id = effectID
         mirror = clip?.mirror ?? MirrorSettings(); mirror.id = effectID
-        if let id = request.effectID, let existing = project.edit.clips.flatMap({ $0.images ?? [] }).first(where: { $0.id == id }) {
+        if let id = request.effectID, let existing = project.edit.clips.filter({ scoped.1.contains($0.id) }).flatMap({ $0.images ?? [] }).first(where: { $0.id == id }) {
             image = existing; imageBitmap = UIImage(contentsOfFile: folder.appendingPathComponent(existing.filename).path)
         }
         image.id = effectID
-        animation = request.tool == .image ? image.motion : (request.tool == .color ? clip?.color?.motion : nil)
+        animation = request.tool == .image ? image.motion : (request.tool == .color ? existingGrade?.motion : nil)
         if let motion = animation { loadPose(motion.a) }
         initialPosition = 0
         var local = 0.0
@@ -481,8 +604,8 @@ final class ToolWorkspace: ObservableObject {
             }
             initialPosition = stabilizationAnchor
         }
-        if request.tool == .color { initialPosition = min(max(0,motionDuration-TimelineEditing.frame),max(0,position-playbackOrigin)) }
-        if isOverlay { initialPosition = 0 }
+        if request.tool == .color || (request.tool == .mirror && request.effectID != nil) { initialPosition = min(max(0,motionDuration-TimelineEditing.frame),max(0,position-playbackOrigin)) }
+        if isOverlay { showingOpeningFrame = true; initialPosition = openingPosition }
         playbackFailure = NotificationCenter.default.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: nil, queue: .main) { [weak self] note in
             Task { @MainActor in
                 guard let self, let item = note.object as? AVPlayerItem, item === self.player.currentItem,
@@ -495,29 +618,34 @@ final class ToolWorkspace: ObservableObject {
         }
         let previewRate: CMTimeScale = isOverlay ? 30 : 15
         endpointPlaybackEnd = EffectPreviewEndObserver(player:player) { [weak self] in
-            guard let self, self.endpoint != nil else { return }
-            self.playing = false; self.returnToEndpoint()
+            guard let self, self.itemRevision == self.revision, self.isOverlay || self.request.tool == .color,
+                  self.player.currentTime().seconds >= self.playbackOrigin + self.duration - 0.001 else { return }
+            self.finishRangePlayback()
         }
         observer = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: previewRate), queue: .main) { [weak self] time in
             Task { @MainActor in
                 guard let self else { return }
                 self.playing = self.player.rate > 0
                 let observed = self.player.currentTime().seconds - self.playbackOrigin
-                if self.playing, observed.isFinite { self.position = min(self.duration, max(0, observed)) }
+                if self.playing, observed.isFinite { self.position = min(max(0, self.duration - TimelineEditing.frame), max(0, observed)) }
                 if self.auditionReady, let audition = self.pauseAudition, observed >= min(audition.end, self.duration - 0.02) {
                     self.seek(audition.position); return
                 }
                 if let end=self.titleAuditionEnd, self.playing, observed >= end-0.015 {
-                    self.seek(end)
+                    self.finishRangePlayback()
+                } else if self.isOverlay || self.request.tool == .color {
+                    if self.playing, observed >= self.duration { self.finishRangePlayback() }
                 } else if observed >= self.duration - 0.02 { self.player.pause(); self.playing = false; self.returnToEndpoint() }
             }
         }
     }
-    deinit { if let observer { player.removeTimeObserver(observer) }; if let playbackFailure { NotificationCenter.default.removeObserver(playbackFailure) }; previewJob?.cancel(); pauseJob?.cancel(); frameJob?.cancel(); auditionJob?.cancel() }
+    deinit { if let observer { player.removeTimeObserver(observer) }; if let playbackFailure { NotificationCenter.default.removeObserver(playbackFailure) }; previewJob?.cancel(); pauseJob?.cancel(); auditionJob?.cancel() }
     func stop() {
         revision = UUID()
+        trimSeeker.reset()
+        pendingTrim = nil
         thumbnailJob?.cancel(); thumbnailGenerator?.cancelAllCGImageGeneration()
-        previewJob?.cancel(); pauseJob?.cancel(); frameJob?.cancel(); auditionJob?.cancel(); generator?.cancelAllCGImageGeneration(); player.pause()
+        previewJob?.cancel(); pauseJob?.cancel(); auditionJob?.cancel(); player.pause()
         pauseRevision = UUID(); playbackRevision = UUID(); pauseAudition = nil; auditioningPause = false
         RecordingAppDelegate.keepAwake(awakeReason, active: false)
     }
@@ -583,7 +711,10 @@ final class ToolWorkspace: ObservableObject {
                 try await Task.sleep(for: .milliseconds(220)); try Task.checkCancellation()
                 if thumbnailGenerator == nil {
                     var candidate = previewProject()
-                    var edit = candidate.edit; for i in edit.clips.indices { edit.clips[i].color = nil }
+                    var edit = candidate.edit
+                    for i in edit.timeline.video.indices {
+                        edit.timeline.video[i].content.color = nil; edit.timeline.video[i].content.colorRegions = nil
+                    }
                     candidate.history = [edit]; candidate.historyCursor = 0
                     let media = try await MediaRenderer.timeline(project: candidate, folder: folder, canvasSize: projectCanvas, effectPreparation: .cached)
                     try Task.checkCancellation()
@@ -647,33 +778,38 @@ final class ToolWorkspace: ObservableObject {
             pauseDraft = draft
             return draft
         }
-        if request.tool == .image {
+        if request.tool == .color {
             var edit = project.edit
-            let positions = edit.layout.placements
-            for index in edit.clips.indices {
-                var clip = edit.clips[index]
-                let cursor = positions[index].start
-                if let ids = request.clipIDs, !ids.contains(clip.id) { continue }
-                var image = self.image
-                if let motion = capturedAnimation {
-                    image = image.applying(motion.a); image.motion = motion.placed(on:clip,offset:cursor-start,replacing:(start == request.range.lowerBound && end == request.range.upperBound) ? clip.images?.first(where:{ $0.id == effectID })?.motion : nil)
-                }
-                let previous = (clip.images ?? []).first { $0.id == effectID }
-                clip.images = (clip.images ?? []).filter { $0.id != effectID }
-                if !removing, !forPreview, request.effectID != nil, start == request.range.lowerBound, end == request.range.upperBound {
-                    if let previous { var value = image; value.start = previous.start; value.end = previous.end; clip.images = (clip.images ?? []) + [value] }
-                } else {
-                    let a = max(start, cursor), b = min(end, cursor + clip.duration)
-                    if !removing, !forPreview, b > a + 0.000001, !image.filename.isEmpty {
-                        var value = image; value.start = clip.sourceTime(at: a - cursor); value.end = clip.sourceTime(at: b - cursor)
-                        clip.images = (clip.images ?? []) + [value]
-                    }
-                }
-                edit.clips[index] = clip
+            var grade = colorSettings
+            if var motion = capturedAnimation {
+                grade = grade.applying(motion.a); motion.clock = []; grade.motion = motion
+            }
+            if let id = request.effectID {
+                edit.setGrade(nil, in: request.range, videos: scopedIDs, removingOnly: id)
+            }
+            if !removing && !grade.isIdentity {
+                edit.setGrade(grade, in: scope, videos: scopedIDs,
+                              preservingClocksFrom: scope == request.range && request.effectID != nil ? project.edit.timeline : nil)
             }
             return edit
         }
-        if request.tool == .mirror && request.effectID == nil && !mirror.horizontal && !mirror.vertical { return project.edit }
+        if request.tool == .image {
+            var edit = project.edit
+            var clips = edit.clips
+            let recipe = imageRecipe(with: capturedAnimation)
+            for placement in imagePlacements.values {
+                var images = (placement.clip.images ?? []).filter { $0.id != effectID }
+                if !removing, !forPreview, !recipe.filename.isEmpty, let overlay = timedImage(recipe, on: placement) {
+                    images.append(overlay)
+                }
+                clips[placement.index].images = images.isEmpty ? nil : images
+            }
+            edit.clips = clips
+            return edit
+        }
+        if request.tool == .mirror && request.effectID == nil && !mirror.horizontal && !mirror.vertical {
+            return forPreview ? scopedState : project.edit
+        }
         if request.tool == .text {
             var edit = project.edit
             let positions = edit.layout.placements
@@ -697,20 +833,17 @@ final class ToolWorkspace: ObservableObject {
             return edit
         }
         var edit = scopedState
-        let starts = request.tool == .color ? Dictionary(uniqueKeysWithValues:edit.layout.placements.map { ($0.clip.id,$0.start) }) : [:]
         for index in edit.clips.indices where scopedIDs.contains(edit.clips[index].id) {
             switch request.tool {
             case .speed: edit.clips[index].speed = removing || rate == 1 ? nil : SpeedSettings(id: effectID, rate: rate)
-            case .color:
-                var grade = colorSettings
-                if let motion = capturedAnimation {
-                    grade = grade.applying(motion.a); grade.motion = motion.placed(on:edit.clips[index],offset:(starts[edit.clips[index].id] ?? playbackOrigin)-playbackOrigin,replacing:edit.clips[index].color?.motion)
-                }
-                edit.clips[index].color = removing || grade.isIdentity ? nil : grade
+            case .color: break
             case .stabilize:
                 if removing || level == .off { edit.clips[index].stabilization = nil }
                 else { var value = edit.clips[index].stabilizing(level); value.id = effectID; edit.clips[index].stabilization = value }
-            case .mirror: edit.clips[index].mirror = removing || (!mirror.horizontal && !mirror.vertical) ? nil : mirror
+            case .mirror:
+                var value = mirror
+                if request.effectID != nil { value.activeRange = edit.clips[index].mirror?.activeRange }
+                edit.clips[index].mirror = removing || (!value.horizontal && !value.vertical) ? nil : value
             case .pauses, .subtitles, .text, .crop, .image, .addVideo, .addAudio, .censorAudio, .transition, .videoEffects, .enhanceAudio, .volume, .placement: break
             }
         }
@@ -718,8 +851,9 @@ final class ToolWorkspace: ObservableObject {
     }
     private func previewProject() -> Project {
         var candidate = project
-        var edit = state(removing: original, forPreview: isOverlay)
-        if isOverlay || request.tool == .color {
+        var edit = state(removing: original, forPreview: true)
+        if !isOverlay { edit = request.previewState(edit, in: project.edit) }
+        if previewsTimelineRange {
             // Preserve transitions, gaps, underlying captions and layer placement. The player's
             // seek and end bounds restrict playback to the selected title interval.
             candidate.history = [edit]; candidate.historyCursor = 0; return candidate
@@ -730,7 +864,9 @@ final class ToolWorkspace: ObservableObject {
         edit.clips = edit.clips.map { var clip = $0; clip.transition = nil; clip.openingTransition = nil; return clip }
         if request.tool == .stabilize {
             let sequence = TimelineLayout(clips: edit.clips)
-            let window = EffectPreviewWindow.range(at: stabilizationAnchor, within: 0...sequence.duration)
+            let first = scopedState.layout.placements.filter { scopedIDs.contains($0.clip.id) }.map(\.start).min() ?? 0
+            let limit = request.effectID == nil ? 0...sequence.duration : (max(0, scope.lowerBound - first)...max(0, scope.upperBound - first)).clamped(to: 0...sequence.duration)
+            let window = EffectPreviewWindow.range(at: stabilizationAnchor, within: limit)
             stabilizationWindow = window
             let samples = EffectPreviewWindow(window, timeline: TrackTimeline(clips: edit.clips))
             edit = EditState(clips: edit.clips.compactMap { clip in
@@ -748,6 +884,7 @@ final class ToolWorkspace: ObservableObject {
     }
     func rebuild(delay: Bool = true, focusPause: Bool = false) {
         guard !stabilizationSampleStopped else { return }
+        trimSeeker.reset()
         auditionJob?.cancel(); playbackRevision = UUID(); auditioningPause = false
         previewJob?.cancel(); let token = UUID(); revision = token
         let resume = playing && pauseAudition == nil
@@ -785,7 +922,10 @@ final class ToolWorkspace: ObservableObject {
                 if projectCanvas == nil { projectCanvas = try await MediaRenderer.canvas(project: project, folder: folder) }
                 var plans: [UUID: StabilizationPlan] = [:]
                 if request.tool == .stabilize && !original && level != .off {
-                    let clips = candidate.edit.clips
+                    let clips = candidate.edit.clips.flatMap { clip -> [TimelineClip] in
+                        guard clip.effectWindows != nil else { return [clip] }
+                        return clip.resolvedEffectPieces.filter { $0.stabilization?.level == level }
+                    }
                     let window = EffectPreviewWindow(0...candidate.edit.duration, timeline: candidate.edit.timeline)
                     var crop = 1.0, weakTracking = false
                     for (index, clip) in clips.enumerated() {
@@ -803,13 +943,14 @@ final class ToolWorkspace: ObservableObject {
                 }
                 let media = try await MediaRenderer.timeline(project: candidate, folder: folder, canvasSize: projectCanvas, stabilizationPlans: plans, videoProgress: { value in
                     Task { @MainActor [weak self] in if self?.revision == token { self?.progress = value } }
-                }, forceCustom: request.tool == .text, effectPreparation:.cached)
+                }, forceCustom: isOverlay || request.tool == .color, effectPreparation:.cached)
                 try Task.checkCancellation(); guard revision == token else { return }
-                duration = isOverlay ? timing.duration : request.tool == .color ? motionDuration : candidate.edit.duration; canvas = media.videoComposition.renderSize
+                duration = previewsTimelineRange ? timing.duration : candidate.edit.duration; canvas = media.videoComposition.renderSize
                 let item = AVPlayerItem(asset: media.composition); item.videoComposition = media.playbackVideoComposition; item.audioMix = media.audioMix
                 item.audioTimePitchAlgorithm = .spectral; item.seekingWaitsForVideoCompositionRendering = true
                 if request.tool == .text { refreshTitlePreview(item:item) }
-                if isOverlay || request.tool == .color {
+                if request.tool == .image { prepareImagePreview(item: item) }
+                if previewsTimelineRange {
                     item.reversePlaybackEndTime = CMTime(seconds:playbackOrigin,preferredTimescale:60000)
                     item.forwardPlaybackEndTime = CMTime(seconds:playbackOrigin+duration,preferredTimescale:60000)
                 }
@@ -822,13 +963,8 @@ final class ToolWorkspace: ObservableObject {
                     }
                 }
                 itemRevision = token; player.replaceCurrentItem(with: item)
-                generator?.cancelAllCGImageGeneration()
-                let generator = AVAssetImageGenerator(asset: media.composition); generator.videoComposition = media.videoComposition
-                generator.appliesPreferredTrackTransform = true; generator.maximumSize = CGSize(width: 1280, height: 1280)
-                generator.requestedTimeToleranceBefore = .zero; generator.requestedTimeToleranceAfter = .zero
-                self.generator = generator
                 var target = initialPosition.map { $0 - (stabilizationWindow?.lowerBound ?? 0) } ?? position
-                if initialPosition == nil, request.tool != .color, !isOverlay, let anchor {
+                if initialPosition == nil, !previewsTimelineRange, let anchor {
                     let matching = candidate.edit.clips.first { $0.id == anchor.0 && anchor.2 >= $0.start && anchor.2 <= $0.end }
                         ?? candidate.edit.clips.first { $0.sourceID == anchor.1 && anchor.2 >= $0.start && anchor.2 <= $0.end }
                     if let matching { target = TimelineEditing.offset(of: matching.id, in: candidate.edit) + matching.timelineTime(forSource: anchor.2) }
@@ -847,12 +983,23 @@ final class ToolWorkspace: ObservableObject {
                 }
                 try Task.checkCancellation(); guard revision == token else { return }
                 if let failure = item.error { throw failure }
+                if let trim = pendingTrim {
+                    position = trim.position
+                    updateTrimmedItem(item)
+                }
                 let sought = await player.seek(to: CMTime(seconds: position + playbackOrigin, preferredTimescale: 60000), toleranceBefore: .zero, toleranceAfter: .zero)
                 try Task.checkCancellation(); guard revision == token else { return }
-                guard sought else { throw ProjectError.invalidMedia }
+                if let trim = pendingTrim {
+                    pendingTrim = nil
+                    updateTrimmedItem(item)
+                    let opening = showingOpeningFrame
+                    seek(trim.position, trimming: trim.previewEdge)
+                    showingOpeningFrame = opening
+                } else {
+                    guard sought else { throw ProjectError.invalidMedia }
+                    if resume { player.play(); playing = true }
+                }
                 if request.tool == .color { refreshLookThumbnails() }
-                if request.tool == .image { await loadFrame() }
-                else if resume { player.play(); playing = true }
             } catch is CancellationError {} catch {
                 if revision == token {
                     NSLog("YouRec %@ inspector: %@, underlying: %@", request.tool.rawValue, String(describing: error), String(describing: (error as NSError).userInfo[NSUnderlyingErrorKey]))
@@ -861,74 +1008,95 @@ final class ToolWorkspace: ObservableObject {
             }
         }
     }
-    func seek(_ value: Double, playThrough auditionEnd: Double? = nil, following selected: EffectEndpoint? = nil) {
+    private func finishRangePlayback() {
+        if titleAuditionEnd != nil {
+            // Return from the short entrance/exit audition with the lettering visible for editing.
+            seek(openingPosition)
+            showingOpeningFrame = true
+        } else if endpoint != nil { returnToEndpoint() }
+        else { seek(duration) } // The exclusive end can already show the next clip.
+    }
+    func seek(_ value: Double, playThrough auditionEnd: Double? = nil, following selected: EffectEndpoint? = nil, play: Bool = false, trimming: Bool = false) {
+        if !trimming { trimSeeker.reset() }
+        showingOpeningFrame = false
         previewEndpoint = selected
         titleAuditionEnd = nil
         auditionJob?.cancel(); playbackRevision = UUID(); auditioningPause = false
         pauseAudition = nil
         player.pause(); playing = false; position = min(max(0, value), max(0, duration - TimelineEditing.frame))
-        if request.tool == .image {
-            frameJob?.cancel(); generator?.cancelAllCGImageGeneration()
-            frameJob = Task { try? await Task.sleep(for: .milliseconds(80)); guard !Task.isCancelled else { return }; await loadFrame() }
-        } else {
-            let target = CMTime(seconds: position + playbackOrigin, preferredTimescale: 60000)
-            if let auditionEnd {
-                let token = playbackRevision
-                player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] completed in
-                    Task { @MainActor in
-                        guard completed, let self, self.playbackRevision == token else { return }
-                        self.titleAuditionEnd = auditionEnd
-                        self.player.play(); self.playing = true
-                    }
+        let target = CMTime(seconds: position + playbackOrigin, preferredTimescale: 60000)
+        if play || auditionEnd != nil {
+            let token = playbackRevision
+            player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] completed in
+                Task { @MainActor in
+                    guard completed, let self, self.playbackRevision == token else { return }
+                    self.titleAuditionEnd = auditionEnd
+                    self.player.play(); self.playing = true
                 }
-            } else {
-                player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
             }
+        } else if trimming {
+            trimSeeker.seek(player, to: target)
+        } else {
+            player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
         }
     }
-    func trim(_ edge: OverlayTiming.Edge, to value: Double, previewEdge: Bool = true) {
+
+    func trim(_ edge: EditorRangeTiming.Edge, to value: Double, previewEdge: Bool = true) {
         let absolutePlayhead = start + position
         var updated = timing
         updated.set(edge, to: value)
-        guard updated.range != timing.range else { return }
-        timing = updated
-        if request.tool == .image {
-            rebuild()
+        guard updated.range != timing.range else {
+            if previewEdge, !busy { seek(timing.previewTime(for: edge) - start, trimming: true) }
             return
         }
-        // Text previews already contain the full underlying composition. Trimming
-        // only changes the player's playback window and the draft title's clock.
+        timing = updated
+        // The full composition stays installed while either boundary is moving.
         duration = timing.duration
         let lastFrame = max(0, duration - TimelineEditing.frame)
-        let target = previewEdge ? (edge == .start ? 0 : lastFrame) : min(lastFrame, max(0, absolutePlayhead - start))
+        let keepOpeningFrame = showingOpeningFrame && !previewEdge
+        let target: Double
+        if previewEdge { target = timing.previewTime(for: edge) - start }
+        else if keepOpeningFrame { target = openingPosition }
+        else { target = min(lastFrame, max(0, absolutePlayhead - start)) }
+        showingOpeningFrame = keepOpeningFrame
         guard let item = player.currentItem, !busy else {
-            initialPosition = target
-            rebuild()
+            player.pause(); playing = false
+            position = target
+            pendingTrim = (target, previewEdge)
+            if !busy { rebuild(delay: false) }
             return
         }
-        refreshTitlePreview(item: item)
+        updateTrimmedItem(item)
+        seek(target, trimming: previewEdge)
+        showingOpeningFrame = keepOpeningFrame
+    }
+    private func updateTrimmedItem(_ item: AVPlayerItem) {
+        if request.tool == .color, let composition = item.videoComposition?.mutableCopy() as? AVMutableVideoComposition {
+            let grades = Dictionary(uniqueKeysWithValues: state(removing: original).timeline.video.map { ($0.id, $0.content.visibleGrades) })
+            for layer in composition.instructions.flatMap(\.toolLayers) { layer.previewGrades = grades[layer.clip.id] }
+            item.videoComposition = composition
+        } else if request.tool == .image { prepareImagePreview(item: item) }
+        else { refreshTitlePreview(item: item) }
         item.reversePlaybackEndTime = CMTime(seconds: start, preferredTimescale: 60000)
         item.forwardPlaybackEndTime = CMTime(seconds: end, preferredTimescale: 60000)
-        seek(target)
-    }
-    private func loadFrame() async {
-        guard let generator else { return }
-        do { let result = try await generator.image(at: CMTime(seconds: position+playbackOrigin, preferredTimescale: 60000)); try Task.checkCancellation(); still = UIImage(cgImage: result.image) }
-        catch { if !Task.isCancelled { self.error = error.localizedDescription } }
     }
     func togglePlay() {
         if request.tool == .text { playbackRevision = UUID() }
         titleAuditionEnd = nil
-        if playing { player.pause(); playing = false; returnToEndpoint(); if let audition = pauseAudition { seek(audition.position) } }
+        if playing {
+            player.pause(); playing = false
+            if endpoint != nil { returnToEndpoint() }
+            else if request.tool == .image { seek(position) }
+            if let audition = pauseAudition { seek(audition.position) }
+        }
         else {
             previewEndpoint = nil
-            if endpoint != nil || position >= duration - 0.05 {
-                if request.tool == .image { position=0; player.seek(to:CMTime(seconds:playbackOrigin,preferredTimescale:60000),toleranceBefore:.zero,toleranceAfter:.zero) }
-                else { seek(0) }
-            } else if request.tool == .image {
-                player.seek(to:CMTime(seconds:playbackOrigin+position,preferredTimescale:60000),toleranceBefore:.zero,toleranceAfter:.zero)
+            if showingOpeningFrame || endpoint != nil || position >= duration - 0.05 {
+                seek(0, play: true)
+            } else if request.tool == .image { seek(position, play: true) }
+            else {
+                player.play(); playing = true
             }
-            player.play(); playing = true
         }
     }
     func analyzePauses(delay: Bool = false) {
@@ -1061,10 +1229,17 @@ struct ToolEditor: View {
     @Environment(\.dynamicTypeSize) private var typeSize
     @State private var pickedImage: PhotosPickerItem?
     @FocusState private var textFocused: Bool
+    @State private var titlePart = LabelHeadline.Part.headline
+    @State private var previousGroup: LabelHeadline?
+    @State private var previousGroupSize: Double?
+    @State private var previousTextSize: Double?
+    // Keep the single-line example when switching layouts until the author types.
+    @State private var singleTextExample: String?
     @State private var dragOrigin: CGPoint?
     @State private var pinchSize: Double?
     init(project: Project, folder: URL, request: ToolRequest, editor: EditorController, cancel: @escaping () -> Void, apply: @escaping (EditState) -> Void) {
         _model = StateObject(wrappedValue: ToolWorkspace(project: project, folder: folder, request: request, position: editor.playhead))
+        _singleTextExample = State(initialValue: request.effectID == nil ? TextOverlay.starterText : nil)
         self.editor = editor
         self.cancel = cancel; self.apply = apply
     }
@@ -1085,7 +1260,7 @@ struct ToolEditor: View {
                             }.accessibilityIdentifier("stabilize.previewSaved")
                         } else { playback.padding(.horizontal, 14).padding(.vertical, 4) }
                     }.frame(maxWidth: .infinity, maxHeight: .infinity)
-                    ScrollView {
+                    DurationInspectorScroll {
                         VStack(alignment: .leading, spacing: 16) {
                             if let error = model.error {
                                 Text(error).font(.callout).foregroundStyle(.orange)
@@ -1107,7 +1282,7 @@ struct ToolEditor: View {
         }.preferredColorScheme(.dark).interactiveDismissDisabled()
             .task { if !showingEditorFrame { model.startPreview() } }
             .onDisappear { model.stop() }
-            .onChange(of: model.text) { _, _ in model.refreshTitlePreview() }
+            .onChange(of: model.text) { old, _ in model.titleChanged(from: old) }
             .onChange(of: model.mirror) { _, _ in model.rebuild() }
             .task(id: pickedImage) { if let pickedImage { await model.loadImage(pickedImage) } }
             .onChange(of: model.level) { _, _ in
@@ -1117,7 +1292,7 @@ struct ToolEditor: View {
             .onChange(of: model.rate) { _, _ in model.rebuild() }
             .onChange(of: model.colorSettings) { _, _ in model.adjustedEndpoint(); model.rebuild() }
             .onChange(of:model.image.pose) { _,_ in model.adjustedEndpoint() }
-            .onChange(of: model.position) { _, _ in model.refreshLookThumbnails() }
+            .onChange(of: model.playbackOrigin + model.position) { _, _ in model.refreshLookThumbnails() }
             .onChange(of: model.playing) { _, playing in if !playing { model.refreshLookThumbnails() } }
             .onChange(of: model.original) { _, _ in model.rebuild(delay: false) }
             .toolbar { ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("Done") { textFocused = false } } }
@@ -1125,13 +1300,13 @@ struct ToolEditor: View {
     private var scopeDescription: String {
         let title = model.request.scopeTitle
         if let window = model.stabilizationWindow { return title + " · " + EffectPreviewWindow.label(window) }
-        if model.isOverlay { return title + " · " + editorTime(model.start) + "–" + editorTime(model.end) }
+        if model.isOverlay || kind == .color { return title + " · " + editorTime(model.start) + "–" + editorTime(model.end) }
         return title
     }
     private var header: some View {
         HStack(spacing: 8) {
             if reviewingSavedLevel { Color.clear.frame(width: 60, height: 44).accessibilityHidden(true) }
-            else { Button("Cancel") { model.finishImages(); cancel() }.frame(minWidth: 60, minHeight: 44).accessibilityIdentifier("tool.cancel") }
+            else { Button("Cancel") { model.finishImages(); cancel() }.editorDecisionButton(primary: false).frame(minWidth: 60, minHeight: 44).accessibilityIdentifier("tool.cancel") }
             Spacer(minLength: 0)
             VStack(spacing: 2) {
                 Text(kind.title).font(.headline)
@@ -1140,12 +1315,12 @@ struct ToolEditor: View {
             }
             Spacer(minLength: 0)
             if reviewingSavedLevel {
-                Button("Done", action: cancel).fontWeight(.semibold).frame(minWidth: 60, minHeight: 44)
+                Button("Done", action: cancel).fontWeight(.semibold).editorDecisionButton(primary: true).frame(minWidth: 60, minHeight: 44)
                     .accessibilityIdentifier("stabilize.done")
             } else {
                 Button(model.savedStabilizationLevel == nil ? "Apply" : "Apply changes") {
                     textFocused = false; model.finishImages(keeping: model.image.filename); model.stop(); apply(model.state())
-                }.fontWeight(.semibold).frame(minWidth: 60, minHeight: 44).disabled(!model.canApply).accessibilityIdentifier("tool.apply")
+                }.fontWeight(.semibold).editorDecisionButton(primary: true).frame(minWidth: 60, minHeight: 44).disabled(!model.canApply).accessibilityIdentifier("tool.apply")
             }
         }.padding(.horizontal, 12).background(Color(white: 0.06))
     }
@@ -1178,23 +1353,37 @@ struct ToolEditor: View {
             let size = CGSize(width: width, height: height)
             ZStack {
                 PlayerSurface(player:model.player,identifier:"tool.text.video").allowsHitTesting(false)
-                if let bitmap = model.titleBitmap() {
+                if model.showsOverlay, let bitmap = model.titleBitmap() {
                     let dimensions = CGSize(width:bitmap.width,height:bitmap.height)
                     let origin = TextRasterizer.origin(model.text,imageSize:dimensions,canvas:model.canvas)
                     let scale = width/model.canvas.width
-                    Color.clear.frame(width:max(44,dimensions.width*scale+16),height:max(44,dimensions.height*scale+16))
+                    let rect = CGRect(x: origin.x * scale, y: height - (origin.y + dimensions.height) * scale,
+                                      width: dimensions.width * scale, height: dimensions.height * scale)
+                    let clock = model.titleMotionRange
+                    let pose = model.text.motion?.pose(at: model.start + model.position - clock.lowerBound,
+                                                       duration: clock.upperBound - clock.lowerBound) ?? TitleMotion.Pose()
+                    let visible = pose.rect(rect)
+                    let target = CGSize(width: max(44, visible.width + 16), height: max(44, visible.height + 16))
+                    Color.clear.frame(width: target.width, height: target.height)
                         .contentShape(Rectangle())
-                        .position(x:(origin.x+dimensions.width/2)*scale,y:height-(origin.y+dimensions.height/2)*scale)
-                        .gesture(DragGesture(minimumDistance: 2).onChanged { value in
+                        .gesture(DragGesture(minimumDistance: 2, coordinateSpace: .global).onChanged { value in
                             if dragOrigin == nil { dragOrigin = CGPoint(x: model.text.x, y: model.text.y) }
-                            let x = min(1, max(0, dragOrigin!.x + value.translation.width / max(1, size.width)))
-                            let y = min(1, max(0, dragOrigin!.y + value.translation.height / max(1, size.height)))
-                            model.text.x = abs(x - 0.5) < 0.015 ? 0.5 : x
-                            model.text.y = abs(y - 0.5) < 0.015 ? 0.5 : y
+                            let center = OverlayPlacement.snappedCenter(CGPoint(
+                                x: dragOrigin!.x + value.translation.width / max(1, size.width),
+                                y: dragOrigin!.y + value.translation.height / max(1, size.height)))
+                            model.text.x = center.x; model.text.y = center.y
                         }.onEnded { _ in dragOrigin = nil })
-                        .onTapGesture { textFocused = true }
+                        .onTapGesture { point in
+                            if let layout = TextRasterizer.labelHeadlineLayout(model.text, canvas: model.canvas, folder: model.folder) {
+                                let fx = (pose.left + pose.right) / 2 + (point.x - target.width / 2) / max(1, rect.width * pose.scale)
+                                let fy = (pose.top + pose.bottom) / 2 + (point.y - target.height / 2) / max(1, rect.height * pose.scale)
+                                textFocused = false
+                                titlePart = layout.part(at: CGPoint(x: fx, y: fy))
+                            } else { textFocused = true }
+                        }
                         .accessibilityElement(children:.ignore).accessibilityLabel("Text position").accessibilityIdentifier("tool.text.overlay")
                         .accessibilityHint("Drag to move, pinch to resize. Position and size controls are also below.")
+                        .position(x: visible.midX, y: visible.midY)
                 }
             }.frame(width: width, height: height).clipped().contentShape(Rectangle())
                 .simultaneousGesture(MagnificationGesture().onChanged { value in
@@ -1210,28 +1399,29 @@ struct ToolEditor: View {
             let width = min(geometry.size.width, geometry.size.height * ratio), height = width / ratio
             let image = model.displayedImage
             ZStack {
-                if model.playing { PlayerSurface(player:model.player,inspectionZoom:false) }
-                else if let still = model.still { Image(uiImage: still).resizable().aspectRatio(contentMode: .fit) }
-                if let bitmap = model.imageBitmap {
-                    Image(uiImage: bitmap).resizable().aspectRatio(contentMode: .fit)
-                        .frame(width: min(width, height) * image.width).opacity(image.opacity)
+                PlayerSurface(player: model.player, inspectionZoom: false, identifier: "tool.image.video").allowsHitTesting(false)
+                if let bitmap = model.imageBitmap, model.showsOverlay {
+                    // The player draws the composited image. Its gesture target uses the same rectangle.
+                    let rect = image.rect(image: bitmap.size, canvas: CGSize(width: width, height: height))
+                    Color.clear.frame(width: rect.width, height: rect.height)
                         .overlay { if dragOrigin != nil || pinchSize != nil { Rectangle().strokeBorder(.orange, lineWidth: 1) } }
                         .contentShape(Rectangle())
-                        .position(x: width * image.x, y: height * image.y)
-                        .gesture(DragGesture(minimumDistance: 2).onChanged { value in
+                        .gesture(DragGesture(minimumDistance: 2, coordinateSpace: .global).onChanged { value in
                             if dragOrigin == nil { dragOrigin = CGPoint(x: model.image.x, y: model.image.y) }
-                            let x = min(1, max(0, dragOrigin!.x + value.translation.width / max(1, width)))
-                            let y = min(1, max(0, dragOrigin!.y + value.translation.height / max(1, height)))
-                            model.image.x = abs(x - 0.5) < 0.015 ? 0.5 : x
-                            model.image.y = abs(y - 0.5) < 0.015 ? 0.5 : y
+                            let center = OverlayPlacement.snappedCenter(CGPoint(
+                                x: dragOrigin!.x + value.translation.width / max(1, width),
+                                y: dragOrigin!.y + value.translation.height / max(1, height)))
+                            model.image.x = center.x; model.image.y = center.y
                         }.onEnded { _ in dragOrigin = nil })
-                        .accessibilityLabel("Image position").accessibilityIdentifier("tool.image.overlay")
-                } else { Text("Choose an image below").foregroundStyle(.white).padding().background(.black.opacity(0.6), in: Capsule()) }
+                        .accessibilityElement(children: .ignore).accessibilityLabel("Image position").accessibilityIdentifier("tool.image.overlay")
+                        .position(x: rect.midX, y: height - rect.midY)
+                } else if model.imageBitmap == nil { Text("Choose an image below").foregroundStyle(.white).padding().background(.black.opacity(0.6), in: Capsule()) }
             }.frame(width: width, height: height).clipped().contentShape(Rectangle())
                 .simultaneousGesture(MagnificationGesture().onChanged { value in
                     if pinchSize == nil { pinchSize = model.image.width }
                     model.image.width = min(3, max(0.03, pinchSize! * value))
                 }.onEnded { _ in pinchSize = nil })
+                .onChange(of: model.previewImageRecipe) { _, _ in model.refreshImagePreview() }
                 .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
         }
     }
@@ -1313,7 +1503,9 @@ struct ToolEditor: View {
             Slider(value: $model.rate, in: 0.25...4, step: 0.05).accessibilityLabel("Playback speed")
             HStack(spacing: 6) { ForEach([0.5, 1, 1.5, 2], id: \.self) { rate in choice("\(rate.formatted())×", selected: abs(model.rate - rate) < 0.001) { model.rate = rate } } }
             Text("Voice pitch is preserved. Text follows the footage, so its duration changes too. Slow motion repeats source frames.").font(.caption).foregroundStyle(.secondary)
-        case .color: ColorGradeControls(model: model)
+        case .color:
+            overlayTiming(width: width)
+            ColorGradeControls(model: model)
         case .text: textSettings(width: width)
         case .pauses: pauseControls
         case .mirror:
@@ -1332,17 +1524,65 @@ struct ToolEditor: View {
         }.buttonStyle(.plain).accessibilityAddTraits(selected ? .isSelected : [])
     }
     private func textSettings(width: CGFloat) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            TextField("Write something", text: $model.text.text, axis: .vertical).lineLimit(1...4)
-                .textFieldStyle(.roundedBorder).focused($textFocused).accessibilityIdentifier("tool.text.input")
-                .onChange(of: model.text.text) { _, value in if value.count > 500 { model.text.text = String(value.prefix(500)) } }
+        let grouped = model.text.labelHeadline != nil
+        let editsText = !grouped || titlePart != .card
+        let isLabel = grouped && titlePart == .label
+        return VStack(alignment: .leading, spacing: 12) {
+            Picker("Title layout", selection: Binding(get: { model.text.labelHeadline != nil }, set: changeTitleLayout)) {
+                Text("Single text").tag(false)
+                Text("Label + headline").tag(true)
+            }.pickerStyle(.segmented).accessibilityIdentifier("title.layout")
+            if grouped {
+                Picker("Edit title part", selection: $titlePart) {
+                    ForEach(LabelHeadline.Part.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }.pickerStyle(.segmented).accessibilityIdentifier("title.part")
+                .onChange(of: titlePart) { _, _ in textFocused = false }
+            }
+            if editsText {
+                let prompt = !grouped ? "Write something" : isLabel ? "Label" : "Headline"
+                // The draft already contains the starter title. Show it as the
+                // field's prompt so typing replaces it in one step.
+                let starter = !grouped && singleTextExample == TextOverlay.starterText
+                let fieldText = Binding<String>(get: {
+                    if isLabel { return model.text.labelHeadline?.label ?? "" }
+                    return starter ? "" : model.text.text
+                }, set: { value in
+                    let limited = String(value.prefix(500))
+                    if isLabel { model.text.labelHeadline?.label = limited }
+                    else { model.text.text = limited; singleTextExample = nil }
+                })
+                TextField(prompt, text: fieldText,
+                          prompt: starter ? Text(TextOverlay.starterText).foregroundColor(.primary) : nil, axis: .vertical)
+                    .lineLimit(1...4)
+                    .textFieldStyle(.roundedBorder).focused($textFocused).accessibilityLabel(prompt)
+                    .accessibilityIdentifier(isLabel ? "tool.text.label" : "tool.text.input")
+            }
+            if grouped {
+                GroupTitleLooks(group: Binding(get: { model.text.labelHeadline ?? LabelHeadline() }, set: { model.text.labelHeadline = $0 }),
+                               headline: model.text.text, folder: model.folder, dismissKeyboard: { textFocused = false })
+                if editsText {
+                    let size = isLabel ? groupBinding(\.labelScale) : groupBinding(\.headlineScale)
+                    titleSlider(isLabel ? "Label size" : "Headline size", size, isLabel ? 0.2...1 : 0.5...1.8)
+                } else {
+                    titleCardControls
+                }
+            }
             overlayTiming(width: width)
-            TitleInspector(design:Binding(get:{model.text.design},set:model.setTitleDesign),
-                           motion:Binding(get:{model.text.motion ?? TitleMotion()},set:{model.text.motion=$0}),
-                           sample:model.text.text,prefix:"title",folder:model.folder,frame:{try await TitleInspector.picture(player:model.player,at:model.start+model.position)},
-                           replay:model.replayTitle, changeSection:{textFocused=false}, pauseForFonts:{ if model.playing { model.togglePlay() } })
+            if editsText {
+                let style = !grouped ? Binding(get: { model.text.design }, set: model.setTitleDesign)
+                    : isLabel ? groupBinding(\.labelStyle) : groupBinding(\.headlineStyle)
+                TitleInspector(design: style, motion: titleMotion, sample: isLabel ? model.text.labelHeadline?.label ?? "" : model.text.text,
+                               prefix: "title", folder: model.folder, frame: titleVideoFrame, replay: model.replayTitle,
+                               changeSection: { textFocused = false }, pauseForFonts: { if model.playing { model.togglePlay() } },
+                               showsMotion: !grouped, showsLooks: !grouped)
+            }
+            if grouped {
+                DisclosureGroup("Title motion") {
+                    TitleMotionControls(motion: titleMotion, prefix: "title", replay: model.replayTitle)
+                }.accessibilityIdentifier("title.groupMotion")
+            }
             Text("Drag to move · pinch to resize").font(.caption).foregroundStyle(.secondary)
-            HStack { Text("Size"); Slider(value: $model.text.size, in: 0.02...0.3).accessibilityLabel("Text size") }
+            HStack { Text(model.text.labelHeadline == nil ? "Size" : "Whole title size"); Slider(value: $model.text.size, in: 0.02...0.3).accessibilityLabel("Text size") }
             DisclosureGroup("Position") {
                 HStack { Text("Across"); Slider(value: $model.text.x, in: 0...1).accessibilityLabel("Text horizontal position") }
                 HStack { Text("Down"); Slider(value: $model.text.y, in: 0...1).accessibilityLabel("Text vertical position") }
@@ -1350,47 +1590,85 @@ struct ToolEditor: View {
             }
         }
     }
-    private func overlayTiming(width: CGFloat) -> some View {
-        EditorDurationPicker(title: "Duration", seconds: model.timing.duration, maximum: model.timing.available,
-                             width: width, choices: EditorDurationPresets.wholeSeconds, identifier: "overlay.timing",
-                             presetPrefix: "overlay.duration", onToggle: { textFocused = false }) { seconds in
-            model.trim(.end, to: model.start + seconds, previewEdge: false)
-        } details: {
+    private var titleMotion: Binding<TitleMotion> {
+        Binding(get: { model.text.motion ?? TitleMotion() }, set: { model.text.motion = $0 })
+    }
+    private func titleVideoFrame() async throws -> CGImage {
+        try await TitleInspector.picture(player: model.player, at: model.start + model.position)
+    }
+    private func changeTitleLayout(_ grouped: Bool) {
+        textFocused = false
+        if grouped, model.text.labelHeadline == nil {
+            previousTextSize = model.text.size
+            model.text.labelHeadline = previousGroup ?? LabelHeadline()
+            if singleTextExample != nil || (model.text.text.isEmpty && previousGroup == nil) {
+                singleTextExample = model.text.text
+                model.text.text = LabelHeadline.defaultHeadline
+            }
+            let shortSide = max(1, min(model.canvas.width, model.canvas.height))
+            model.text.size = previousGroupSize ?? min(0.20, 0.14 * max(1, model.canvas.width / shortSide))
+            titlePart = .headline
+        } else if !grouped, let group = model.text.labelHeadline {
+            previousGroup = group
+            previousGroupSize = model.text.size
+            model.text.labelHeadline = nil
+            if let singleTextExample { model.text.text = singleTextExample }
+            model.text.size = previousTextSize ?? model.text.size
+        }
+    }
+    private func groupBinding<Value>(_ key: WritableKeyPath<LabelHeadline, Value>) -> Binding<Value> {
+        Binding(get: { (model.text.labelHeadline ?? LabelHeadline())[keyPath: key] },
+                set: { model.text.labelHeadline?[keyPath: key] = $0 })
+    }
+    private func titleSlider(_ label: String, _ value: Binding<Double>, _ range: ClosedRange<Double>, step: Double = 0.01, accessibilityName: String? = nil) -> some View {
+        VStack {
+            HStack { Text(label); Spacer(); Text(value.wrappedValue.formatted(.percent.precision(.fractionLength(0...1)))).monospacedDigit() }
+            Slider(value: value, in: range, step: step).accessibilityLabel(accessibilityName ?? label)
+                .accessibilityValue(value.wrappedValue.formatted(.percent.precision(.fractionLength(0...1))))
+        }.font(.subheadline)
+    }
+    private func cardPosition(_ name: String, _ position: Binding<TitleCard.Offset?>) -> some View {
+        func axis(_ key: WritableKeyPath<TitleCard.Offset, Double>) -> Binding<Double> {
+            Binding(get: { position.wrappedValue?[keyPath: key] ?? 0 }, set: { value in
+                var offset = position.wrappedValue ?? TitleCard.Offset()
+                offset[keyPath: key] = value
+                position.wrappedValue = offset == TitleCard.Offset() ? nil : offset
+            })
+        }
+        return VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("\(secondsLabel(model.timing.available)) available").font(.footnote).foregroundStyle(.secondary)
+                Text(name + " position").font(.subheadline.weight(.semibold))
                 Spacer()
-                Button("To end") { model.trim(.end, to: model.timing.bounds.upperBound, previewEdge: false) }
-                    .frame(minHeight: 44).accessibilityLabel("Extend to end").accessibilityIdentifier("overlay.toEnd")
+                Button("Reset") { position.wrappedValue = nil }
+                    .accessibilityLabel("Reset " + name.lowercased() + " position")
+                    .disabled(position.wrappedValue == nil)
             }
-            HStack { Text("Start"); Spacer(); Text(editorTime(model.start)).monospacedDigit() }.font(.caption)
-            trimSlider(.start, label: kind.title + " start")
-            HStack { Text("End"); Spacer(); Text(editorTime(model.end)).monospacedDigit() }.font(.caption)
-            trimSlider(.end, label: kind.title + " end")
+            titleSlider("X offset", axis(\.x), -1...1, accessibilityName: name + " X offset")
+            titleSlider("Y offset", axis(\.y), -1...1, accessibilityName: name + " Y offset")
         }
     }
-    private func secondsLabel(_ value: Double) -> String {
-        value.formatted(.number.precision(.fractionLength(0...2))) + " s"
-    }
-    private func trimSlider(_ edge: OverlayTiming.Edge, label: String) -> some View {
-        let timing = model.timing
-        let limits = timing.limits(for: edge)
-        let span = limits.upperBound - limits.lowerBound
-        let value = edge == .start ? model.start : model.end
-        // SwiftUI's stepped Slider asserts for an empty or sub-step range.
-        // Keep its domain fixed while the other handle changes the available time.
-        return Slider(value: Binding(
-            get: { span > 0 ? min(1, max(0, (value - limits.lowerBound) / span)) : (edge == .start ? 0 : 1) },
-            set: { model.trim(edge, to: model.timing.time(at: $0, edge: edge)) }
-        ), in: 0...1)
-        .disabled(EditTime(span) == .zero)
-        .accessibilityLabel(label).accessibilityValue(editorTime(value))
-        .accessibilityAdjustableAction { direction in
-            switch direction {
-            case .increment: model.trim(edge, to: value + TimelineEditing.frame)
-            case .decrement: model.trim(edge, to: value - TimelineEditing.frame)
-            @unknown default: break
+    private var titleCardControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TitleColorControl(title: "Card color", ink: groupBinding(\.card.fill), frame: titleVideoFrame, editsOpacity: false)
+            titleSlider("Card opacity", Binding(get: { model.text.labelHeadline?.card.fill.alpha ?? 0 }, set: { opacity in
+                if let ink = model.text.labelHeadline?.card.fill {
+                    model.text.labelHeadline?.card.fill = TitleInk(ink.rgb, alpha: UInt8((opacity * 255).rounded()))
+                }
+            }), 0...1)
+            cardPosition("Label", groupBinding(\.card.labelOffset))
+            cardPosition("Headline", groupBinding(\.card.headlineOffset))
+            titleSlider("Padding", groupBinding(\.card.padding), 0...1)
+            titleSlider("Corner radius", groupBinding(\.card.radius), 0...1)
+            titleSlider("Space between lines", groupBinding(\.card.spacing), 0...1)
+            titleSlider("Card border width", groupBinding(\.card.borderWidth), 0...0.1, step: 0.001)
+            if (model.text.labelHeadline?.card.borderWidth ?? 0) > 0 {
+                TitleColorControl(title: "Card border color", ink: groupBinding(\.card.border), frame: titleVideoFrame)
             }
         }
+    }
+    @ViewBuilder private func overlayTiming(width: CGFloat) -> some View {
+        if model.request.scopedEffect == nil { EditorRangeDuration(timing: model.timing, width: width, name: kind.title, identifier: "overlay",
+                            onToggle: { textFocused = false }, change: model.trim) }
     }
     private var pauseControls: some View {
         VStack(alignment: .leading, spacing: 12) {

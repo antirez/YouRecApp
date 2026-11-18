@@ -1,24 +1,25 @@
 import Foundation
 
-/// Sample the editor's 30 fps clock in chronological bands, skipping empty
+/// Sample the editor's picture clock in chronological bands, skipping empty
 /// timeline gaps. The pool stays small even for a multi-hour project.
 struct CoverFramePool {
     private struct Span {
         let first: Int64
         let count: Int
     }
-    private static let step = EditTime.scale / 30
+    private let step: Int64
     private let spans: [Span]
     let count: Int
 
-    init(picture: [EditInterval], scope: [EditInterval]) {
+    init(picture: [EditInterval], scope: [EditInterval], frameDuration: EditTime = EditTime(1.0 / 30)) {
+        step = max(1, frameDuration.ticks)
         let pictures = Self.merged(picture), scopes = Self.merged(scope)
         var spans: [Span] = [], i = 0, j = 0
         while i < pictures.count && j < scopes.count {
             if let interval = pictures[i].intersection(scopes[j]) {
-                let gridStart = (interval.start.ticks + Self.step - 1) / Self.step * Self.step
+                let gridStart = (interval.start.ticks + step - 1) / step * step
                 let first = gridStart < interval.end.ticks ? gridStart : interval.start.ticks
-                spans.append(Span(first: first, count: 1 + Int((interval.end.ticks - 1 - first) / Self.step)))
+                spans.append(Span(first: first, count: 1 + Int((interval.end.ticks - 1 - first) / step)))
             }
             if pictures[i].end < scopes[j].end { i += 1 } else { j += 1 }
         }
@@ -46,10 +47,16 @@ struct CoverFramePool {
         }
     }
 
+    func randomAlternative(to current: Int) -> Int {
+        guard count > 1 else { return current }
+        let other = Int.random(in: 0..<(count - 1))
+        return other < current ? other : other + 1
+    }
+
     func time(of index: Int) -> EditTime {
         var offset = index
         for span in spans {
-            if offset < span.count { return EditTime(ticks: span.first + Int64(offset) * Self.step) }
+            if offset < span.count { return EditTime(ticks: span.first + Int64(offset) * step) }
             offset -= span.count
         }
         preconditionFailure("Cover index outside the sampled range")

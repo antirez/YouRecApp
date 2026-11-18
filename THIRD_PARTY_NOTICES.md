@@ -56,3 +56,5 @@ Original unmodified TrueType files from the Google Fonts distribution, under SIL
 - [Fraunces](https://github.com/google/fonts/tree/main/ofl/fraunces) · [license](ThirdParty/TitleFonts/fraunces/OFL.txt)
 - [IBM Plex Mono](https://github.com/google/fonts/tree/main/ofl/ibmplexmono) · [license](ThirdParty/TitleFonts/ibmplexmono/OFL.txt)
 - [Caveat](https://github.com/google/fonts/tree/main/ofl/caveat) · [license](ThirdParty/TitleFonts/caveat/OFL.txt)
+- [Bodoni Moda](https://github.com/google/fonts/tree/main/ofl/bodonimoda) · [license](ThirdParty/TitleFonts/bodonimoda/OFL.txt)
+- [Unbounded](https://github.com/google/fonts/tree/main/ofl/unbounded) · [license](ThirdParty/TitleFonts/unbounded/OFL.txt)

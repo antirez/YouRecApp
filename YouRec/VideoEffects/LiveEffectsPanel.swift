@@ -3,83 +3,109 @@ import PhotosUI
 
 struct LiveEffectsPanel: View {
     @ObservedObject var camera: CaptureController
-    @Binding var expanded:Bool
-    let canExpand:Bool
+    @Binding var path: [VideoEffectPage]
+    @Binding var selected: UUID?
     let onClose:()->Void
-    @State private var selected: UUID?
     @State private var helpTopic: InspectorHelp?
     @State private var correctionTab=0
     @State private var correctionAdvanced=false
-    @State private var page = VideoEffectPage.library
     @State private var media: PhotosPickerItem?
     @State private var mediaParameter: String?
     @State private var mediaPicker = false
     @State private var error: String?
     private var current: VideoEffectSettings? { camera.videoEffects.first { $0.id == selected } }
     private var frameToolActive:Bool { camera.positioningEffectID != nil || camera.effectColorPick != nil || camera.cleanPlateProgress != nil || camera.cleanPlateCountdown != nil }
+    private var page: VideoEffectPage { path.last ?? (camera.videoEffects.isEmpty ? .library : .applied) }
+
     var body: some View {
-        ZStack {
-            VStack(spacing:0) {
-                header
-                VideoEffectNavigationBar(page:page,count:camera.videoEffects.count,prefix:"liveEffects",back:goBack,add:{page = .library})
-                Divider()
-                if page == .applied {appliedEffects.padding(.horizontal,16).padding(.top,12)} else {
+        Group {
+            if frameToolActive { frameToolStatus.recorderButtonStyle() }
+            else {
+                NavigationStack(path: $path) {
+                    screen(camera.videoEffects.isEmpty ? .library : .applied, isRoot: true)
+                        .navigationDestination(for: VideoEffectPage.self) { screen($0) }
+                }
+            }
+        }
+        .preferredColorScheme(.dark).tint(YouRecStyle.accent)
+        .accessibilityAction(.escape, onClose)
+        .sheet(item: $helpTopic) { InspectorHelpSheet(topic: $0) }
+        .onChange(of: camera.cleanPlateCountdown) { _, count in
+            if let count { UIAccessibility.post(notification: .announcement, argument: "Step out of frame. \(count)") }
+        }
+        .onChange(of: camera.hasActiveTake) { _, active in if active { onClose() } }
+        .onChange(of: page == .inspector && current?.enabled == true ? selected : nil, initial: true) { _, id in
+            camera.inspectLiveEffect(id)
+        }
+        .onChange(of: selected) { _, _ in camera.cancelEffectFrameTools() }
+        .photosPicker(isPresented: $mediaPicker, selection: $media,
+                      matching: mediaParameter == "cleanPlate" || current?.choice("background") == "Image" ? .images : .videos)
+        .onChange(of: media) { _, item in if let item { Task { await importMedia(item) } } }
+    }
+
+    private func screen(_ destination: VideoEffectPage, isRoot: Bool = false) -> some View {
+        Group {
+            if destination == .applied {
+                appliedEffects.padding(.horizontal, 16).padding(.top, 12)
+            } else {
                 ScrollView {
-                    VStack(alignment:.leading,spacing:16) {
-                        if camera.dualActive { Text("Dolly Zoom and Crash Zoom require Single camera. Other effects apply to the composed picture.").font(.caption).foregroundStyle(.secondary) }
-                        if let message=camera.effectQualityMessage {Label(message,systemImage:"gauge.with.dots.needle.50percent").font(.caption).foregroundStyle(.secondary)}
-                        if let warning=camera.warning {Text(warning).foregroundStyle(.orange).font(.caption)}
-                        if let error {Text(error).foregroundStyle(.orange).font(.caption)}
-                        switch page {
-                        case .applied:appliedEffects
-                        case .library:library(nil)
-                        case .section(let section):library(section)
+                    VStack(alignment: .leading, spacing: 16) {
+                        if camera.dualActive {
+                            Text("Dolly Zoom and Crash Zoom require Single camera. Other effects apply to the composed picture.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        if let message = camera.effectQualityMessage {
+                            Label(message, systemImage: "gauge.with.dots.needle.50percent").font(.caption).foregroundStyle(.secondary)
+                        }
+                        if let warning = camera.warning { Text(warning).foregroundStyle(.orange).font(.caption) }
+                        if let error { Text(error).foregroundStyle(.orange).font(.caption) }
+                        switch destination {
+                        case .applied: appliedEffects
+                        case .library: library(nil)
+                        case .section(let section): library(section)
                         case .inspector:
-                            if let effect=current {controls(effect)} else {appliedEffects}
+                            if let effect = current { controls(effect) }
                         }
                     }.padding(16)
-                }.id(page == .inspector ? "inspector-"+(selected?.uuidString ?? "") : page.identity)
-                    .accessibilityIdentifier("liveEffects.controls")
                 }
-            }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .disabled(frameToolActive).background(Color(white:0.06))
-                .opacity(frameToolActive ? 0 : 1).allowsHitTesting(!frameToolActive).accessibilityHidden(frameToolActive)
-            if frameToolActive { frameToolStatus }
-        }.preferredColorScheme(.dark)
-            .sheet(item: $helpTopic) { InspectorHelpSheet(topic: $0) }
-            .onChange(of:camera.cleanPlateCountdown) { _,count in if let count { UIAccessibility.post(notification:.announcement,argument:"Step out of frame. \(count)") } }
-            .onChange(of:camera.hasActiveTake) { _,active in if active { onClose() } }
-            .onChange(of: page == .inspector && current?.enabled == true ? selected : nil, initial: true) { _, id in camera.inspectLiveEffect(id) }
-            .onDisappear { camera.inspectLiveEffect(nil); camera.cancelEffectFrameTools() }
-            .onChange(of:selected) { _,_ in camera.cancelEffectFrameTools() }
-            .onAppear { selected=camera.videoEffects.first?.id;page = camera.videoEffects.isEmpty ? .library : .applied }
-            .photosPicker(isPresented:$mediaPicker,selection:$media,matching:mediaParameter == "cleanPlate" || current?.choice("background")=="Image" ? .images : .videos)
-            .onChange(of:media) { _,item in if let item { Task { await importMedia(item) } } }
-    }
-    private var header: some View {
-        HStack(spacing: 8) {
-            ZStack {
-                if canExpand {
-                    Button { expanded.toggle() } label: {
-                        Image(systemName: expanded ? "chevron.down" : "chevron.up")
-                            .frame(width: 44, height: 44)
-                            .background(.white.opacity(0.06), in: Circle())
-                            .contentShape(Rectangle())
-                    }.accessibilityLabel(expanded ? "Collapse controls" : "Expand controls")
-                }
-            }.frame(maxWidth: .infinity, alignment: .leading)
-            Text("Video effects").font(.headline).multilineTextAlignment(.center).layoutPriority(1)
-                .accessibilityAddTraits(.isHeader)
-            Button(action: onClose) {
-                Text("Done").font(.body.weight(.semibold)).fixedSize()
-                    .padding(.horizontal, 14).frame(minWidth: 64, minHeight: 44)
-                    .background(.white.opacity(0.09), in: Capsule())
-                    .contentShape(Rectangle())
-            }.frame(maxWidth: .infinity, alignment: .trailing)
+                .accessibilityIdentifier("liveEffects.controls")
+            }
         }
-        .buttonStyle(.plain).foregroundStyle(.white)
-        .padding(.horizontal, 16).padding(.vertical, 6)
-        .accessibilityElement(children: .contain).accessibilityIdentifier("liveEffects.header")
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .recorderButtonStyle()
+        .navigationTitle(title(for: destination, isRoot: isRoot)).navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if destination == .applied || (destination == .inspector && !camera.showsOpticalInspector) {
+                ToolbarItem(placement: .primaryAction) {
+                    Button { path = [.library] } label: { Image(systemName: "plus") }
+                        .buttonStyle(.automatic).tint(Color.primary)
+                        .accessibilityLabel("Add effect").accessibilityIdentifier("liveEffects.browse")
+                }
+            } else {
+                RecorderCloseToolbar(identifier: "liveEffects.done", action: onClose)
+            }
+            if destination == .applied {
+                ToolbarItem(placement: .topBarLeading) {
+                    Menu {
+                        Button("Clear all effects", systemImage: "trash", role: .destructive) {
+                            camera.setVideoEffects([]); selected = nil; path = []
+                        }
+                        .accessibilityIdentifier("liveEffects.clear")
+                    } label: { Image(systemName: "ellipsis") }
+                    .buttonStyle(.automatic).tint(Color.primary)
+                    .accessibilityLabel("Effect actions").accessibilityIdentifier("liveEffects.actions")
+                }
+            }
+        }
+    }
+
+    private func title(for destination: VideoEffectPage, isRoot: Bool) -> String {
+        switch destination {
+        case .applied: return "Video effects"
+        case .library: return isRoot ? "Video effects" : "Add effects"
+        case .section(let section): return section.title
+        case .inspector: return current?.kind.descriptor.displayName ?? "Effect"
+        }
     }
 
     @ViewBuilder private var frameToolStatus:some View {
@@ -89,8 +115,8 @@ struct LiveEffectsPanel: View {
                 Spacer(minLength:0)
                 Button("Center",action:camera.resetEffectBackgroundPosition).frame(minWidth:44,minHeight:44).accessibilityHint("Resets position and zoom")
                 Button("Revert") {camera.finishEffectPosition(revert:true)}.frame(minWidth:44,minHeight:44)
-                Button("Done") {camera.finishEffectPosition()}.buttonStyle(.borderedProminent).frame(minWidth:44,minHeight:44)
-            }.padding(.horizontal,16).padding(.vertical,6).background(.ultraThinMaterial).accessibilityElement(children:.contain).accessibilityIdentifier("liveEffects.frameToolBar")
+                Button("Done") {camera.finishEffectPosition()}.recorderButtonStyle(prominent: true).frame(minWidth:44,minHeight:44)
+            }.padding(.horizontal,16).padding(.vertical,6).accessibilityElement(children:.contain).accessibilityIdentifier("liveEffects.frameToolBar")
         } else if camera.positioningEffectID != nil || camera.effectColorPick != nil || camera.cleanPlateProgress != nil || camera.cleanPlateCountdown != nil {
             HStack(spacing:12) {
                 VStack(alignment:.leading,spacing:6) {
@@ -100,33 +126,24 @@ struct LiveEffectsPanel: View {
                 }.font(.subheadline).lineLimit(2).minimumScaleFactor(0.8)
                 Spacer(minLength:0)
                 Button("Cancel",action:camera.cancelEffectFrameTools).frame(minWidth:44,minHeight:44).accessibilityIdentifier("liveEffects.cancelFrameTool")
-            }.padding(.horizontal,16).padding(.vertical,6).background(.ultraThinMaterial).accessibilityElement(children:.contain).accessibilityIdentifier("liveEffects.frameToolBar")
-        }
-    }
-    private func goBack() {
-        switch page {
-        case .section:page = .library
-        case .library,.inspector:page = .applied
-        case .applied:break
+            }.padding(.horizontal,16).padding(.vertical,6).accessibilityElement(children:.contain).accessibilityIdentifier("liveEffects.frameToolBar")
         }
     }
     private func library(_ section:VideoEffectLibrarySection?)->some View {
-        VideoEffectLibrary(section:section,live:true,chooseSection:{page = .section($0)},add:add)
+        VideoEffectLibrary(section:section,live:true,chooseSection:{path.append(.section($0))},add:add)
     }
     private var appliedEffects:some View {
         VStack(alignment:.leading,spacing:12) {
             if camera.videoEffects.isEmpty {
                 Text("No live effects.").foregroundStyle(.secondary)
-                Button {page = .library} label: {Label("Add effect",systemImage:"plus").frame(minHeight:44)}
+                Button {path = [.library]} label: {Label("Add effect",systemImage:"plus").frame(minHeight:44)}
             } else {
                 VideoEffectAppliedList(effects:VideoEffectSettings.ordered(camera.videoEffects),prefix:"liveEffects",edit:{effect in
-                    selected=effect.id;page = .inspector
+                    selected=effect.id;path = [.inspector]
                 },toggle:{effect in selected=effect.id;update {$0.enabled.toggle()}},remove:{effect in
                     camera.setVideoEffects(camera.videoEffects.filter {$0.id != effect.id});selected=camera.videoEffects.first?.id
-                    if camera.videoEffects.isEmpty {page = .library}
+                    if camera.videoEffects.isEmpty {path = []}
                 })
-                Button("Clear all effects",role:.destructive) {camera.setVideoEffects([]);selected=nil;page = .library}
-                    .frame(minHeight:44).accessibilityIdentifier("liveEffects.clear")
             }
         }
     }
@@ -134,9 +151,11 @@ struct LiveEffectsPanel: View {
         VStack(alignment:.leading,spacing:16) {
 
             HStack {
-                Text(effect.kind.descriptor.displayName).font(.title3.weight(.semibold));EffectHelpButton(effect: effect.kind) { helpTopic = $0 };Spacer()
-                Button { update { $0.enabled.toggle() } } label: { Image(systemName:"power").foregroundStyle(effect.enabled ? .black : .secondary).frame(width:44,height:44).background(effect.enabled ? effect.kind.librarySection.tint : .white.opacity(0.06),in:Circle()) }.accessibilityLabel(effect.enabled ? "Disable effect" : "Enable effect")
+                Toggle("Enabled", isOn: Binding(get: { effect.enabled }, set: { enabled in update { $0.enabled = enabled } }))
+                    .accessibilityIdentifier("liveEffects.enabled")
+                EffectHelpButton(effect: effect.kind) { helpTopic = $0 }
             }
+
             if effect.kind == .autoBackground {
                 Text("Keeps people in focus and replaces everything behind them. With nobody in frame, the whole image becomes the background.").font(.caption).foregroundStyle(.secondary)
             }
@@ -146,12 +165,12 @@ struct LiveEffectsPanel: View {
             }
             if effect.kind == .crashZoom && effect.enabled {
                 Button(camera.crashState == .holding ? "Return" : camera.crashState == .ready ? "Try Crash Zoom" : camera.crashState.rawValue,action:camera.triggerCrashZoom)
-                    .buttonStyle(.borderedProminent).disabled(!camera.canTriggerCrash).frame(minHeight:44)
+                    .recorderButtonStyle(prominent: true).disabled(!camera.canTriggerCrash).frame(minHeight:44)
             }
             if effect.kind == .dollyZoom && effect.enabled {
                 Text(camera.dollyRangeText).font(.caption).foregroundStyle(.secondary)
                 Text("Stops after \(effect.number("duration").formatted(.number.precision(.fractionLength(0...1)))) seconds. Tap again to stop sooner.").font(.caption).foregroundStyle(.secondary)
-                Button(camera.dollyState.rawValue,action:camera.triggerDollyZoom).buttonStyle(.borderedProminent)
+                Button(camera.dollyState.rawValue,action:camera.triggerDollyZoom).recorderButtonStyle(prominent: true)
                     .disabled(!camera.canTriggerDolly).frame(minHeight:44)
                 Text(camera.dollyHint).font(.caption).foregroundStyle(.secondary)
             }
@@ -196,8 +215,8 @@ struct LiveEffectsPanel: View {
             if effect.kind == .crashZoom { Text("Tap the subject, then use Crash zoom or a volume key. Press again to return. Original framing stays available in the editor.").font(.caption).foregroundStyle(.secondary) }
             if effect.kind == .undercranking { Text("Frame cadence is previewed live. Speed-up and mute are applied when the take opens in the editor.").font(.caption).foregroundStyle(.secondary) }
             if effect.kind == .widescreen {Text("Oval bokeh is available in the editor for imported Cinematic video.").font(.caption).foregroundStyle(.secondary)}
-            Button(role:.destructive) { camera.setVideoEffects(camera.videoEffects.filter{$0.id != selected});selected=camera.videoEffects.first?.id;page = camera.videoEffects.isEmpty ? .library : .applied } label: { Label("Remove effect",systemImage:"trash").frame(minHeight:44) }
-        }.tint(effect.kind.librarySection.tint)
+            Button(role:.destructive) { camera.setVideoEffects(camera.videoEffects.filter{$0.id != selected});selected=camera.videoEffects.first?.id;path = [] } label: { Label("Remove effect",systemImage:"trash").frame(minHeight:44) }
+        }.tint(YouRecStyle.accent)
     }
     private func parameterGroup(_ section:VideoEffectParameterSection,effect:VideoEffectSettings)->some View {
         VStack(alignment:.leading,spacing:16) {
@@ -291,11 +310,11 @@ struct LiveEffectsPanel: View {
         if resample,let selected {camera.sampleEffectPalette(selected)}
     }
     private func add(_ kind:VideoEffectID) {
-        if [.crashZoom,.dollyZoom].contains(kind),let existing=camera.videoEffects.first(where:{$0.kind==kind}) { selected=existing.id;page = .inspector;return }
+        if [.crashZoom,.dollyZoom].contains(kind),let existing=camera.videoEffects.first(where:{$0.kind==kind}) { selected=existing.id;path = [.inspector];return }
         var effect = VideoEffectSettings(kind)
         if kind == .negativeStrobe { effect.set("timedBurst", .toggle(true)) }
         camera.setVideoEffects(camera.videoEffects + [effect])
-        selected = effect.id; page = .inspector
+        selected = effect.id; path = [.inspector]
     }
     private func importMedia(_ item:PhotosPickerItem) async {
         guard let parameter=mediaParameter else{return}

@@ -456,7 +456,7 @@ final class LiveVideoEffects: @unchecked Sendable {
                         // copy is scaled; the writer receives the original buffer.
                         let scale = min(1, 1920 / max(input.extent.width, input.extent.height))
                         input = input.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
-                        let display = Self.displayInput(input, hdr: VideoColor.isHDR(pixel))
+                        let display = MetalEffectRenderer.displayInput(input, hdr: VideoColor.isHDR(pixel))
                         var leases: [VideoEffectFrameLease] = []
                         let image = try self.renderer!.render(display.image, effects: [], sourceTime: local,
                             hdr: display.hdr, mapInputOnly: true, lease: { leases.append($0) })
@@ -632,7 +632,7 @@ final class LiveVideoEffects: @unchecked Sendable {
                         let visible = displayed.filter { $0.enabled && $0.start <= local && local < $0.end }
                         let geometryOnly = visible.allSatisfy { $0.kind == .kaleidoscope }
                         let hdr = VideoColor.isHDR(pixel)
-                        let display = geometryOnly ? Self.displayInput(input, hdr: hdr) : (image: input, hdr: hdr)
+                        let display = geometryOnly ? MetalEffectRenderer.displayInput(input, hdr: hdr) : (image: input, hdr: hdr)
                         result=try self.renderer!.render(display.image,effects:displayed,sourceTime:local,hdr:display.hdr,mapInputOnly:self.framePreviewRequired || (geometryOnly && display.hdr),contexts:context,lease:{leases.append($0)},captureMatte:{captured[$0]=$1})
                         temporalResets=try self.matteHistory.resetDecisions(captured,snapshot:matteSnapshot)
                         rendered=true
@@ -686,14 +686,6 @@ final class LiveVideoEffects: @unchecked Sendable {
                 }
             }
         }
-    }
-    // The live display surface is SDR. Use the same HLG display conversion with
-    // or without a mirror; the recorder and editor retain the source headroom.
-    private static func displayInput(_ image: CIImage, hdr: Bool) -> (image: CIImage, hdr: Bool) {
-        if hdr, #available(iOS 18.0, *) {
-            return (image.applyingFilter("CIToneMapHeadroom", parameters: ["inputTargetHeadroom": 1.0]), false)
-        }
-        return (image, hdr)
     }
     private func liveContexts(_ input:CIImage,pixel:CVPixelBuffer,effects:[VideoEffectSettings],time:Double,folder:URL?,angle:CGFloat,mirrored:Bool,token:Int) throws -> [UUID:FrameContext] {
         var person:CVPixelBuffer?,auto:CVPixelBuffer?

@@ -5,8 +5,8 @@ enum CameraAperture {
                       supports: (Float) -> Bool) -> [Float] {
         guard minimum.isFinite, maximum.isFinite, minimum > 0, maximum > minimum else { return [] }
         let valid = Set(recommended.filter { $0.isFinite && $0 >= minimum && $0 <= maximum }).sorted()
-        guard valid.count > 1 else { return [] }
-        return valid.filter(supports)
+        let supported = valid.filter(supports)
+        return supported.count > 1 ? supported : []
     }
 
     static func savedStop(_ value: Double?, in stops: [Float]) -> Float? {

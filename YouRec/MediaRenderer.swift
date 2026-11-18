@@ -189,7 +189,6 @@ enum MediaRenderer {
     static func timeline(project: Project, folder: URL, processedSources: [UUID: URL] = [:],
                          canvasSize: CGSize? = nil, framesPerSecond: Int = 30, stabilization: Bool = true, stabilizationPlans: [UUID: StabilizationPlan] = [:],
                          videoProgress: @escaping @Sendable (Double) -> Void = { _ in }, forceCustom: Bool = false, includeBackgroundAudio: Bool = true, previewDiagnostics:Bool = false,bypassVideoEffects:Bool=false,effectPreparation:VideoEffectPreparation = .final) async throws -> TimelineMedia {
-        for clip in project.edit.clips { for lut in clip.color?.lutAssets ?? [] { _ = try LUTAssets.load(lut, folder: folder) } }
         return try await TrackRenderer.timeline(project: project, folder: folder, processedSources: processedSources,
             canvasSize: canvasSize, framesPerSecond: framesPerSecond, stabilization: stabilization, stabilizationPlans: stabilizationPlans, videoProgress: videoProgress,
             forceCustom: forceCustom, includeBackgroundAudio: includeBackgroundAudio, previewDiagnostics: previewDiagnostics,
@@ -198,15 +197,21 @@ enum MediaRenderer {
 
     static func sourceTimeline(project: Project, folder: URL, processedSources: [UUID: URL] = [:],
                          canvasSize: CGSize? = nil, framesPerSecond: Int = 30, stabilization: Bool = true, stabilizationPlans: [UUID: StabilizationPlan] = [:],
-                         videoProgress: @escaping @Sendable (Double) -> Void = { _ in }, forceCustom: Bool = false, includeBackgroundAudio: Bool = true, previewDiagnostics:Bool = false,bypassVideoEffects:Bool=false,effectPreparation:VideoEffectPreparation = .final) async throws -> TimelineMedia {
-        guard !project.edit.clips.isEmpty else { throw ProjectError.emptyTimeline }
-        var project=project
-        if !previewDiagnostics {
-            for c in project.history[project.historyCursor].clips.indices {
-                project.history[project.historyCursor].clips[c].videoEffects=project.history[project.historyCursor].clips[c].videoEffects?.map(\.recordingResult)
+                         videoProgress: @escaping @Sendable (Double) -> Void = { _ in }, forceCustom: Bool = false, includeBackgroundAudio: Bool = true, includeSourceAudio: Bool = true, previewDiagnostics:Bool = false,bypassVideoEffects:Bool=false,effectPreparation:VideoEffectPreparation = .final) async throws -> TimelineMedia {
+        var edit = project.edit
+        guard !edit.timeline.video.isEmpty else { throw ProjectError.emptyTimeline }
+        // Rendering uses only the current edit. Going through Project.history
+        // here materializes every Undo step for every clip in the picture pass.
+        var project = project
+        if !previewDiagnostics && edit.timeline.video.contains(where: { !($0.content.videoEffects ?? []).isEmpty }) {
+            for index in edit.timeline.video.indices {
+                edit.timeline.video[index].content.videoEffects = edit.timeline.video[index].content.videoEffects?.map(\.recordingResult)
             }
+            project.history = [edit]
+            project.historyCursor = 0
         }
-        if project.edit.layout.joins.contains(where: { $0.transition != nil }) {
+        let clips = edit.clips
+        if !edit.timeline.transitions.isEmpty && edit.layout.joins.contains(where: { $0.transition != nil }) {
             return try await TransitionRenderer.timeline(project: project, folder: folder, processedSources: processedSources,
                 canvasSize: canvasSize, framesPerSecond: framesPerSecond, stabilization: stabilization, stabilizationPlans: stabilizationPlans, videoProgress: videoProgress, previewDiagnostics:previewDiagnostics,bypassVideoEffects:bypassVideoEffects,effectPreparation:effectPreparation)
         }
@@ -217,21 +222,21 @@ enum MediaRenderer {
         var cursor = CMTime.zero
         var logicalCursor=0.0
         var instructions: [AVVideoCompositionInstructionProtocol] = []
-        var canvas: CGSize? = canvasSize ?? project.edit.outputSize
+        var canvas: CGSize? = canvasSize ?? edit.outputSize
         let fades = AVMutableAudioMixInputParameters(track: audio)
         var firstGeometry: (CGSize, CGAffineTransform)?
         var uniformGeometry = true
         // Stabilization is sampled in the compositor at source PTS, using the
         // same path as overlays and transitions. A layer transform event for
         // every output frame makes AVFoundation setup quadratic on long takes.
-        let hasStabilization = stabilization && project.edit.clips.contains { clip in
+        let hasStabilization = stabilization && clips.contains { clip in
             clip.stabilization.map { $0.level != .off } ?? false
         }
-        let reframed = project.edit.outputSize != nil || project.edit.clips.contains { $0.crop != nil || $0.mirror != nil }
-        var custom = forceCustom || hasStabilization || project.edit.clips.contains { !($0.videoEffects ?? []).isEmpty || $0.crop?.motion != nil || $0.color != nil || !($0.texts ?? []).isEmpty || !($0.images ?? []).isEmpty }
+        let reframed = edit.outputSize != nil || clips.contains { $0.crop != nil || $0.mirror != nil }
+        var custom = forceCustom || hasStabilization || clips.contains { $0.effectWindows != nil || !($0.videoEffects ?? []).isEmpty || $0.crop?.motion != nil || $0.crop?.activeRange != nil || $0.mirror?.activeRange != nil || $0.hasGrade || !($0.texts ?? []).isEmpty || !($0.images ?? []).isEmpty }
         var hdr = false
         var assets:[UUID:AVURLAsset]=[:]
-        let sourceIDs=Set(project.edit.clips.map(\.sourceID))
+        let sourceIDs=Set(clips.map(\.sourceID))
         for source in project.sources where sourceIDs.contains(source.id) {
             let asset=AVURLAsset(url:folder.appendingPathComponent(source.filename));assets[source.id]=asset
             guard let track=try await asset.loadTracks(withMediaType:.video).first else { throw ProjectError.invalidMedia }
@@ -259,9 +264,11 @@ enum MediaRenderer {
             let reader=try EffectAnalysisReader(metadata:folder.appendingPathComponent(metadata),data:effect.analysisDataFile.map {folder.appendingPathComponent($0)})
             captureReaders[key]=reader;return reader
         }
-        let totalDuration = project.edit.duration
-        let playback=project.edit.clips.flatMap(\.playbackPieces)
-        let sequenceClocks=Dictionary(project.edit.clips.map {($0.id,VideoEffectSequenceClock($0))},uniquingKeysWith:{first,_ in first})
+        let totalDuration = edit.duration
+        let multipleStabilizations = Set(clips.filter { $0.framingVariants?.contains(where: { $0.tool == .stabilize }) == true }.map(\.id))
+        let scopedSources = Dictionary(clips.filter { $0.effectWindows != nil }.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let playback=clips.flatMap(\.playbackPieces)
+        let sequenceClocks=Dictionary(clips.map {($0.id,VideoEffectSequenceClock($0))},uniquingKeysWith:{first,_ in first})
         for (pieceIndex,clip) in playback.enumerated() {
             try Task.checkCancellation()
             guard let source = project.sources.first(where: { $0.id == clip.sourceID }) else { throw ProjectError.missingMedia }
@@ -302,7 +309,7 @@ enum MediaRenderer {
             if let mirror = clip.mirror { transform = transform.concatenating(mirror.transform(canvas: size)) }
             var activePlan: StabilizationPlan?
             if stabilization, let settings = clip.stabilization, settings.level != .off {
-                if let existing = stabilizationPlans[clip.id] { activePlan = existing }
+                if !multipleStabilizations.contains(clip.id), let existing = stabilizationPlans[clip.id] { activePlan = existing }
                 else {
                     let offset = cursor.seconds
                     activePlan = try await VideoStabilizer.shared.plan(source: source, clip: clip, folder: folder) {
@@ -320,7 +327,10 @@ enum MediaRenderer {
                 }
                 let customInstruction = VideoToolInstruction(trackID: video.trackID, clip: clip, start: cursor, transform: transform,
                     sourceSize: sourceSize, canvas: size, stabilization: activePlan, images: images,duration:outputDuration, fontFolder: folder, sequenceClock:sequenceClocks[clip.id]!)
-                if clip.crop?.motion != nil { customInstruction.cropSource = (orientation, orientedSize) }
+                if clip.crop?.motion != nil || clip.crop?.activeRange != nil || clip.mirror?.activeRange != nil
+                    || (forceCustom && (clip.crop != nil || clip.mirror != nil)) {
+                    customInstruction.cropSource = (orientation, orientedSize)
+                }
                 customInstruction.videoEffectsEnabled = !bypassVideoEffects
                 customInstruction.sourceHDR = descriptions.contains { VideoColor.isHDR($0) }
                 customInstruction.sourceLog = descriptions.compactMap { LogColor.profile($0) }.first
@@ -347,7 +357,7 @@ enum MediaRenderer {
                     for effect in clip.videoEffects ?? [] where effect.enabled && effect.usesTemporalMatte {
                         guard let metadata=effect.analysisFile,let original=source.videoEffects?.first(where:{$0.analysisID==effect.analysisID}),
                               original.captureIdentity==effect.captureIdentity,VideoEffectAnalysis.prefix(source.videoEffects ?? [],before:original.id).map(\.captureIdentity)==VideoEffectAnalysis.prefix(clip.videoEffects ?? [],before:effect.id).map(\.captureIdentity),
-                              clip.color==nil,clip.crop==nil,clip.mirror==nil,clip.stabilization==nil else {continue}
+                              !clip.hasGrade,clip.crop==nil,clip.mirror==nil,clip.stabilization==nil else {continue}
                         let key=source.id.uuidString+"|"+metadata+"|"+(effect.analysisDataFile ?? "")+"|"+effect.analysisID.uuidString
                         if captureHistories[key]==nil && !unavailableHistories.contains(key) {
                             if let capture=try? captureReader(effect),let samples=capture.temporalMatte(for:effect.analysisID),
@@ -405,7 +415,7 @@ enum MediaRenderer {
                 }
                 if !bypassVideoEffects {
                     for effect in clip.videoEffects ?? [] where effect.enabled && effect.analysisFile==nil && effect.start<clip.end && effect.end>clip.start && (effect.kind == .dollyZoom || effect.kind == .crashZoom && effect.toggle("trackFace",at:clip.start)) {
-                        do {customInstruction.effectSubjects[effect.id]=try await EffectSubjectAnalysis.shared.track(source:source,effect:effect,clip:clip,folder:folder,generate:effectPreparation.preparesMissingAnalysis)}
+                        do {customInstruction.effectSubjects[effect.id]=try await EffectSubjectAnalysis.shared.track(source:source,effect:effect,clip:scopedSources[clip.id] ?? clip,folder:folder,generate:effectPreparation.preparesMissingAnalysis)}
                         catch VideoEffectError.analysisPending {customInstruction.effectAnalysisPending=true}
                     }
                 }
@@ -416,13 +426,14 @@ enum MediaRenderer {
                     let sameInput=VideoEffectAnalysis.prefix(source.videoEffects ?? [],before:original?.id ?? effect.id).map(\.captureIdentity)==VideoEffectAnalysis.prefix(clip.videoEffects ?? [],before:effect.id).map(\.captureIdentity)
                     let inputs:Set<String>=["colors","lockPalette"]
                     let samePalette=original?.parameters.filter { inputs.contains($0.id) } == effect.parameters.filter { inputs.contains($0.id) }
-                    let unchanged=effect.analysisFile != nil && samePalette && sameInput && clip.color==nil && clip.crop==nil && clip.mirror==nil && clip.stabilization==nil
+                    let unchanged=effect.analysisFile != nil && samePalette && sameInput && !clip.hasGrade && clip.crop==nil && clip.mirror==nil && clip.stabilization==nil
                     let locked=effect.toggle("lockPalette",at:clip.start) && effect.lockedPalette?.colors.count==Int(effect.number("colors",at:clip.start)) && effect.parameters.filter { ["colors","lockPalette"].contains($0.id) }.allSatisfy {$0.keyframes.isEmpty}
                     if !unchanged && !locked {
                         do {
                             let count = Double(max(1, playback.count))
+                            let sourceClip = scopedSources[clip.id] ?? clip
                             customInstruction.effectPalettes[effect.id] = try await VideoEffectAnalysis.shared.palette(
-                                source: source, effect: effect, folder: folder, instruction: customInstruction, analysisRange: clip.start...clip.end,
+                                source: source, effect: effect, folder: folder, instruction: customInstruction, analysisRange: sourceClip.start...sourceClip.end,
                                 generate: effectPreparation.preparesMissingAnalysis) { value in
                                     videoProgress((Double(pieceIndex) + value) / count)
                                 }
@@ -444,7 +455,9 @@ enum MediaRenderer {
             }
             cursor = outputEnd
         }
-        try await appendSourceAudio(project:project,folder:folder,processedSources:processedSources,composition:composition,track:audio,fades:fades)
+        if includeSourceAudio {
+            try await appendSourceAudio(project:project,folder:folder,processedSources:processedSources,composition:composition,track:audio,fades:fades)
+        }
         let videoComposition = AVMutableVideoComposition()
         videoComposition.renderSize = canvas!
         videoComposition.frameDuration = CMTime(value: 1, timescale: CMTimeScale(framesPerSecond))
@@ -458,7 +471,7 @@ enum MediaRenderer {
         for instruction in instructions.compactMap({ $0 as? VideoToolInstruction }) { instruction.hdr = hdr }
         if !audio.segments.contains(where: { !$0.isEmpty }) { composition.removeTrack(audio) }
         fades.audioTimePitchAlgorithm = .spectral
-        fades.audioTapProcessor = try CutAudioEnvelope.make(clips: project.edit.clips.flatMap(\.playbackPieces))
+        if includeSourceAudio { fades.audioTapProcessor = try CutAudioEnvelope.make(clips: playback) }
         let backgrounds = includeBackgroundAudio ? try await VideoEffectBackgroundAudio.append(project:project,folder:folder,to:composition) : []
         let mix = AVMutableAudioMix(); mix.inputParameters = [fades]+backgrounds
         let sourceBounds = firstGeometry.map { CGRect(origin: .zero, size: $0.0).applying($0.1) }
@@ -752,15 +765,19 @@ enum MediaRenderer {
         }
         defer { withExtendedLifetime(prepared) {} }
         let media = prepared.media
-        let peak: Float
-        if let measured = checkpoint?.measuredPeak {
+        let checkRanges = ExportAudioLevel.checkRanges(project: project, mix: media.audioMix)
+        let peak: Float?
+        if checkRanges.isEmpty {
+            peak = nil
+        } else if let measured = checkpoint?.measuredPeak {
             peak = measured
         } else {
             progress(ExportProgress(.audioPeak))
-            peak = try await ExportAudioLevel.peak(asset: media.composition, mix: media.audioMix, duration: project.edit.duration) {
+            let measured = try await ExportAudioLevel.peak(asset: media.composition, mix: media.audioMix, duration: project.edit.duration, ranges: checkRanges) {
                 progress(ExportProgress(.audioPeak, $0))
             }
-            try checkpoint?.savePeak(peak)
+            try checkpoint?.savePeak(measured)
+            peak = measured
         }
         let codec = settings.outputCodec(hdr: media.hdr)
         let scratch = folder.appendingPathComponent("Processing", isDirectory: true)

@@ -99,6 +99,52 @@
         func difference(_ a: [UInt8], _ b: [UInt8]) -> Double {
             Double(zip(a, b).reduce(0) { $0 + abs(Int($1.0) - Int($1.1)) }) / Double(a.count)
         }
+        // A timed LUT edits the picture treatment without creating A/V edit points.
+        var ranged = Project(title: "Ranged grade QA")
+        ranged.append(SourceMedia(filename: "source.mp4", duration: 4))
+        let original = ranged.edit, videoID = original.timeline.video[0].id
+        var treatment = ColorSettings(look: .natural)
+        var ramp = EffectAnimation(treatment.pose, duration: 2)
+        let mono = ColorSettings(look: .mono)
+        ramp.b = mono.pose
+        treatment.motion = ramp
+        var regionEdit = original
+        regionEdit.setGrade(treatment, in: 1...3, videos: [videoID])
+        ranged.commit(regionEdit)
+        try ranged.validate()
+        let reopened = try JSONDecoder().decode(Project.self, from: JSONEncoder().encode(ranged))
+        let saved = reopened.edit
+        try require(saved.timeline.video.map(\.id) == [videoID] && saved.timeline.audio == original.timeline.audio
+                    && saved.timeline.links == original.timeline.links && saved.duration == original.duration,
+                    "A partial grade preserves the linked clip, audio, duration and IDs")
+        let stops = TimelineNavigation(saved)
+        try require(stops.changes.contains(1) && stops.changes.contains(3), "Navigate to both grade edges without clip cuts")
+        let region = saved.toolRegions.first { $0.tool == .color }!
+        try require(region.range == 1...3, "Reopen grade at its own bounds")
+        let removed = saved.removingTool(saved.request(for: region))
+        try require(removed.timeline.video == original.timeline.video && removed.timeline.audio == original.timeline.audio, "Badge removal restores the uncut picture")
+        var replacement = saved
+        replacement.setGrade(ColorSettings(look: .warm), in: 1.5...2, videos: [videoID])
+        try require(replacement.timeline.video.count == 1 && replacement.toolRegions.filter { $0.tool == .color }.count == 3, "Overwrite only intersecting grade time")
+        var inset = saved
+        var revised = mono; revised.id = treatment.id
+        inset.setGrade(revised, in: 1.5...2, videos: [videoID])
+        let remnants = inset.toolRegions.filter { $0.tool == .color }
+        try require(remnants.count == 3 && Set(remnants.map(\.id)).count == 3,
+                    "Editing the middle of an existing look gives each remaining badge its own identity")
+        let rawG = try await generator({ var p = ranged; p.commit(removed); return p }())
+        let rangedG = try await generator(reopened)
+        var fullGrade = original; fullGrade.setGrade(mono, in: 0...4, videos: [videoID])
+        var fullProject = ranged; fullProject.commit(fullGrade)
+        let monoG = try await generator(fullProject)
+        for t in [0.5, 1.0, 2.0, 3.0, 3.5] {
+            let raw = try await samples(rawG, t), graded = try await samples(rangedG, t)
+            if t == 2 {
+                let full = try await samples(monoG, t)
+                try require(difference(raw, graded) > 3 && difference(full, graded) > 3, "The middle frame shows the interpolated LUT")
+            } else { try require(difference(raw, graded) < 2, "First endpoint and out-of-range frames match the original") }
+        }
+        ranged.undo(); try require(ranged.edit == original, "Undo a timed LUT in one step")
         func staticProject(_ e: EffectEndpoint) -> Project {
             var project = decoded
             var edit = project.edit

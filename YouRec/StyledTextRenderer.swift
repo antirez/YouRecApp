@@ -141,6 +141,88 @@ final class StyledTextLayout {
     }
 }
 
+/// Component rectangles use the top-left origin of the finished bitmap for hit testing.
+struct LabelHeadlineLayout {
+    struct Line {
+        let text: StyledTextLayout
+        let rect: CGRect
+    }
+    let label: Line?
+    let headline: Line?
+    let size: CGSize
+    let card: TitleCard
+    let fontSize: CGFloat
+
+    init(_ group: LabelHeadline, headline words: String, fontSize: CGFloat, width: CGFloat, folder: URL?) {
+        self.fontSize = fontSize
+        card = group.card
+        let pad = ceil(group.card.padding * fontSize)
+        func layout(_ value: String, _ style: TitleDesign, _ relativeSize: Double) -> StyledTextLayout? {
+            guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            return StyledTextLayout(text: value, design: style, fontSize: fontSize * relativeSize,
+                                    maxWidth: max(1, width - 2 * pad), folder: folder)
+        }
+        let small = layout(group.label, group.labelStyle, group.labelScale)
+        let large = layout(words, group.headlineStyle, group.headlineScale)
+        let contentWidth = max(small?.bounds.width ?? 0, large?.bounds.width ?? 0)
+        let gap = small != nil && large != nil ? ceil(group.card.spacing * fontSize) : 0
+        let headlineTop = pad + (small?.bounds.height ?? 0) + gap
+        let cardSize = CGSize(width: contentWidth + 2 * pad, height: headlineTop + (large?.bounds.height ?? 0) + pad)
+        func place(_ line: StyledTextLayout?, y: CGFloat, offset: TitleCard.Offset?) -> Line? {
+            guard let line else { return nil }
+            let slack = contentWidth - line.bounds.width
+            let x = pad + (line.design.alignment == .left ? 0 : line.design.alignment == .right ? slack : slack / 2)
+            func travel(_ fraction: Double, from origin: CGFloat, within available: CGFloat) -> CGFloat {
+                origin + fraction * (fraction < 0 ? origin : max(0, available - origin))
+            }
+            let dx = travel(offset?.x ?? 0, from: x, within: cardSize.width - line.bounds.width)
+            let dy = travel(offset?.y ?? 0, from: y, within: cardSize.height - line.bounds.height)
+            let rect = CGRect(origin: CGPoint(x: dx, y: dy), size: line.bounds.size)
+            return Line(text: line, rect: rect)
+        }
+        label = place(small, y: pad, offset: group.card.labelOffset)
+        headline = place(large, y: headlineTop, offset: group.card.headlineOffset)
+        size = cardSize
+    }
+
+    func part(at fraction: CGPoint) -> LabelHeadline.Part {
+        let point = CGPoint(x: fraction.x * size.width, y: fraction.y * size.height)
+        if headline?.rect.contains(point) == true { return .headline }
+        if label?.rect.contains(point) == true { return .label }
+        return .card
+    }
+
+    func image(fitting canvas: CGSize) -> CGImage? {
+        guard size.width > 0, size.height > 0 else { return nil }
+        let scale = min(1, canvas.width / size.width, canvas.height / size.height)
+        let w = ceil(size.width * scale), h = ceil(size.height * scale)
+        guard w > 0, h > 0, w <= 16384, h <= 16384, w * h <= 32_000_000,
+              let context = CGContext(data: nil, width: Int(w), height: Int(h), bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        context.scaleBy(x: scale, y: scale)
+        let bounds = CGRect(origin: .zero, size: size)
+        let radius = min(card.radius * fontSize, min(size.width, size.height) / 2)
+        context.setFillColor(card.fill.cg)
+        context.addPath(CGPath(roundedRect: bounds, cornerWidth: radius, cornerHeight: radius, transform: nil))
+        context.fillPath()
+        let stroke = min(card.borderWidth * fontSize, min(size.width, size.height))
+        if stroke > 0 {
+            let inset = stroke / 2
+            let r = max(0, radius - inset)
+            context.setStrokeColor(card.border.cg)
+            context.setLineWidth(stroke)
+            context.addPath(CGPath(roundedRect: bounds.insetBy(dx: inset, dy: inset), cornerWidth: r, cornerHeight: r, transform: nil))
+            context.strokePath()
+        }
+        for line in [label, headline].compactMap({ $0 }) {
+            guard let bitmap = line.text.image(scale: scale) else { return nil }
+            let bounds = CGRect(x: line.rect.minX, y: size.height - line.rect.maxY, width: line.rect.width, height: line.rect.height)
+            context.draw(bitmap, in: bounds)
+        }
+        return context.makeImage()
+    }
+}
+
 extension TextOverlay {
     func drawFrame(_ bitmap: CGImage, canvas: CGSize, time: Double, range: ClosedRange<Double>) -> SubtitleLayout.Frame? {
         let size = CGSize(width: bitmap.width, height: bitmap.height)

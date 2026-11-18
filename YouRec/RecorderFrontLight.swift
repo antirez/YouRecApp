@@ -87,58 +87,61 @@ struct RecorderFrontLight: View {
     }
 
     private var settings: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Front light").font(.headline)
-                Spacer()
-                Button { settingsOpen = false } label: {
-                    Image(systemName: "xmark").frame(width: 44, height: 44)
-                }.accessibilityLabel("Close front light controls")
-            }
-            Text("Border width").font(.subheadline.weight(.medium))
-            Picker("Border width", selection: $width) {
-                ForEach(Width.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-            }.pickerStyle(.segmented)
-            Text("Color").font(.subheadline.weight(.medium)).padding(.top, 4)
-            HStack(spacing: 4) {
-                ForEach(Tone.allCases, id: \.self) { option in
-                    Button {
-                        selectedTone = option.rawValue
-                        if option == .custom { choosingColor = true }
-                    } label: { colorSwatch(option) }
-                        .accessibilityLabel(option.rawValue)
-                        .accessibilityValue(option == .custom ? UIColor(customColor).accessibilityName : "")
-                        .accessibilityHint(option == .custom ? "Opens the color picker" : "")
-                        .accessibilityAddTraits(tone == option ? .isSelected : [])
+        RecorderGlassContainer {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Front light").font(.headline)
+                    Spacer()
+                    Button { settingsOpen = false } label: {
+                        Image(systemName: "xmark").frame(width: 44, height: 44)
+                            .recorderGlass(in: Circle(), interactive: true, fallback: Color.white.opacity(0.08))
+                    }.accessibilityLabel("Close front light controls")
+                }
+                Text("Border width").font(.subheadline.weight(.medium))
+                Picker("Border width", selection: $width) {
+                    ForEach(Width.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }.pickerStyle(.segmented)
+                Text("Color").font(.subheadline.weight(.medium)).padding(.top, 4)
+                HStack(spacing: 4) {
+                    ForEach(Tone.allCases, id: \.self) { option in
+                        Button {
+                            selectedTone = option.rawValue
+                            if option == .custom { choosingColor = true }
+                        } label: { colorSwatch(option) }
+                            .accessibilityLabel(option.rawValue)
+                            .accessibilityValue(option == .custom ? UIColor(customColor).accessibilityName : "")
+                            .accessibilityHint(option == .custom ? "Opens the color picker" : "")
+                            .accessibilityAddTraits(tone == option ? .isSelected : [])
+                    }
+                }
+                HStack {
+                    Text("Opacity").font(.subheadline.weight(.medium))
+                    Spacer()
+                    Text(opacity, format: .percent.precision(.fractionLength(0)))
+                        .font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
+                }
+                Slider(value: $opacity, in: 0...1, step: 0.05)
+                    .tint(YouRecStyle.accent).accessibilityLabel("Front light opacity")
+                    .accessibilityValue(opacity.formatted(.percent))
+                    .accessibilityIdentifier("recorder.frontLightOpacity")
+                Divider()
+                Button(action: turnOff) {
+                    Label("Turn off front light", systemImage: "lightbulb.slash")
+                        .font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity, minHeight: 44)
+                        .recorderGlass(in: Capsule(), interactive: true, fallback: Color.white.opacity(0.09))
                 }
             }
-            HStack {
-                Text("Opacity").font(.subheadline.weight(.medium))
-                Spacer()
-                Text(opacity, format: .percent.precision(.fractionLength(0)))
-                    .font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
-            }
-            Slider(value: $opacity, in: 0...1, step: 0.05)
-                .tint(.cyan).accessibilityLabel("Front light opacity")
-                .accessibilityValue(opacity.formatted(.percent))
-                .accessibilityIdentifier("recorder.frontLightOpacity")
-            Divider()
-            Button(action: turnOff) {
-                Label("Turn off front light", systemImage: "lightbulb.slash")
-                    .font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity, minHeight: 44)
-                    .background(.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
-            }
-        }
-        .buttonStyle(.plain).padding(.horizontal, 16).padding(.bottom, 12)
-        .frame(width: 264).foregroundStyle(.white).background(Color(white: 0.1)).preferredColorScheme(.dark)
-        .background {
-            if choosingColor {
-                FrontLightColorPicker(color: customColor, select: { color in
-                    if let data = try? JSONEncoder().encode(color.resolve(in: EnvironmentValues())) {
-                        savedColor = data
-                    }
-                }, close: { choosingColor = false })
-                .allowsHitTesting(false).accessibilityHidden(true)
+            .buttonStyle(.plain).padding(.horizontal, 16).padding(.bottom, 12)
+            .frame(width: 280).foregroundStyle(.white).tint(YouRecStyle.accent).preferredColorScheme(.dark)
+            .background {
+                if choosingColor {
+                    FrontLightColorPicker(color: customColor, select: { color in
+                        if let data = try? JSONEncoder().encode(color.resolve(in: EnvironmentValues())) {
+                            savedColor = data
+                        }
+                    }, close: { choosingColor = false })
+                    .allowsHitTesting(false).accessibilityHidden(true)
+                }
             }
         }
     }
@@ -188,6 +191,7 @@ private struct FrontLightColorPicker: UIViewControllerRepresentable {
             picker.title = "Front light color"
             picker.supportsAlpha = false
             picker.selectedColor = UIColor(configuration.color)
+            picker.view.tintColor = UIColor(YouRecStyle.accent)
             picker.delegate = self
             picker.modalPresentationStyle = .pageSheet
             picker.sheetPresentationController?.detents = [.medium(), .large()]

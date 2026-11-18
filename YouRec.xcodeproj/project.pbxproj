@@ -7,6 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		F19900000000000000000001 /* DesktopProjectLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = F19900000000000000000011; };
+		F19900000000000000000002 /* FinderIntegration.m in Sources */ = {isa = PBXBuildFile; fileRef = F19900000000000000000012; };
+		F19900000000000000000003 /* FinderIntegration.bundle in PlugIns */ = {isa = PBXBuildFile; fileRef = F19900000000000000000013; platformFilter = maccatalyst; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy); }; };
+		A18200000000000000000001 /* RecorderAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18200000000000000000002 /* RecorderAppearance.swift */; };
+		E7D271000000000000000001 /* OrderedMediaPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7D271000000000000000002 /* OrderedMediaPicker.swift */; };
 		D17300000000000000000002 /* CameraCrop.metal in Sources */ = {isa = PBXBuildFile; fileRef = D17300000000000000000102; };
 		D17300000000000000000003 /* CameraCrop.metal in Test Sources */ = {isa = PBXBuildFile; fileRef = D17300000000000000000102; };
 		D17300000000000000000001 /* ZoomTransition.swift in Test Sources */ = {isa = PBXBuildFile; fileRef = B09000000000000000000002 /* ZoomTransition.swift */; };
@@ -40,6 +45,10 @@
 		B30000000000000000000000 /* Transitions.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30000000000000000000100 /* Transitions.swift */; };
 		B20000000000000000000002 /* EditorTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000102 /* EditorTools.swift */; };
 		C19300000000000000000001 /* CoverPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = C19300000000000000000101 /* CoverPicker.swift */; };
+		CE9600000000000000000001 /* DesktopRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE9600000000000000000101 /* DesktopRecorder.swift */; };
+		A52000000000000000000003 /* DesktopPiPFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = A52000000000000000000004; };
+		A52000000000000000000001 /* DesktopPiPUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A52000000000000000000002; };
+		E70100000000000000000001 /* PlaybackEndUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E70100000000000000000002; };
 		CE9510000000000000000001 /* MovieExportPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE9510000000000000000101 /* MovieExportPanel.swift */; };
 		C19300000000000000100001 /* CoverFramePool.swift in Sources */ = {isa = PBXBuildFile; fileRef = C19300000000000000100101 /* CoverFramePool.swift */; };
 		F19400000000000000100001 /* ImportedFonts.swift in Sources */ = {isa = PBXBuildFile; fileRef = F19400000000000000100101 /* ImportedFonts.swift */; };
@@ -48,6 +57,7 @@
 		B21000000000000000000002 /* CropEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B21000000000000000000102 /* CropEditor.swift */; };
 		B20000000000000000000001 /* VideoToolCompositor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000101 /* VideoToolCompositor.swift */; };
 		B20000000000000000000000 /* VideoTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000100 /* VideoTools.swift */; };
+		EBC71816AA00000000000000 /* ScopedEffect.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBC71816AA00000000000100 /* ScopedEffect.swift */; };
 		B10000000000000000000003 /* StabilizationMotion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000103 /* StabilizationMotion.cpp */; settings = {COMPILER_FLAGS = "-O3"; }; };
 		B10000000000000000000002 /* StabilizationEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000102 /* StabilizationEditor.swift */; };
 		B10000000000000000000001 /* VideoStabilizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000101 /* VideoStabilizer.swift */; };
@@ -128,6 +138,7 @@
 		D00000000000000000000017 /* SourceMediaCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000017 /* SourceMediaCache.swift */; };
 		D00000000000000000000018 /* EditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000018 /* EditorView.swift */; };
 		D00000000000000000000019 /* EditorTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000019 /* EditorTimeline.swift */; };
+		D00F11900000000000000019 /* Filmstrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00F11900000000000000019 /* Filmstrip.swift */; };
 		DB26E0BC917F9F7227231DE5 /* CutAudioEnvelope.swift in Sources */ = {isa = PBXBuildFile; fileRef = 354B6AACE2218846DEE169E6 /* CutAudioEnvelope.swift */; };
 		EA83D6E937E38CB4C210A06D /* DeepFilterNet3-DSP.json in Resources */ = {isa = PBXBuildFile; fileRef = C0BFDAD8ED0FD38C01EC3D23 /* DeepFilterNet3-DSP.json */; };
 		F44D6E031FCED83B231A25B2 /* Archive+Writing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45355711B50031FC61AD3EBD /* Archive+Writing.swift */; };
@@ -175,7 +186,12 @@
 		7CAB957943259A4AA50A07EA /* VoiceFixer-Mel.bin in Resources */ = {isa = PBXBuildFile; fileRef = 8107CE866AC1CD8BBD29A6C7 /* VoiceFixer-Mel.bin */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		F19900000000000000000021 /* Embed Finder integration */ = {isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = ""; dstSubfolderSpec = 13; files = (F19900000000000000000003); name = "Embed Finder integration"; runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXContainerItemProxy section */
+		F19900000000000000000031 = {isa = PBXContainerItemProxy; containerPortal = A00000000000000000000050; proxyType = 1; remoteGlobalIDString = F19900000000000000000041; remoteInfo = FinderIntegration; };
 		E63C5DDBC52CF03EA1443074 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = A00000000000000000000050 /* Project object */;
@@ -186,6 +202,11 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		F19900000000000000000011 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/DesktopProjectLibrary.swift; sourceTree = SOURCE_ROOT; };
+		F19900000000000000000012 = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = YouRec/FinderIntegration.m; sourceTree = SOURCE_ROOT; };
+		F19900000000000000000013 /* FinderIntegration.bundle */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = FinderIntegration.bundle; sourceTree = BUILT_PRODUCTS_DIR; };
+		A18200000000000000000002 /* RecorderAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecorderAppearance.swift; sourceTree = "<group>"; };
+		E7D271000000000000000002 /* OrderedMediaPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrderedMediaPicker.swift; sourceTree = "<group>"; };
 		D17300000000000000000102 /* CameraCrop.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = CameraCrop.metal; sourceTree = "<group>"; };
 		D16300000000000000000101 /* SingleCameraFollowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SingleCameraFollowTests.swift; sourceTree = "<group>"; };
 		D16300000000000000000102 /* astronaut.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Fixtures/astronaut.png; sourceTree = "<group>"; };
@@ -213,6 +234,10 @@
 		B30000000000000000000100 /* Transitions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/Transitions.swift; sourceTree = SOURCE_ROOT; };
 		B20000000000000000000102 /* EditorTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/EditorTools.swift; sourceTree = SOURCE_ROOT; };
 		C19300000000000000000101 /* CoverPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/CoverPicker.swift; sourceTree = SOURCE_ROOT; };
+		CE9600000000000000000101 /* DesktopRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/DesktopRecorder.swift; sourceTree = SOURCE_ROOT; };
+		A52000000000000000000004 /* DesktopPiPFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopPiPFixture.swift; sourceTree = "<group>"; };
+		A52000000000000000000002 /* DesktopPiPUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopPiPUITests.swift; sourceTree = "<group>"; };
+		E70100000000000000000002 /* PlaybackEndUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackEndUITests.swift; sourceTree = "<group>"; };
 		CE9510000000000000000101 /* MovieExportPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/MovieExportPanel.swift; sourceTree = SOURCE_ROOT; };
 		C19300000000000000100101 /* CoverFramePool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/CoverFramePool.swift; sourceTree = SOURCE_ROOT; };
 		F19400000000000000100101 /* ImportedFonts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/ImportedFonts.swift; sourceTree = SOURCE_ROOT; };
@@ -221,6 +246,7 @@
 		B21000000000000000000102 /* CropEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/CropEditor.swift; sourceTree = SOURCE_ROOT; };
 		B20000000000000000000101 /* VideoToolCompositor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/VideoToolCompositor.swift; sourceTree = SOURCE_ROOT; };
 		B20000000000000000000100 /* VideoTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/VideoTools.swift; sourceTree = SOURCE_ROOT; };
+		EBC71816AA00000000000100 /* ScopedEffect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/ScopedEffect.swift; sourceTree = SOURCE_ROOT; };
 		B10000000000000000000103 /* StabilizationMotion.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = StabilizationMotion.cpp; sourceTree = "<group>"; };
 		B10000000000000000000102 /* StabilizationEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StabilizationEditor.swift; sourceTree = "<group>"; };
 		B10000000000000000000101 /* VideoStabilizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoStabilizer.swift; sourceTree = "<group>"; };
@@ -296,6 +322,7 @@
 		C00000000000000000000017 /* SourceMediaCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/SourceMediaCache.swift; sourceTree = SOURCE_ROOT; };
 		C00000000000000000000018 /* EditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/EditorView.swift; sourceTree = SOURCE_ROOT; };
 		C00000000000000000000019 /* EditorTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/EditorTimeline.swift; sourceTree = SOURCE_ROOT; };
+		C00F11900000000000000019 /* Filmstrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouRec/Filmstrip.swift; sourceTree = SOURCE_ROOT; };
 		C0BFDAD8ED0FD38C01EC3D23 /* DeepFilterNet3-DSP.json */ = {isa = PBXFileReference; includeInIndex = 1; name = "DeepFilterNet3-DSP.json"; path = "ThirdParty/DeepFilterNet3/DeepFilterNet3-DSP.json"; sourceTree = SOURCE_ROOT; };
 		C2D919D4B085F809C4FC7B97 /* EditorUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EditorUITests.swift; sourceTree = "<group>"; };
 		D03A4DB522E4E76E34A370F6 /* FileManager+ZIP.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "FileManager+ZIP.swift"; sourceTree = "<group>"; };
@@ -440,8 +467,12 @@
 			children = (
 				A00000000000000000000021 /* YouRec */,
 				C00000000000000000000019 /* EditorTimeline.swift */,
+				C00F11900000000000000019 /* Filmstrip.swift */,
 				B20000000000000000000102 /* EditorTools.swift */,
 				C19300000000000000000101 /* CoverPicker.swift */,
+				CE9600000000000000000101 /* DesktopRecorder.swift */,
+				F19900000000000000000011 /* DesktopProjectLibrary.swift */,
+				F19900000000000000000012 /* FinderIntegration.m */,
 				CE9510000000000000000101 /* MovieExportPanel.swift */,
 				C19300000000000000100101 /* CoverFramePool.swift */,
 				F19400000000000000100101 /* ImportedFonts.swift */,
@@ -456,6 +487,7 @@
 				D11100000000000000000004 /* ColorGradeControls.swift */,
 				D11100000000000000000006 /* LogColor.swift */,
 				B20000000000000000000100 /* VideoTools.swift */,
+				EBC71816AA00000000000100 /* ScopedEffect.swift */,
 				C00000000000000000000018 /* EditorView.swift */,
 				C00000000000000000000017 /* SourceMediaCache.swift */,
 				C00000000000000000000016 /* TimelineEditing.swift */,
@@ -536,6 +568,8 @@
 				B00000000000000000000204 /* MediaRenderer.swift */,
 				B00000000000000000000205 /* EditorController.swift */,
 				B00000000000000000000206 /* RecorderView.swift */,
+				A18200000000000000000002 /* RecorderAppearance.swift */,
+				E7D271000000000000000002 /* OrderedMediaPicker.swift */,
 				B0000000000000000000E168 /* RecorderFrontLight.swift */,
 				B0000000000000000000E171 /* RecorderZoomViewport.swift */,
 				D17300000000000000000102 /* CameraCrop.metal */,
@@ -562,6 +596,7 @@
 			isa = PBXGroup;
 			children = (
 				A00000000000000000000013 /* YouRec.app */,
+				F19900000000000000000013 /* FinderIntegration.bundle */,
 				39106F629A869E2538DF36AE /* YouRecUITests.xctest */,
 			);
 			name = Products;
@@ -571,6 +606,9 @@
 			isa = PBXGroup;
 			children = (
 				C2D919D4B085F809C4FC7B97 /* EditorUITests.swift */,
+				A52000000000000000000002 /* DesktopPiPUITests.swift */,
+				E70100000000000000000002 /* PlaybackEndUITests.swift */,
+				A52000000000000000000004 /* DesktopPiPFixture.swift */,
 				D16300000000000000000101 /* SingleCameraFollowTests.swift */,
 				D16300000000000000000102 /* astronaut.png */,
 			);
@@ -589,6 +627,7 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		F19900000000000000000041 /* FinderIntegration */ = {isa = PBXNativeTarget; buildConfigurationList = F19900000000000000000060; buildPhases = (F19900000000000000000022); buildRules = (); dependencies = (); name = FinderIntegration; productName = FinderIntegration; productReference = F19900000000000000000013; productType = "com.apple.product-type.bundle"; };
 		81893CC770D479C462D0BF98 /* YouRecUITests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = E7F6C0F3D2FE43F20AB86714 /* Build configuration list for PBXNativeTarget "YouRecUITests" */;
@@ -615,11 +654,11 @@
 				A00000000000000000000031 /* Frameworks */,
 				A00000000000000000000032 /* Resources */,
 				DBFE2490C8F1E266D6A83C98 /* Development-only UI fixture */,
+				F19900000000000000000021 /* Embed Finder integration */,
 			);
 			buildRules = (
 			);
-			dependencies = (
-			);
+			dependencies = (F19900000000000000000030);
 			name = YouRec;
 			packageProductDependencies = (A51100000000000000000002);
 			productName = YouRec;
@@ -655,6 +694,7 @@
 			projectRoot = "";
 			targets = (
 				A00000000000000000000040 /* YouRec */,
+				F19900000000000000000041 /* FinderIntegration */,
 				81893CC770D479C462D0BF98 /* YouRecUITests */,
 			);
 		};
@@ -697,25 +737,30 @@
 			);
 			inputPaths = (
 				"$(SRCROOT)/Tests/Fixtures/editor-fixture.mp4",
+				"$(SRCROOT)/Tests/Fixtures/playback-ending.mp4",
 			);
 			name = "Development-only UI fixture";
 			outputFileListPaths = (
 			);
 			outputPaths = (
 				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/editor-fixture.mp4",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/playback-ending.mp4",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ \"$CONFIGURATION\" = \"Debug\" ]; then\n  cp \"$SRCROOT/Tests/Fixtures/editor-fixture.mp4\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/editor-fixture.mp4\"\nelse\n  rm -f \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/editor-fixture.mp4\"\nfi";
+			shellScript = "for fixture in editor-fixture playback-ending; do\n  dest=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/$fixture.mp4\"\n  if [ \"$CONFIGURATION\" = \"Debug\" ]; then\n    cp \"$SRCROOT/Tests/Fixtures/$fixture.mp4\" \"$dest\" || exit 1\n  else\n    rm -f \"$dest\" || exit 1\n  fi\ndone";
 		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		F19900000000000000000022 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (F19900000000000000000002); runOnlyForDeploymentPostprocessing = 0; };
 		9D858B8473B0AC3E9365077D /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				7E883E4337E5A3704F4B4862 /* EditorUITests.swift in Sources */,
+				A52000000000000000000001 /* DesktopPiPUITests.swift in Sources */,
+				E70100000000000000000001 /* PlaybackEndUITests.swift in Sources */,
 				D16300000000000000000001 /* SingleCameraFollowTests.swift in Sources */,
 				D16300000000000000000002 /* DualFaceDetector.swift in Test Sources */,
 				D17300000000000000000003 /* CameraCrop.metal in Test Sources */,
@@ -760,8 +805,12 @@
 				AB90ABC55B8F7BAF491EACED /* MetalVideoEffects.swift in Sources */,
 				A00000000000000000000001 /* YouRecApp.swift in Sources */,
 				D00000000000000000000019 /* EditorTimeline.swift in Sources */,
+				D00F11900000000000000019 /* Filmstrip.swift in Sources */,
 				B20000000000000000000002 /* EditorTools.swift in Sources */,
 				C19300000000000000000001 /* CoverPicker.swift in Sources */,
+				CE9600000000000000000001 /* DesktopRecorder.swift in Sources */,
+				F19900000000000000000001 /* DesktopProjectLibrary.swift in Sources */,
+				A52000000000000000000003 /* DesktopPiPFixture.swift in Sources */,
 				CE9510000000000000000001 /* MovieExportPanel.swift in Sources */,
 				C19300000000000000100001 /* CoverFramePool.swift in Sources */,
 				F19400000000000000100001 /* ImportedFonts.swift in Sources */,
@@ -776,6 +825,7 @@
 				D11100000000000000000003 /* ColorGradeControls.swift in Sources */,
 				D11100000000000000000005 /* LogColor.swift in Sources */,
 				B20000000000000000000000 /* VideoTools.swift in Sources */,
+				EBC71816AA00000000000000 /* ScopedEffect.swift in Sources */,
 				D00000000000000000000018 /* EditorView.swift in Sources */,
 				D00000000000000000000017 /* SourceMediaCache.swift in Sources */,
 				D00000000000000000000016 /* TimelineEditing.swift in Sources */,
@@ -834,6 +884,8 @@
 				B00000000000000000000104 /* MediaRenderer.swift in Sources */,
 				B00000000000000000000105 /* EditorController.swift in Sources */,
 				B00000000000000000000106 /* RecorderView.swift in Sources */,
+				A18200000000000000000001 /* RecorderAppearance.swift in Sources */,
+				E7D271000000000000000001 /* OrderedMediaPicker.swift in Sources */,
 				B0000000000000000000F168 /* RecorderFrontLight.swift in Sources */,
 				B0000000000000000000F171 /* RecorderZoomViewport.swift in Sources */,
 				D17300000000000000000002 /* CameraCrop.metal in Sources */,
@@ -882,6 +934,7 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		F19900000000000000000030 = {isa = PBXTargetDependency; platformFilter = maccatalyst; target = F19900000000000000000041; targetProxy = F19900000000000000000031; };
 		41440215AE12F326728A4FA1 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			name = YouRec;
@@ -900,6 +953,8 @@
 /* End XCSwiftPackageProductDependency section */
 
 /* Begin XCBuildConfiguration section */
+		F19900000000000000000062 = {isa = XCBuildConfiguration; buildSettings = {SDKROOT = macosx; SUPPORTED_PLATFORMS = macosx; SUPPORTS_MACCATALYST = NO; MACOSX_DEPLOYMENT_TARGET = 15.2; PRODUCT_BUNDLE_IDENTIFIER = com.antirez.yourec.FinderIntegration; PRODUCT_NAME = FinderIntegration; CODE_SIGN_IDENTITY = "-"; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_NSPrincipalClass = YouRecFinderIntegration; SKIP_INSTALL = YES; OTHER_LDFLAGS = ("-framework", AppKit); }; name = Release; };
+		F19900000000000000000061 = {isa = XCBuildConfiguration; buildSettings = {SDKROOT = macosx; SUPPORTED_PLATFORMS = macosx; SUPPORTS_MACCATALYST = NO; MACOSX_DEPLOYMENT_TARGET = 15.2; PRODUCT_BUNDLE_IDENTIFIER = com.antirez.yourec.FinderIntegration; PRODUCT_NAME = FinderIntegration; CODE_SIGN_IDENTITY = "-"; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_NSPrincipalClass = YouRecFinderIntegration; SKIP_INSTALL = YES; OTHER_LDFLAGS = ("-framework", AppKit); }; name = Debug; };
 		107312FCCDF5047F447F2ECB /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -911,9 +966,10 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.antirez.yourec.uitests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				"EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = EditorUITests.swift;
 				TEST_TARGET_NAME = YouRec;
 			};
 			name = Debug;
@@ -929,9 +985,10 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.antirez.yourec.uitests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				"EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = EditorUITests.swift;
 				TEST_TARGET_NAME = YouRec;
 				VALIDATE_PRODUCT = YES;
 			};
@@ -967,9 +1024,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 195;
+				CURRENT_PROJECT_VERSION = 202;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/ThirdParty/RNNoise/include";
@@ -980,24 +1038,33 @@
 				INFOPLIST_KEY_NSMotionUsageDescription = "YouRec uses device tilt to level the horizon in your recordings.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "YouRec uses the microphone to record video sound and add voice recordings to your edits.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "YouRec saves an exported copy of your video to Photos when you choose Save to Photos.";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_FILE = YouRec/AppInfo.plist;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UIFileSharingEnabled = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.antirez.yourec;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SUPPORTS_MACCATALYST = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = YES;
+				"INFOPLIST_KEY_NSCameraUseContinuityCameraDeviceType[sdk=macosx*]" = YES;
+				"EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = "CaptureController.swift RecorderView.swift RecorderZoomViewport.swift MultiCameraCapture.swift LiveEffectsPanel.swift VideoEffectsDiagnostics.swift";
+				"ARCHS[sdk=macosx*]" = arm64;
+				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
+				"TARGETED_DEVICE_FAMILY[sdk=macosx*]" = 6;
+				"IPHONEOS_DEPLOYMENT_TARGET[sdk=macosx*]" = 18.2;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = YouRec/Mac.entitlements;
 				SWIFT_OBJC_BRIDGING_HEADER = "YouRec/YouRec-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
@@ -1005,9 +1072,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 195;
+				CURRENT_PROJECT_VERSION = 202;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/ThirdParty/RNNoise/include";
@@ -1018,30 +1086,39 @@
 				INFOPLIST_KEY_NSMotionUsageDescription = "YouRec uses device tilt to level the horizon in your recordings.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "YouRec uses the microphone to record video sound and add voice recordings to your edits.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "YouRec saves an exported copy of your video to Photos when you choose Save to Photos.";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_FILE = YouRec/AppInfo.plist;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UIFileSharingEnabled = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.antirez.yourec;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SUPPORTS_MACCATALYST = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = YES;
+				"INFOPLIST_KEY_NSCameraUseContinuityCameraDeviceType[sdk=macosx*]" = YES;
+				"EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = "CaptureController.swift RecorderView.swift RecorderZoomViewport.swift MultiCameraCapture.swift LiveEffectsPanel.swift VideoEffectsDiagnostics.swift";
+				"ARCHS[sdk=macosx*]" = arm64;
+				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
+				"TARGETED_DEVICE_FAMILY[sdk=macosx*]" = 6;
+				"IPHONEOS_DEPLOYMENT_TARGET[sdk=macosx*]" = 18.2;
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = YouRec/Mac.entitlements;
 				SWIFT_OBJC_BRIDGING_HEADER = "YouRec/YouRec-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		F19900000000000000000060 = {isa = XCConfigurationList; buildConfigurations = (F19900000000000000000061, F19900000000000000000062); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		A00000000000000000000060 /* Build configuration list for PBXProject "YouRec" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

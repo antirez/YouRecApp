@@ -3,6 +3,22 @@ import SwiftUI
 import UniformTypeIdentifiers
 import ImageIO
 
+private func coverTimestamp(_ time: EditTime) -> String {
+    let hundredths = Int((time.seconds * 100).rounded())
+    return String(format: "%d:%02d.%02d", hundredths / 6000, hundredths / 100 % 60, hundredths % 100)
+}
+
+extension AVAssetImageGenerator {
+    convenience init(editorAsset asset: AVAsset, composition: AVVideoComposition?) {
+        self.init(asset: asset)
+        appliesPreferredTrackTransform = true
+        videoComposition = composition
+        requestedTimeToleranceBefore = .zero
+        requestedTimeToleranceAfter = .zero
+        if #available(iOS 18.0, *) { dynamicRangePolicy = .forceSDR }
+    }
+}
+
 /// Capture the editor's assembled picture once. The grid and JPEG then use
 /// the same composition and clock even if a pending effect finishes later.
 final class CoverPickerSource: Hashable {
@@ -30,24 +46,20 @@ final class CoverPickerSource: Hashable {
         } else {
             scope = [EditInterval(.zero, timeline.duration)]; scopeLabel = "Whole project"
         }
-        rangeLabel = editorTime(scope.map(\.start).min()?.seconds ?? 0) + " – " + editorTime(scope.map(\.end).max()?.seconds ?? 0)
+        rangeLabel = coverTimestamp(scope.map(\.start).min() ?? .zero) + " – " + coverTimestamp(scope.map(\.end).max() ?? .zero)
         var picture = timeline.video.map(\.interval)
         // A Still transition can extend the outgoing picture beyond its clip.
         for join in timeline.transitions where join.settings.style == .still && join.outgoing != nil {
             let timing = TransitionTiming(join.settings, factor: join.factor, edge: join.incoming == nil ? 1 : 0)
             picture.append(EditInterval(join.origin, min(timeline.duration, join.origin + EditTime(timing.videoDuration))))
         }
-        pool = CoverFramePool(picture: picture, scope: scope)
+        let frame = item.videoComposition?.frameDuration.seconds ?? 0
+        pool = CoverFramePool(picture: picture, scope: scope, frameDuration: EditTime(frame.isFinite && frame > 0 ? frame : 1.0 / 30))
     }
 
     func generator(thumbnail: Bool) -> AVAssetImageGenerator {
-        let generator = AVAssetImageGenerator(asset: asset)
-        generator.appliesPreferredTrackTransform = true
-        generator.videoComposition = composition
+        let generator = AVAssetImageGenerator(editorAsset: asset, composition: composition)
         if thumbnail { generator.maximumSize = CGSize(width: 512, height: 512) }
-        generator.requestedTimeToleranceBefore = .zero
-        generator.requestedTimeToleranceAfter = .zero
-        if #available(iOS 18.0, *) { generator.dynamicRangePolicy = .forceSDR }
         return generator
     }
 
@@ -74,7 +86,7 @@ private struct CoverJPEG: Transferable {
         let separators = CharacterSet(charactersIn: "/:\\").union(.controlCharacters)
         let name = title.components(separatedBy: separators).filter { !$0.isEmpty }.joined(separator: "-")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let timestamp = editorTime(time.seconds).replacingOccurrences(of: ":", with: "-")
+        let timestamp = coverTimestamp(time).replacingOccurrences(of: ":", with: "-")
         return Self(data: data as Data, filename: String((name.isEmpty ? "YouRec" : name).prefix(40)) + " - " + timestamp + ".jpg")
     }
 }
@@ -108,7 +120,7 @@ struct CoverPicker: View {
                     let minimum: CGFloat = typeSize.isAccessibilitySize ? 170 : (source.aspect < 1 ? 100 : 148)
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: minimum), spacing: 10)], spacing: 15) {
                         ForEach(picks, id: \.self) { pick in
-                            let stamp = editorTime(source.pool.time(of: pick).seconds)
+                            let stamp = coverTimestamp(source.pool.time(of: pick))
                             Button { selected = pick } label: {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Color(white: 0.09).aspectRatio(source.aspect, contentMode: .fit)
@@ -131,7 +143,7 @@ struct CoverPicker: View {
             .onAppear { if picks.isEmpty { update() } }
             .task(id: picks) { await loadThumbnails(for: picks) }
             .navigationDestination(item: $selected) { pick in
-                CoverDetail(source: source, time: source.pool.time(of: pick), thumbnail: thumbnails[pick])
+                CoverDetail(source: source, initialPick: pick, thumbnail: thumbnails[pick]).id(pick)
             }
     }
 
@@ -163,27 +175,68 @@ struct CoverPicker: View {
 
 private struct CoverDetail: View {
     let source: CoverPickerSource
-    let time: EditTime
+    let initialPick: Int
     let thumbnail: CGImage?
+    @State private var pick: Int
+    @State private var dragStart: Int?
     @State private var frame: CGImage?
-    @State private var jpeg: CoverJPEG?
+    @State private var renderedPick: Int?
+    @State private var jpeg: (pick: Int, file: CoverJPEG)?
     @State private var failed = false
-    @State private var attempt = 0
+
+    init(source: CoverPickerSource, initialPick: Int, thumbnail: CGImage?) {
+        self.source = source
+        self.initialPick = initialPick
+        self.thumbnail = thumbnail
+        _pick = State(initialValue: initialPick)
+    }
+
+    private var time: EditTime { source.pool.time(of: pick) }
+    private var sharePick: Int? { renderedPick == pick && dragStart == nil && !failed ? pick : nil }
+
+    private func select(_ index: Int) {
+        let next = min(source.pool.count - 1, max(0, index))
+        guard next != pick else { return }
+        pick = next
+        failed = false
+    }
+
+    private func scrub(_ drag: DragGesture.Value) {
+        let movement = drag.translation
+        guard dragStart != nil || abs(movement.width) > abs(movement.height) else { return }
+        let origin = dragStart ?? pick
+        dragStart = origin
+        // Swiping left reveals later frames. Fixed travel per frame and no
+        // momentum keep the same gesture precise at every project length.
+        select(origin - Int(movement.width / 24))
+    }
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
             Color(white: 0.07).aspectRatio(source.aspect, contentMode: .fit)
                 .overlay {
-                    if let picture = frame ?? thumbnail {
+                    if let picture = frame ?? (pick == initialPick ? thumbnail : nil) {
                         Image(picture, scale: 1, label: Text("Cover image")).resizable().scaledToFit()
                             .accessibilityValue("\(picture.width) × \(picture.height) pixels")
                             .accessibilityIdentifier("cover.image")
                     }
                 }
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 6)
+                    .onChanged(scrub)
+                    .onEnded { value in scrub(value); dragStart = nil })
+                .accessibilityHint("Swipe left for later frames or right for earlier frames.")
+                .accessibilityAdjustableAction { direction in
+                    switch direction {
+                    case .increment: select(pick + 1)
+                    case .decrement: select(pick - 1)
+                    @unknown default: break
+                    }
+                }
                 .overlay(alignment: .topTrailing) {
-                    if let jpeg, let frame {
-                        ShareLink(item: jpeg, preview: SharePreview(jpeg.filename, image: Image(decorative: frame, scale: 1))) {
+                    if let jpeg, jpeg.pick == sharePick, let frame {
+                        ShareLink(item: jpeg.file, preview: SharePreview(jpeg.file.filename, image: Image(decorative: frame, scale: 1))) {
                             Image(systemName: "square.and.arrow.up").font(.title3.weight(.semibold))
                                 .frame(width: 46, height: 46).background(.black.opacity(0.78), in: Circle())
                         }.foregroundStyle(.white).accessibilityLabel("Share JPEG").accessibilityIdentifier("cover.share")
@@ -196,23 +249,46 @@ private struct CoverDetail: View {
             if failed {
                 VStack(spacing: 8) {
                     Text("Couldn’t load this frame")
-                    Button("Try again") { failed = false; attempt += 1 }.buttonStyle(.bordered)
+                    Button("Try again") { failed = false }.buttonStyle(.bordered)
                 }.padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
             }
-        }.navigationTitle(editorTime(time.seconds)).navigationBarTitleDisplayMode(.inline)
-            .task(id: attempt) {
-                guard jpeg == nil else { return }
+        }.navigationTitle(coverTimestamp(time)).navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { select(source.pool.randomAlternative(to: pick)) } label: {
+                        Label("Update", systemImage: "arrow.clockwise").labelStyle(.titleAndIcon)
+                    }.disabled(source.pool.count < 2)
+                        .accessibilityHint("Show another random frame from the same range.")
+                        .accessibilityIdentifier("cover.detail.update")
+                }
+            }
+            .task(id: renderedPick != pick && !failed) {
+                guard renderedPick != pick, !failed else { return }
                 let generator = source.generator(thumbnail: false)
+                // Keep one decode in flight. A continuing drag can show its
+                // result immediately and skip directly to the latest request.
+                await withTaskCancellationHandler {
+                    while !Task.isCancelled && renderedPick != pick {
+                        let target = pick
+                        do {
+                            let result = try await generator.image(at: TrackRenderer.time(source.pool.time(of: target)))
+                            try Task.checkCancellation()
+                            frame = result.image
+                            renderedPick = target
+                        } catch {
+                            if Task.isCancelled { return }
+                            if pick == target { failed = true; return }
+                        }
+                    }
+                } onCancel: { generator.cancelAllCGImageGeneration() }
+            }
+            .task(id: sharePick) {
+                guard let target = sharePick, jpeg?.pick != target, let frame else { return }
                 do {
-                    let result = try await withTaskCancellationHandler {
-                        try await generator.image(at: TrackRenderer.time(time))
-                    } onCancel: { generator.cancelAllCGImageGeneration() }
+                    let encoded = try await CoverJPEG.encode(frame, title: source.title, time: source.pool.time(of: target))
                     try Task.checkCancellation()
-                    frame = result.image
-                    let encoded = try await CoverJPEG.encode(result.image, title: source.title, time: time)
-                    try Task.checkCancellation()
-                    jpeg = encoded
-                } catch { if !Task.isCancelled { failed = true } }
+                    if sharePick == target { jpeg = (target, encoded) }
+                } catch { if !Task.isCancelled && sharePick == target { failed = true } }
             }
     }
 }

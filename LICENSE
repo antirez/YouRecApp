@@ -67,10 +67,10 @@ Subtitles and libraries
 
 Fonts, images and platform
 --------------------------
-* Archivo Black, Atkinson Hyperlegible Next, Barlow Condensed, Caveat, Fraunces,
-  IBM Plex Mono and Source Serif 4, distributed through Google Fonts: SIL Open
-  Font License 1.1. Each family's original copyright and license are preserved in
-  ThirdParty/TitleFonts/<family>/OFL.txt.
+* Archivo Black, Atkinson Hyperlegible Next, Barlow Condensed, Bodoni Moda,
+  Caveat, Fraunces, IBM Plex Mono, Source Serif 4 and Unbounded, distributed
+  through Google Fonts: SIL Open Font License 1.1. Each family's original
+  copyright and license are preserved in ThirdParty/TitleFonts/<family>/OFL.txt.
 * The test portrait of Eileen Collins is a public-domain NASA photograph obtained
   from the scikit-image sample dataset. See Tests/Fixtures/README.md.
 * Apple system frameworks, the Apple SDK and SF Symbols are used under Apple's

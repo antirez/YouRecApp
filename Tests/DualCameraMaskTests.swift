@@ -64,6 +64,37 @@ import CoreImage
                 expanded.resizeInset(scale: 0.9, axis: .proportional, canvas: size)
                 try check(abs(expanded.regions(in: size)[1].width-full.width*0.9) < 1e-6, "Shrink responds immediately after reaching maximum size")
             }
+            for round in [false, true] {
+                var initial = DualCameraLayout()
+                initial.roundInset = round
+                initial.insetAspect = 1.35
+                let start = initial.regions(in: size)[1]
+                for swapped in [false, true] {
+                    initial.swapped = swapped
+                    var moved = initial
+                    moved.dragInset(from: start, by: CGSize(width: -size.width, height: size.height), corner: nil, canvas: size)
+                    let clamped = moved.regions(in: size)[1]
+                    try check(abs(clamped.minX) < 0.001 && abs(clamped.maxY-size.height) < 0.001 && clamped.size == start.size,
+                              "Dragging moves only the inset and clamps to the visible frame")
+                    moved.dragInset(from: clamped, by: CGSize(width: 3, height: -5), corner: nil, canvas: size)
+                    let back = moved.regions(in: size)[1]
+                    try check(abs(back.minX-3) < 0.001 && abs(back.maxY-size.height+5) < 0.001, "Dragging back from an edge responds immediately")
+                    for corner in DualCameraLayout.InsetCorner.allCases {
+                        let fixed = corner.opposite(in: start), handle = corner.point(in: start)
+                        for factor in [-4.0, -0.25, 0.2, 8.0] {
+                            var next = initial
+                            next.dragInset(from: start, by: CGSize(width: (handle.x-fixed.x)*factor, height: (handle.y-fixed.y)*factor),
+                                           corner: corner, canvas: size)
+                            let result = next.regions(in: size)[1], anchor = corner.opposite(in: result)
+                            try check(hypot(anchor.x-fixed.x, anchor.y-fixed.y) < 0.001, "Resizing anchors the opposite corner")
+                            try check(bounds.insetBy(dx: -0.001, dy: -0.001).contains(result) && min(result.width,result.height) >= 0.18*min(size.width,size.height)-0.001,
+                                      "Corners enforce the minimum and the canvas edges")
+                            try check(abs(result.width/result.height-start.width/start.height) < 0.001, "Corner resize preserves shape")
+                            try check(factor > 0 ? result.width > start.width : result.width < start.width, "The visible inset changes size")
+                        }
+                    }
+                }
+            }
             var expanded = DualCameraLayout()
             expanded.resizeInset(scale: 100, axis: .width, canvas: size)
             expanded.resizeInset(scale: 100, axis: .height, canvas: size)

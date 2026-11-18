@@ -35,7 +35,7 @@ enum TrackRenderer {
                          audioPreviewRange: ClosedRange<Double>? = nil, processedWindows: [String: [AudioPreviewWindow]] = [:],
                          effectPreparation: VideoEffectPreparation = .final) async throws -> TimelineMedia {
         let timeline = project.edit.timeline
-        for item in timeline.video { for lut in item.content.color?.lutAssets ?? [] { _ = try LUTAssets.load(lut, folder: folder) } }
+        for item in timeline.video { for lut in item.content.gradeAssets { _ = try LUTAssets.load(lut, folder: folder) } }
         guard timeline.duration > .zero else { throw ProjectError.emptyTimeline }
         let canvas: CGSize
         if let size = canvasSize ?? project.edit.outputSize { canvas = size }
@@ -55,10 +55,9 @@ enum TrackRenderer {
         if native {
             let source = try await MediaRenderer.sourceTimeline(project: project, folder: folder, processedSources: processedSources, canvasSize: canvas, framesPerSecond: framesPerSecond,
                 stabilization: stabilization, stabilizationPlans: stabilizationPlans, videoProgress: videoProgress, forceCustom: forceCustom,
-                includeBackgroundAudio: false, previewDiagnostics: previewDiagnostics, bypassVideoEffects: bypassVideoEffects, effectPreparation: effectPreparation)
+                includeBackgroundAudio: false, includeSourceAudio: false, previewDiagnostics: previewDiagnostics, bypassVideoEffects: bypassVideoEffects, effectPreparation: effectPreparation)
             // Keep the native picture path, but use the same sample envelopes for
             // audio audition, headroom analysis and export on every timeline.
-            for track in source.composition.tracks(withMediaType: .audio) { source.composition.removeTrack(track) }
             let mix = try await audioMix(timeline, project: project, folder: folder, composition: source.composition,
                 processedSources: processedSources, processedRegions: processedRegions, includeBackgroundAudio: includeBackgroundAudio,
                 previewRange: audioPreviewRange, processedWindows: processedWindows)
@@ -89,7 +88,7 @@ enum TrackRenderer {
             child.history = [EditState(clips: [item.content], outputSize: canvas)]; child.historyCursor = 0
             let media = try await MediaRenderer.sourceTimeline(project: child, folder: folder, canvasSize: canvas, framesPerSecond: framesPerSecond, stabilization: stabilization,
                 stabilizationPlans: stabilizationPlans, videoProgress: { videoProgress((Double(number) + $0) / Double(max(1, timeline.video.count))) },
-                forceCustom: true, includeBackgroundAudio: false, previewDiagnostics: previewDiagnostics, bypassVideoEffects: bypassVideoEffects,
+                forceCustom: true, includeBackgroundAudio: false, includeSourceAudio: false, previewDiagnostics: previewDiagnostics, bypassVideoEffects: bypassVideoEffects,
                 effectPreparation: effectPreparation)
             hdr = hdr || media.hdr
             guard let sourceTrack = media.composition.tracks(withMediaType: .video).first else { throw ProjectError.invalidMedia }
@@ -196,7 +195,17 @@ enum TrackRenderer {
         var tracks: [AVMutableCompositionTrack] = [], ends: [EditTime] = [], envelopes: [[AudioEnvelopeSegment]] = []
         var formats: [String] = []
         var preceding: [Int: (url: URL, sourceEnd: Double, rate: Double)] = [:]
+        // Adjacent cuts usually read the same recording. Keep just the most
+        // recent asset so a large project needn't hold every source open.
+        var lastAsset: AVURLAsset?
+        func asset(for url: URL) -> AVURLAsset {
+            if let lastAsset, lastAsset.url == url { return lastAsset }
+            let asset = AVURLAsset(url: url)
+            lastAsset = asset
+            return asset
+        }
         for item in timeline.audio.sorted(by: { $0.start < $1.start }) {
+            try Task.checkCancellation()
             guard let source = project.sources.first(where: { $0.id == item.sourceID }) else { throw ProjectError.missingMedia }
             var boundaries = [EditTime.zero, item.mapping.duration] + item.enhancements.flatMap { [$0.interval.start, $0.interval.end] }
             // A continuous time-pitch pass must never bridge a removed source
@@ -221,7 +230,7 @@ enum TrackRenderer {
                 guard !item.muted, map.runs.contains(where: { !$0.silent }) else { continue }
                 if previewRange != nil, region?.effects.contains(where: \.enabled) == true {
                     if key.flatMap({ processedWindows[$0] }) == nil,
-                       try await AVURLAsset(url: folder.appendingPathComponent(source.filename)).loadTracks(withMediaType: .audio).isEmpty { continue }
+                       try await asset(for: folder.appendingPathComponent(source.filename)).loadTracks(withMediaType: .audio).isEmpty { continue }
                     guard let key, let windows = processedWindows[key], let first = map.runs.first, let last = map.runs.last,
                           let window = windows.first(where: { $0.range.lowerBound <= first.sourceStart + 0.00001 && $0.range.upperBound >= last.sourceEnd - 0.00001 }) else { throw AudioProcessingError.invalidFormat }
                     url = window.url
@@ -230,8 +239,7 @@ enum TrackRenderer {
                 let slices = map.runs.map { EffectAudioRateSlice(start: $0.sourceStart, end: $0.sourceEnd, duration: $0.duration.seconds) }
                 let bake = !item.muted && map.runs.allSatisfy { !$0.silent } && EffectAudioRateRenderer.needsContinuousRender(slices)
                 let inputURL = bake ? try await EffectAudioRateRenderer.shared.render(url: url, slices: slices, folder: folder, outputDuration: time(b - a), retainedBy: composition) : url
-                let asset = AVURLAsset(url: inputURL)
-                guard let sourceTrack = try await asset.loadTracks(withMediaType: .audio).first else { continue }
+                guard let sourceTrack = try await asset(for: inputURL).loadTracks(withMediaType: .audio).first else { continue }
                 let descriptions = try await sourceTrack.load(.formatDescriptions)
                 let format = descriptions.map { description -> String in
                     guard let audio = CMAudioFormatDescriptionGetStreamBasicDescription(description)?.pointee else { return "unknown" }
