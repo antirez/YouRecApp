@@ -1030,7 +1030,7 @@ private struct RecorderAperturePresets: View {
         .scrollIndicators(.hidden).scrollBounceBehavior(.basedOnSize)
         .frame(maxWidth: CGFloat((camera.apertureStops.count + 1) * 58))
         .frame(height: 48).padding(.horizontal, 6)
-        .background(.ultraThinMaterial, in: Capsule())
+        .recorderGlass(in: Capsule(), fallback: .ultraThinMaterial)
         .disabled(!camera.ready || camera.busy || camera.switchingCamera)
         .accessibilityIdentifier("recorder.aperture.presets")
     }
